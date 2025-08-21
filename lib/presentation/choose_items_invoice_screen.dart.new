@@ -1,0 +1,736 @@
+import 'package:flutter/material.dart';
+import 'package:sizer/sizer.dart';
+import '../../models/invoice_model.dart';
+
+class ChooseItemsInvoiceScreen extends StatefulWidget {
+  final String invoiceType; // 'sales' or 'purchase'
+  
+  const ChooseItemsInvoiceScreen({
+    Key? key,
+    required this.invoiceType,
+  }) : super(key: key);
+
+  @override
+  State<ChooseItemsInvoiceScreen> createState() => _ChooseItemsInvoiceScreenState();
+}
+
+class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
+  final List<_Item> _allItems = _itemCatalog;
+  final Map<int, _SelectedItem> _selectedItems = {};
+  String _search = '';
+  String _selectedCategory = 'All';
+
+  Widget _buildFilterChip(String label, int count) {
+    final bool isSelected = _selectedCategory == label;
+    final color = widget.invoiceType == 'sales' ? Colors.blue : Colors.green;
+    
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedCategory = label;
+        });
+      },
+      child: Container(
+        margin: EdgeInsets.only(right: 2.w),
+        padding: EdgeInsets.symmetric(horizontal: 3.w),
+        decoration: BoxDecoration(
+          color: isSelected ? color : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+          border: isSelected ? null : Border.all(color: Colors.grey[300]!),
+        ),
+        alignment: Alignment.center,
+        child: Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.grey[800],
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            SizedBox(width: 1.w),
+            Container(
+              padding: EdgeInsets.all(1.w),
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.white.withOpacity(0.3) : Colors.grey[300],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                count.toString(),
+                style: TextStyle(
+                  fontSize: 9.sp,
+                  color: isSelected ? Colors.white : Colors.grey[800],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    List<_Item> filteredItems = _allItems;
+    
+    // Apply search filter
+    if (_search.isNotEmpty) {
+      filteredItems = filteredItems
+          .where((item) => item.name.toLowerCase().contains(_search.toLowerCase()))
+          .toList();
+    }
+    
+    // Apply category filter
+    if (_selectedCategory != 'All') {
+      filteredItems = filteredItems.where((item) {
+        final name = item.name.toLowerCase();
+        switch (_selectedCategory) {
+          case 'Kitchen':
+            return name.contains('kitchen');
+          case 'Cleaning':
+            return name.contains('clean') || 
+                   name.contains('phenyl') || 
+                   name.contains('mop');
+          case 'Containers':
+            return name.contains('container');
+          case 'Bags':
+            return name.contains('bag');
+          default:
+            return true;
+        }
+      }).toList();
+    }
+    final total = _selectedItems.values.fold<double>(0, (sum, si) => sum + si.amount);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.invoiceType == 'sales' ? 'Sales Invoice Items' : 'Purchase Invoice Items'),
+        backgroundColor: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.info_outline),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Select items to add to your ${widget.invoiceType} invoice'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.all(3.w),
+            child: TextField(
+              decoration: InputDecoration(
+                labelText: 'Search items',
+                hintText: 'Type to search...',
+                prefixIcon: Icon(Icons.search, color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green),
+                suffixIcon: _search.isNotEmpty ? IconButton(
+                  icon: Icon(Icons.clear),
+                  onPressed: () => setState(() => _search = ''),
+                ) : null,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green, width: 2),
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+              onChanged: (val) => setState(() => _search = val),
+            ),
+          ),
+          
+          // Category chips
+          Container(
+            height: 5.h,
+            margin: EdgeInsets.symmetric(horizontal: 3.w),
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _buildFilterChip('All', filteredItems.length),
+                _buildFilterChip('Kitchen', _allItems.where((item) => item.name.toLowerCase().contains('kitchen')).length),
+                _buildFilterChip('Cleaning', _allItems.where((item) => 
+                  item.name.toLowerCase().contains('clean') || 
+                  item.name.toLowerCase().contains('phenyl') ||
+                  item.name.toLowerCase().contains('mop')).length),
+                _buildFilterChip('Containers', _allItems.where((item) => item.name.toLowerCase().contains('container')).length),
+                _buildFilterChip('Bags', _allItems.where((item) => item.name.toLowerCase().contains('bag')).length),
+              ],
+            ),
+          ),
+          
+          // Selected items count
+          Padding(
+            padding: EdgeInsets.fromLTRB(3.w, 2.w, 3.w, 1.w),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${filteredItems.length} items available',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12.sp),
+                ),
+                if (_selectedItems.isNotEmpty)
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 0.5.h),
+                    decoration: BoxDecoration(
+                      color: widget.invoiceType == 'sales' ? Colors.blue.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${_selectedItems.length} selected',
+                      style: TextStyle(
+                        color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: filteredItems.length,
+              itemBuilder: (context, idx) {
+                final item = filteredItems[idx];
+                final selected = _selectedItems.containsKey(item.id);
+                final selectedItem = _selectedItems[item.id];
+                final itemColor = widget.invoiceType == 'sales' ? Colors.blue : Colors.green;
+                
+                return Card(
+                  margin: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.w),
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      setState(() {
+                        if (selected) {
+                          _selectedItems.remove(item.id);
+                        } else {
+                          _selectedItems[item.id] = _SelectedItem(item: item, quantity: 1);
+                        }
+                      });
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: selected ? Border.all(color: itemColor, width: 2) : null,
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(2.w),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                // Checkbox and item details
+                                Checkbox(
+                                  value: selected,
+                                  activeColor: itemColor,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                  onChanged: (val) {
+                                    setState(() {
+                                      if (val == true) {
+                                        _selectedItems[item.id] = _SelectedItem(item: item, quantity: 1);
+                                      } else {
+                                        _selectedItems.remove(item.id);
+                                      }
+                                    });
+                                  },
+                                ),
+                                SizedBox(width: 2.w),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.name,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14.sp,
+                                        ),
+                                      ),
+                                      SizedBox(height: 0.5.h),
+                                      Text(
+                                        'Rate: ₹${item.rate.toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          color: Colors.grey[600],
+                                          fontSize: 12.sp,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            
+                            // Quantity controls (only show if selected)
+                            if (selected)
+                              Container(
+                                margin: EdgeInsets.only(top: 2.w),
+                                padding: EdgeInsets.all(2.w),
+                                decoration: BoxDecoration(
+                                  color: itemColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      'Quantity:',
+                                      style: TextStyle(fontWeight: FontWeight.w500),
+                                    ),
+                                    Spacer(),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.grey[300]!),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          InkWell(
+                                            onTap: () {
+                                              setState(() {
+                                                if (selectedItem!.quantity > 1) {
+                                                  selectedItem.quantity--;
+                                                }
+                                              });
+                                            },
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Container(
+                                              padding: EdgeInsets.all(1.w),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey[200],
+                                                borderRadius: BorderRadius.only(
+                                                  topLeft: Radius.circular(8),
+                                                  bottomLeft: Radius.circular(8),
+                                                ),
+                                              ),
+                                              child: Icon(Icons.remove, size: 5.w),
+                                            ),
+                                          ),
+                                          Container(
+                                            width: 10.w,
+                                            alignment: Alignment.center,
+                                            padding: EdgeInsets.symmetric(horizontal: 2.w),
+                                            child: Text(
+                                              '${selectedItem?.quantity ?? 1}',
+                                              style: TextStyle(fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                          InkWell(
+                                            onTap: () {
+                                              setState(() {
+                                                selectedItem!.quantity++;
+                                              });
+                                            },
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Container(
+                                              padding: EdgeInsets.all(1.w),
+                                              decoration: BoxDecoration(
+                                                color: itemColor,
+                                                borderRadius: BorderRadius.only(
+                                                  topRight: Radius.circular(8),
+                                                  bottomRight: Radius.circular(8),
+                                                ),
+                                              ),
+                                              child: Icon(Icons.add, size: 5.w, color: Colors.white),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(width: 3.w),
+                                    Text(
+                                      '₹${(selectedItem?.amount ?? 0).toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: itemColor,
+                                        fontSize: 14.sp,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (_selectedItems.isNotEmpty)
+            Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: Offset(0, -5),
+                  ),
+                ],
+              ),
+              padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 3.w),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Selected Items:',
+                        style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                      ),
+                      Text(
+                        '${_selectedItems.length} items',
+                        style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 1.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Total Amount:',
+                        style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        '₹${total.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 18.sp, 
+                          fontWeight: FontWeight.bold,
+                          color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 2.h),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 6.h,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: _selectedItems.isEmpty ? null : () {
+                        final items = _selectedItems.values.map((si) => {
+                          'name': si.item.name,
+                          'rate': si.item.rate,
+                          'quantity': si.quantity,
+                          'amount': si.amount,
+                        }).toList();
+                        final totalAmount = items.fold<double>(0, (sum, i) => sum + (i['amount'] as double));
+
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Row(
+                              children: [
+                                Icon(
+                                  widget.invoiceType == 'sales' ? Icons.shopping_cart : Icons.inventory,
+                                  color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+                                ),
+                                SizedBox(width: 2.w),
+                                Text('${widget.invoiceType.substring(0, 1).toUpperCase()}${widget.invoiceType.substring(1)} Invoice'),
+                              ],
+                            ),
+                            content: Container(
+                              width: double.maxFinite,
+                              constraints: BoxConstraints(maxHeight: 50.h),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Invoice Summary',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp),
+                                  ),
+                                  Divider(),
+                                  Expanded(
+                                    child: ListView(
+                                      shrinkWrap: true,
+                                      children: [
+                                        ...items.map((i) => Padding(
+                                          padding: EdgeInsets.symmetric(vertical: 1.h),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                flex: 2,
+                                                child: Text(
+                                                  '${i['name']}',
+                                                  style: TextStyle(fontWeight: FontWeight.w500),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                child: Text(
+                                                  'x${i['quantity']}',
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                              ),
+                                              Expanded(
+                                                child: Text(
+                                                  '₹${i['rate']}',
+                                                  textAlign: TextAlign.right,
+                                                ),
+                                              ),
+                                              Expanded(
+                                                child: Text(
+                                                  '₹${(i['amount'] as double? ?? 0).toStringAsFixed(2)}',
+                                                  textAlign: TextAlign.right,
+                                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )).toList(),
+                                      ],
+                                    ),
+                                  ),
+                                  Divider(),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('Total Amount:', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      Text(
+                                        '₹${totalAmount.toStringAsFixed(2)}', 
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold, 
+                                          fontSize: 16.sp,
+                                          color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+                                ),
+                                onPressed: () {
+                                  final invoiceItems = items.map((i) => InvoiceItem(
+                                    name: i['name'] as String,
+                                    quantity: i['quantity'] as int,
+                                    price: i['rate'] as double,
+                                  )).toList();
+                                  final newInvoice = InvoiceModel(
+                                    id: 'INV-${DateTime.now().millisecondsSinceEpoch}',
+                                    invoiceNumber: 'INV-${DateTime.now().millisecondsSinceEpoch}',
+                                    clientName: '',
+                                    date: DateTime.now(),
+                                    revenue: totalAmount,
+                                    status: 'paid',
+                                    items: invoiceItems,
+                                    notes: null,
+                                    createdAt: DateTime.now(),
+                                    updatedAt: DateTime.now(),
+                                    invoiceType: widget.invoiceType,
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Invoice created and added!')),
+                                  );
+                                  // Pop the dialog
+                                  Navigator.of(context).pop();
+                                  // Pop the ChooseItemsInvoiceScreen with the invoice after a short delay
+                                  Future.delayed(const Duration(milliseconds: 300), () {
+                                    Navigator.of(context, rootNavigator: true).pop(newInvoice);
+                                  });
+                                },
+                                child: Text('Confirm & Add Invoice'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.receipt_long, size: 5.w),
+                          SizedBox(width: 2.w),
+                          Text(
+                            'Generate Invoice',
+                            style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Item {
+  final int id;
+  final String name;
+  final double rate;
+  const _Item({required this.id, required this.name, required this.rate});
+}
+
+class _SelectedItem {
+  final _Item item;
+  int quantity;
+  _SelectedItem({required this.item, this.quantity = 1});
+  double get amount => quantity * item.rate;
+}
+
+// The item catalog (id, name, rate)
+final List<_Item> _itemCatalog = [
+  _Item(id: 1, name: 'Paper bag', rate: 90),
+  _Item(id: 2, name: 'Pouch', rate: 75),
+  _Item(id: 3, name: 'Roll', rate: 230),
+  _Item(id: 4, name: 'Ghasni', rate: 75),
+  _Item(id: 5, name: 'Sponge', rate: 75),
+  _Item(id: 6, name: 'Kanda-limbu bag', rate: 150),
+  _Item(id: 7, name: 'Cap', rate: 60),
+  _Item(id: 8, name: 'Garbage bag big', rate: 110),
+  _Item(id: 9, name: 'Garbage bag green', rate: 150),
+  _Item(id: 10, name: 'Handle bag', rate: 135),
+  _Item(id: 11, name: 'White phenyl', rate: 180),
+  _Item(id: 12, name: 'Glass cleaner', rate: 220),
+  _Item(id: 13, name: 'Straw', rate: 25),
+  _Item(id: 14, name: 'Clean foil', rate: 350),
+  _Item(id: 15, name: 'Chutney box', rate: 96),
+  _Item(id: 16, name: 'Table Duster', rate: 160),
+  _Item(id: 17, name: 'Tissue box', rate: 510),
+  _Item(id: 18, name: 'Pav-Bhaji Container', rate: 360),
+  _Item(id: 19, name: 'Glass', rate: 60),
+  _Item(id: 20, name: 'Fluid gel', rate: 490),
+  _Item(id: 21, name: 'Scotch brite', rate: 35),
+  _Item(id: 22, name: 'Hand Wash', rate: 240),
+  _Item(id: 23, name: 'Water Glass', rate: 60),
+  _Item(id: 24, name: 'Biryani container', rate: 320),
+  _Item(id: 25, name: 'Caustic Soda', rate: 320),
+  _Item(id: 26, name: 'Juice glass', rate: 260),
+  _Item(id: 27, name: 'Zadu', rate: 80),
+  _Item(id: 28, name: 'Clean wrap', rate: 350),
+  _Item(id: 29, name: 'Garbage Bag black', rate: 110),
+  _Item(id: 30, name: 'Godrej liquid', rate: 300),
+  _Item(id: 31, name: 'Air freshener', rate: 590),
+  _Item(id: 32, name: 'Air freshener liquid', rate: 300),
+  _Item(id: 33, name: 'Arm guard', rate: 30),
+  _Item(id: 34, name: 'Nirma', rate: 62),
+  _Item(id: 35, name: 'Parcel bag', rate: 135),
+  _Item(id: 36, name: 'Indonesian Kharata', rate: 60),
+  _Item(id: 37, name: 'Supli', rate: 60),
+  _Item(id: 38, name: 'Box file', rate: 75),
+  _Item(id: 39, name: 'Pane bore', rate: 75),
+  _Item(id: 40, name: 'High ighter', rate: 25),
+  _Item(id: 41, name: 'Taps', rate: 260),
+  _Item(id: 42, name: 'Stier', rate: 15),
+  _Item(id: 43, name: 'Big container', rate: 6.4),
+  _Item(id: 44, name: 'Small container', rate: 4.4),
+  _Item(id: 45, name: 'Chain foil', rate: 330),
+  _Item(id: 46, name: 'Gloves', rate: 75),
+  _Item(id: 47, name: 'Napkin', rate: 96),
+  _Item(id: 48, name: 'Ladi duster', rate: 160),
+  _Item(id: 49, name: 'Toothpice', rate: 105),
+  _Item(id: 50, name: '750ml silver container', rate: 320),
+  _Item(id: 51, name: '450ml silver container', rate: 220),
+  _Item(id: 52, name: '600ml silver container', rate: 3.2),
+  _Item(id: 53, name: 'A4 rim', rate: 270),
+  _Item(id: 54, name: 'Garbage bag', rate: 30),
+  _Item(id: 55, name: 'Pop-up', rate: 500),
+  _Item(id: 56, name: 'Garbage bag small', rate: 30),
+  _Item(id: 57, name: 'Gloves oil chargs', rate: 30),
+  _Item(id: 58, name: 'Mop set', rate: 140),
+  _Item(id: 59, name: 'Wipper', rate: 170),
+  _Item(id: 60, name: 'Fan', rate: 260),
+  _Item(id: 61, name: 'White board marker black', rate: 25),
+  _Item(id: 62, name: 'Toilet roll', rate: 10),
+  _Item(id: 63, name: 'Sefty goggle', rate: 30),
+  _Item(id: 64, name: 'Phenyl', rate: 130),
+  _Item(id: 65, name: 'cleaning mug', rate: 230),
+  _Item(id: 66, name: 'Chuteniy bag', rate: 150),
+  _Item(id: 67, name: 'Mop', rate: 140),
+  _Item(id: 68, name: 'Air (Air freshener - likely specific)', rate: 1100),
+  _Item(id: 69, name: 'Oil (likely cleaning oil)', rate: 1200),
+  _Item(id: 70, name: '6x9 pouch', rate: 60),
+  _Item(id: 71, name: '300ml glass', rate: 60),
+  _Item(id: 72, name: 'Chai patti', rate: 330),
+  _Item(id: 73, name: 'Ice-Cream cup', rate: 50),
+  _Item(id: 74, name: 'Spoon', rate: 55),
+  _Item(id: 75, name: 'Wipper set', rate: 200),
+  _Item(id: 76, name: 'Pan item', rate: 150),
+  _Item(id: 77, name: 'Pencil dell small', rate: 180),
+  _Item(id: 78, name: 'Pencil calling', rate: 180),
+  _Item(id: 79, name: 'Gloves drawings', rate: 38),
+  _Item(id: 80, name: 'Garbage bag grey big', rate: 150),
+  _Item(id: 81, name: 'Garbage bag big black', rate: 110),
+  _Item(id: 82, name: 'Silicon gloves', rate: 30),
+  _Item(id: 83, name: 'Cotton gloves Heavy Duty', rate: 18),
+  _Item(id: 84, name: 'White board marker', rate: 280),
+  _Item(id: 85, name: '250ml plastic container', rate: 50),
+  _Item(id: 86, name: '500ml plastic container', rate: 80),
+  _Item(id: 87, name: '750ml plastic container', rate: 120),
+  _Item(id: 88, name: '1000ml plastic container', rate: 150),
+  _Item(id: 89, name: '6×11 silver pouch', rate: 400),
+  _Item(id: 90, name: '5×7 silver pouch', rate: 280),
+  _Item(id: 91, name: 'W cut parcel bags', rate: 70),
+  _Item(id: 92, name: '1/4 kirana bag', rate: 30),
+  _Item(id: 93, name: '1/2 kirana bag', rate: 50),
+  _Item(id: 94, name: '6 inch Sathe stick', rate: 15),
+  _Item(id: 95, name: '300ml Juice glass with lid', rate: 200),
+  _Item(id: 96, name: 'Bend straw', rate: 10),
+  _Item(id: 97, name: 'Umbrella straw', rate: 18),
+  _Item(id: 98, name: '200ml paper glass', rate: 40),
+  _Item(id: 99, name: '65ml tea glass', rate: 30),
+  _Item(id: 100, name: 'Paper plate', rate: 45),
+  _Item(id: 101, name: '500gm Rubber band packet', rate: 800),
+  _Item(id: 102, name: 'Tissue paper dispenser', rate: 2500),
+  _Item(id: 103, name: '9inch mop set', rate: 750),
+  _Item(id: 104, name: '18inch wipper', rate: 900),
+  _Item(id: 105, name: '24inch wipper', rate: 1200),
+  _Item(id: 106, name: '18inch hardy brush', rate: 600),
+  _Item(id: 107, name: 'Toilet brush', rate: 550),
+  _Item(id: 108, name: '5ltr bucket', rate: 900),
+  _Item(id: 109, name: '15ltr bucket', rate: 2000),
+  _Item(id: 110, name: 'Green pad scrubber', rate: 120),
+  _Item(id: 111, name: 'Steel scrubber', rate: 150),
+  _Item(id: 112, name: 'Checks duster', rate: 300),
+  _Item(id: 113, name: 'Yellow Sponge', rate: 270),
+  _Item(id: 114, name: 'Plastic supli', rate: 300),
+  _Item(id: 115, name: '24 inch Dry mop set', rate: 1050),
+  _Item(id: 116, name: 'Acid', rate: 750),
+  _Item(id: 117, name: 'Toilet cleaner liquid', rate: 900),
+  _Item(id: 118, name: 'Regular phenyl', rate: 600),
+  _Item(id: 119, name: 'Black phenyl', rate: 650),
+  _Item(id: 120, name: 'Compound phenyl', rate: 800),
+  _Item(id: 121, name: 'Air freshner liquid 5ltr', rate: 4500),
+  _Item(id: 122, name: 'Odonil air freshner', rate: 450),
+  _Item(id: 123, name: 'Godrej automatic air freshner machine with refill', rate: 3600),
+  _Item(id: 124, name: 'Scented Urinal screen', rate: 300),
+  _Item(id: 125, name: 'Scented dambar goli', rate: 240),
+  _Item(id: 126, name: 'Garbage bag 27×36', rate: 550),
+  _Item(id: 127, name: 'Garbage bag 19×21', rate: 360),
+  _Item(id: 128, name: 'Garbage bag 30×50', rate: 750),
+  _Item(id: 129, name: '72mtr silver foil', rate: 1200),
+  _Item(id: 130, name: '1kg silver foil', rate: 2700),
+  _Item(id: 131, name: 'Kitchen apron', rate: 1050),
+  _Item(id: 132, name: 'Kitchen cap', rate: 360),
+  _Item(id: 133, name: 'Skull cap', rate: 300)
+];
