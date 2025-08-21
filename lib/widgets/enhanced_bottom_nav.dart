@@ -31,7 +31,7 @@ class _EnhancedBottomNavState extends State<EnhancedBottomNav>
       ),
     );
     _scaleAnimations = _controllers
-        .map((controller) => Tween<double>(begin: 1.0, end: 1.2).animate(
+        .map((controller) => Tween<double>(begin: 1.0, end: 1.1).animate(
               CurvedAnimation(parent: controller, curve: Curves.elasticOut),
             ))
         .toList();
@@ -72,16 +72,16 @@ class _EnhancedBottomNavState extends State<EnhancedBottomNav>
       ),
       child: SafeArea(
         child: Container(
-          height: 8.h,
+          height: 7.h,
           padding: EdgeInsets.symmetric(horizontal: 2.w),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildNavItem(0, Icons.home_outlined, Icons.home, 'Home'),
-              _buildNavItem(1, Icons.receipt_long_outlined, Icons.receipt_long, 'Invoices'),
-              _buildNavItem(2, Icons.analytics_outlined, Icons.analytics, 'Analytics'),
-              _buildNavItem(3, Icons.people_outlined, Icons.people, 'Customers'),
-              _buildNavItem(4, Icons.person_outlined, Icons.person, 'Profile'),
+              Expanded(child: _buildNavItem(0, Icons.home_outlined, Icons.home, 'Home')),
+              Expanded(child: _buildNavItem(1, Icons.receipt_long_outlined, Icons.receipt_long, 'Invoices')),
+              Expanded(child: _buildNavItem(2, Icons.analytics_outlined, Icons.analytics, 'Analytics')),
+              Expanded(child: _buildNavItem(3, Icons.people_outlined, Icons.people, 'Customers')),
+              Expanded(child: _buildNavItem(4, Icons.person_outlined, Icons.person, 'Profile')),
             ],
           ),
         ),
@@ -99,7 +99,7 @@ class _EnhancedBottomNavState extends State<EnhancedBottomNav>
         animation: _scaleAnimations[index],
         builder: (context, child) {
           return Container(
-            padding: EdgeInsets.symmetric(vertical: 1.h, horizontal: 2.w),
+            padding: EdgeInsets.symmetric(vertical: 0.5.h, horizontal: 2.w),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -113,18 +113,20 @@ class _EnhancedBottomNavState extends State<EnhancedBottomNav>
                       color: isSelected
                           ? theme.bottomNavigationBarTheme.selectedItemColor
                           : theme.bottomNavigationBarTheme.unselectedItemColor,
-                      size: 6.w,
+                      size: 5.2.w,
                     ),
                   ),
                 ),
-                SizedBox(height: 0.5.h),
+                SizedBox(height: 0.3.h),
                 Text(
                   label,
                   style: TextStyle(
                     color: isSelected ? Colors.blue.shade800 : Colors.grey.shade700,
-                    fontSize: 11.sp,
+                    fontSize: 10.sp,
                     fontWeight: FontWeight.w500,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),

@@ -234,32 +234,39 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Good ${_getGreeting()}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(
-                                    color: isDark
-                                        ? AppTheme.textSecondaryDark
-                                        : AppTheme.textSecondaryLight,
-                                  ),
-                            ),
-                            SizedBox(height: 0.5.h),
-                            Text(
-                              'John Doe',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                            ),
-                          ],
+                        Flexible(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Good ${_getGreeting()}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      color: isDark
+                                          ? AppTheme.textSecondaryDark
+                                          : AppTheme.textSecondaryLight,
+                                    ),
+                              ),
+                              SizedBox(height: 0.5.h),
+                              Text(
+                                'John Doe',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineSmall
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ],
+                          ),
                         ),
                         Row(
                           children: [
@@ -809,11 +816,18 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
   
   Widget _buildAllCaughtUpCard() {
+    // Safely derive border radius from card theme (fallback to 20 if null or non-rounded)
+    final ShapeBorder? themeShape = Theme.of(context).cardTheme.shape;
+    final BorderRadiusGeometry safeRadius =
+        themeShape is RoundedRectangleBorder
+            ? themeShape.borderRadius
+            : BorderRadius.circular(20);
+
     return Container(
       width: double.infinity,
       margin: EdgeInsets.symmetric(vertical: 1.h),
       decoration: BoxDecoration(
-        borderRadius: (Theme.of(context).cardTheme.shape as RoundedRectangleBorder).borderRadius,
+        borderRadius: safeRadius,
         gradient: LinearGradient(
           colors: [Colors.green.shade400, Colors.green.shade600],
           begin: Alignment.topLeft,

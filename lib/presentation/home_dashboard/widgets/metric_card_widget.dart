@@ -24,6 +24,13 @@ class MetricCardWidget extends StatelessWidget {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final bool isPositive = change >= 0;
 
+    // Safely derive border radius from theme with a sensible fallback
+    final ShapeBorder? themeShape = Theme.of(context).cardTheme.shape;
+    final BorderRadiusGeometry cardBorderRadius =
+        themeShape is RoundedRectangleBorder
+            ? themeShape.borderRadius
+            : BorderRadius.circular(16);
+
     return FluidAnimations.createTapFeedback(
       onTap: onTap ?? () {},
       child: AnimatedContainer(
@@ -32,7 +39,7 @@ class MetricCardWidget extends StatelessWidget {
         padding: EdgeInsets.all(4.w),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          borderRadius: (Theme.of(context).cardTheme.shape as RoundedRectangleBorder).borderRadius,
+          borderRadius: cardBorderRadius,
           border: Border.all(
             color: Theme.of(context).dividerColor,
             width: 1,
