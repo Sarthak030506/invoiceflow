@@ -1,121 +1,45 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:invoiceflow/providers/auth_provider.dart';
+import 'package:invoiceflow/providers/inventory_provider.dart';
+
+import 'package:invoiceflow/presentation/auth/auth_gate.dart';
+import 'package:invoiceflow/presentation/home_dashboard/home_dashboard.dart';
+import 'package:invoiceflow/theme/app_theme.dart';
+
 import 'firebase_options.dart';
-import 'package:path_provider/path_provider.dart';
-import 'dart:io';
-import 'package:path/path.dart' as path;
 
-// Screens
-import 'presentation/auth/auth_wrapper.dart';
-import 'presentation/inventory_screen/inventory_screen.dart';
-import 'presentation/inventory_screen/new_inventory_detail_screen.dart' as NewInventoryDetail;
+import 'package:invoiceflow/services/invoice_service.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:invoiceflow/constants/app_scaling.dart';
 
-// Providers
-import 'providers/auth_provider.dart';
-import 'providers/inventory_provider.dart';
-
-// Services
-import 'services/notification_service.dart';
-import 'services/background_service.dart';
-import 'services/invoice_file_provider.dart';
-import 'services/bulk_invoice_import.dart';
-import 'services/invoice_service.dart';
-
-// Core
-import 'core/app_export.dart';
-import 'widgets/custom_error_widget.dart';
-import 'animations/fluid_animations.dart';
-import 'routes/app_routes.dart';
-import 'theme/app_theme.dart';
-import 'theme/rounded_theme_extensions.dart';
-
-// Models
-import 'models/invoice_model.dart';
-
-Future<String> getInvoicesCsvPath() async {
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    final directory = await getApplicationDocumentsDirectory();
-    return path.join(directory.path, 'invoices.csv');
-  }
-  return 'assets/images/data/invoices.csv';
-}
+import 'package:invoiceflow/routes/app_routes.dart';
+import 'package:invoiceflow/presentation/inventory_screen/inventory_detail_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    print('Firebase initialized successfully');
+
+    // Initialize Google Sign In
+    await GoogleSignIn().signInSilently();
+
+    await InvoiceService.initialize(csvPath: 'assets/images/data/invoices.csv');
+    print('Firebase and Google Services initialized successfully');
   } catch (e) {
-    print('Error initializing Firebase: $e');
-    // You might want to show a user-friendly error message here
-    // or fallback to a different configuration
-  }
-
-  // 🚨 CRITICAL: Custom error handling - DO NOT REMOVE
-  ErrorWidget.builder = (FlutterErrorDetails details) {
-    return CustomErrorWidget(
-      errorDetails: details,
-    );
-  };
-  
-  // 🚨 CRITICAL: Device orientation lock - DO NOT REMOVE
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-
-  // Initialize InvoiceService early so any consumers (e.g., NotificationService)
-  // can safely access InvoiceService.instance during startup
-  try {
-    final csvPath = await getInvoicesCsvPath();
-    await InvoiceService.initialize(csvPath: csvPath);
-    print('InvoiceService initialized with csvPath: ' + csvPath);
-  } catch (e, st) {
-    print('Error initializing InvoiceService: ' + e.toString());
-    print(st);
-  }
-
-  // Initialize notification service
-  try {
-    await NotificationService().init();
-    print('NotificationService initialized');
-  } catch (e, st) {
-    print('Error in NotificationService.init: $e');
-    print(st);
-  }
-  
-  // Initialize background service for daily reminders
-  try {
-    await BackgroundService.initialize();
-    print('BackgroundService initialized');
-  } catch (e, st) {
-    print('Error in BackgroundService.initialize: $e');
-    print(st);
-  }
-
-  // Insert hardcoded data into DB (one-time only)
-  try {
-    await runOneTimeDataImportIfNeeded();
-    print('One-time data import complete');
-  } catch (e, st) {
-    print('Error in runOneTimeDataImportIfNeeded: $e');
-    print(st);
+    print('Initialization error: $e');
   }
 
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        // Add other providers here
-      ],
-      child: const MyApp(),
+    Sizer(
+      builder: (context, orientation, deviceType) {
+        return const MyApp();
+      },
     ),
   );
 }
@@ -125,50 +49,44 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Sizer(
-      builder: (context, orientation, deviceType) {
-        return Consumer<AuthProvider>(
-          builder: (context, authProvider, _) {
-            return MaterialApp(
-              title: 'InvoiceFlow',
-              debugShowCheckedModeBanner: false,
-              theme: ThemeData(
-                primarySwatch: Colors.blue,
-                useMaterial3: true,
-                visualDensity: VisualDensity.adaptivePlatformDensity,
+    return ChangeNotifierProvider(
+      create: (context) => AuthProvider(),
+      child: MaterialApp(
+        title: 'InvoiceFlow',
+        builder: (context, child) {
+          // Force textScaleFactor to 1.0
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
+            child: child!,
+          );
+        },
+        // Apply the modern blue/green application theme
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.light,
+        initialRoute: '/',
+        routes: {
+          '/': (context) => const AuthGate(),
+          '/home': (context) => const HomeDashboard(
+                csvPath: 'assets/images/data/invoices.csv',
               ),
-              // Use AuthWrapper to handle authentication state
-              home: const AuthWrapper(),
-              // Define all routes using AppRoutes
-              onGenerateRoute: (settings) {
-                // Try to find the route in AppRoutes.routes first
-                final routeBuilder = AppRoutes.routes[settings.name];
-                if (routeBuilder != null) {
-                  return MaterialPageRoute(
-                    builder: routeBuilder,
-                    settings: settings,
-                  );
-                }
-
-                // Handle dynamic routes
-                if (settings.name?.startsWith(AppRoutes.inventoryDetailScreen) == true) {
-                  final itemId = settings.name!.split('/').last;
-                  return FluidAnimations.createSlideUpRoute(
-                    child: NewInventoryDetail.InventoryDetailScreen(itemId: itemId),
-                    settings: settings,
-                  );
-                }
-
-                // Default route when no named route matches
-                return MaterialPageRoute(
-                  builder: (context) => const AuthWrapper(),
-                  settings: settings,
-                );
-              },
+          // Include all routes from AppRoutes
+          ...AppRoutes.routes,
+        },
+        onGenerateRoute: (settings) {
+          if (settings.name?.startsWith('/inventory/item/') == true) {
+            final itemId = settings.name!.split('/').last;
+            return MaterialPageRoute(
+              builder: (context) => ChangeNotifierProvider(
+                create: (_) => InventoryProvider(),
+                child: InventoryDetailScreen(itemId: itemId),
+              ),
             );
-          },
-        );
-      },
+          }
+          return null;
+        },
+        debugShowCheckedModeBanner: false,
+      ),
     );
   }
 }

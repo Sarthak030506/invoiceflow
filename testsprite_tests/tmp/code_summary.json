@@ -1,0 +1,133 @@
+{
+  "tech_stack": [
+    "Dart",
+    "Flutter",
+    "Firebase (Auth, Firestore, Storage, Messaging, Analytics)",
+    "Provider (state management)",
+    "Flutter Web",
+    "SharedPreferences",
+    "Dio",
+    "Flutter Local Notifications",
+    "CSV assets",
+    "Path Provider"
+  ],
+  "features": [
+    {
+      "name": "Authentication",
+      "description": "Handles user auth state, login, registration, and auth routing.",
+      "files": [
+        "lib/presentation/auth/auth_wrapper.dart",
+        "lib/presentation/auth/login_screen.dart",
+        "lib/presentation/auth/register_screen.dart",
+        "lib/providers/auth_provider.dart",
+        "lib/services/auth_service.dart",
+        "lib/main.dart"
+      ]
+    },
+    {
+      "name": "Home Dashboard",
+      "description": "Displays KPIs, recent invoices, and navigation to key areas.",
+      "files": [
+        "lib/presentation/home_dashboard/home_dashboard.dart",
+        "lib/presentation/home_dashboard/widgets/metric_card_widget.dart",
+        "lib/presentation/home_dashboard/widgets/recent_invoice_item_widget.dart",
+        "lib/services/invoice_service.dart",
+        "lib/services/inventory_service.dart",
+        "lib/services/event_service.dart"
+      ]
+    },
+    {
+      "name": "Analytics (Legacy)",
+      "description": "Analytics dashboards including charts and tables.",
+      "files": [
+        "lib/presentation/analytics/analytics_page.dart",
+        "lib/presentation/analytics/widgets/analytics_card.dart",
+        "lib/presentation/analytics/widgets/analytics_card_grid.dart",
+        "lib/presentation/analytics/widgets/date_range_selector.dart",
+        "lib/presentation/analytics/modals/*"
+      ]
+    },
+    {
+      "name": "Analytics (Redesign)",
+      "description": "New analytics experience, KPIs and insights.",
+      "files": [
+        "lib/presentation/analytics_redesign/analytics_main_screen.dart",
+        "lib/presentation/analytics_redesign/analytics_redesign_scaffold.dart",
+        "lib/presentation/analytics_redesign/analytics_redesign_screen.dart",
+        "lib/presentation/analytics_redesign/overview_kpis_screen.dart",
+        "lib/presentation/analytics_redesign/widgets/*"
+      ]
+    },
+    {
+      "name": "Invoices",
+      "description": "Invoice list, details, creation utilities, and CSV-backed data.",
+      "files": [
+        "lib/presentation/invoices_list_screen/invoices_list_screen.dart",
+        "lib/presentation/invoices_list_screen/widgets/*",
+        "lib/presentation/invoice_detail_screen/invoice_detail_screen.dart",
+        "lib/presentation/invoice_detail_screen/widgets/*",
+        "lib/presentation/invoice_type_selection_screen.dart",
+        "lib/services/invoice_service.dart",
+        "lib/services/csv_invoice_service.dart"
+      ]
+    },
+    {
+      "name": "Inventory",
+      "description": "Inventory list and details. Firestore now primary source.",
+      "files": [
+        "lib/presentation/inventory_screen/inventory_screen.dart",
+        "lib/presentation/inventory_screen/inventory_detail_screen.dart",
+        "lib/presentation/inventory_screen/new_inventory_detail_screen.dart",
+        "lib/services/inventory_service.dart",
+        "lib/services/inventory_firestore_service.dart",
+        "lib/database/inventory_database.dart"
+      ]
+    },
+    {
+      "name": "Customers",
+      "description": "Customer list and details.",
+      "files": [
+        "lib/presentation/customers_screen/customers_screen.dart",
+        "lib/presentation/customers_screen/customer_detail_screen.dart",
+        "lib/presentation/customers_screen/widgets/*",
+        "lib/services/customer_service.dart"
+      ]
+    },
+    {
+      "name": "Notifications",
+      "description": "Local notifications and inventory alerts.",
+      "files": [
+        "lib/services/notification_service.dart",
+        "lib/services/inventory_notification_service.dart",
+        "lib/services/background_service.dart"
+      ]
+    },
+    {
+      "name": "Routing",
+      "description": "Central app routing and initial screens.",
+      "files": [
+        "lib/routes/app_routes.dart",
+        "lib/main.dart"
+      ]
+    },
+    {
+      "name": "Firebase Configuration",
+      "description": "Firebase initialization and options per platform.",
+      "files": [
+        "lib/firebase_options.dart",
+        "android/app/google-services.json",
+        "ios/Runner/GoogleService-Info.plist (if present)"
+      ]
+    },
+    {
+      "name": "Shared Utilities and Theme",
+      "description": "App-wide exports, theming, and animations.",
+      "files": [
+        "lib/core/app_export.dart",
+        "lib/theme/app_theme.dart",
+        "lib/animations/fluid_animations.dart",
+        "lib/widgets/*"
+      ]
+    }
+  ]
+}

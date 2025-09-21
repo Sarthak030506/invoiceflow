@@ -4,7 +4,6 @@ import 'package:uuid/uuid.dart';
 import '../models/invoice_model.dart';
 import '../models/customer_model.dart';
 import '../models/catalog_item.dart';
-import '../services/database_service.dart';
 import '../services/invoice_service.dart';
 import '../services/customer_service.dart';
 import '../services/stock_map_service.dart';
@@ -795,7 +794,10 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                                                         }
                                                         
                                                         // Close customer info sheet and show payment details
-                                                        Navigator.pop(context);
+                                                        if (!mounted) return;
+                                                        if (Navigator.of(context).canPop()) {
+                                                          Navigator.pop(context);
+                                                        }
                                                         _showPaymentDetailsSheet(invoiceItems, totalAmount);
                                                       },
                                                       child: Text('Continue to Payment'),
@@ -841,13 +843,15 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
   }
   
   void _showPaymentDetailsSheet(List<InvoiceItem> invoiceItems, double totalAmount) {
+    // Capture a stable parent context from this State to avoid using a deactivated sheet context
+    final parentContext = context;
     showModalBottomSheet(
-      context: context,
+      context: parentContext,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (sheetContext) => Container(
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
+          bottom: MediaQuery.of(parentContext).viewInsets.bottom,
           left: 4.w,
           right: 4.w,
           top: 2.h,
@@ -884,6 +888,21 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                 totalAmount: totalAmount,
                 invoiceType: widget.invoiceType,
                 onPaymentDetailsSubmitted: (amountPaid, paymentMethod) async {
+                  // Show a blocking loader while we save and process inventory to avoid perceived freeze
+                  showDialog(
+                    context: parentContext,
+                    barrierDismissible: false,
+                    builder: (_) => WillPopScope(
+                      onWillPop: () async => false,
+                      child: const Center(
+                        child: SizedBox(
+                          width: 64,
+                          height: 64,
+                          child: CircularProgressIndicator(),
+                        ),
+                      ),
+                    ),
+                  );
                   try {
                     // For sales invoices, ensure customer exists and is linked
                     if (widget.invoiceType == 'sales' && _customerPhone.isNotEmpty && _customerId == null) {
@@ -896,19 +915,21 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                     }
                     
                     // Create invoice with payment details and customer ID
+                    final now = DateTime.now();
+                    final ts = now.millisecondsSinceEpoch;
                     final newInvoice = InvoiceModel(
-                      id: 'INV-${DateTime.now().millisecondsSinceEpoch}',
-                      invoiceNumber: 'INV-${DateTime.now().millisecondsSinceEpoch}',
+                      id: 'INV-$ts',
+                      invoiceNumber: 'INV-$ts',
                       clientName: _customerName,
                       customerPhone: widget.invoiceType == 'sales' ? _customerPhone : null,
                       customerId: widget.invoiceType == 'sales' ? _customerId : null,
-                      date: DateTime.now(),
+                      date: now,
                       revenue: totalAmount,
                       status: 'posted', // Always post invoices to process inventory
                       items: invoiceItems,
                       notes: null,
-                      createdAt: DateTime.now(),
-                      updatedAt: DateTime.now(),
+                      createdAt: now,
+                      updatedAt: now,
                       invoiceType: widget.invoiceType,
                       amountPaid: amountPaid,
                       paymentMethod: paymentMethod,
@@ -916,21 +937,33 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                     
                     // Save the invoice to the database using InvoiceService
                     await _invoiceService.addInvoice(newInvoice);
-                    
-                    ScaffoldMessenger.of(context).showSnackBar(
+
+                    if (!mounted) return;
+                    // Dismiss loader
+                    if (Navigator.of(parentContext, rootNavigator: true).canPop()) {
+                      Navigator.of(parentContext, rootNavigator: true).pop();
+                    }
+                    ScaffoldMessenger.of(parentContext).showSnackBar(
                       const SnackBar(content: Text('Invoice created and saved to database!')),
                     );
-                    
+
                     // Close the payment details bottom sheet
-                    Navigator.of(context).pop();
-                    
+                    if (Navigator.of(parentContext).canPop()) {
+                      Navigator.of(parentContext).pop();
+                    }
+
                     // Navigate directly to home screen and clear all previous screens
-                    Navigator.of(context).pushNamedAndRemoveUntil(
+                    Navigator.of(parentContext).pushNamedAndRemoveUntil(
                       '/',  // Home route
                       (route) => false,  // Remove all previous routes
                     );
                   } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    if (!mounted) return;
+                    // Ensure loader is dismissed on error
+                    if (Navigator.of(parentContext, rootNavigator: true).canPop()) {
+                      Navigator.of(parentContext, rootNavigator: true).pop();
+                    }
+                    ScaffoldMessenger.of(parentContext).showSnackBar(
                       SnackBar(content: Text('Error saving invoice: ${e.toString()}')),
                     );
                   }

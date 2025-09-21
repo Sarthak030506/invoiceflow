@@ -1,0 +1,513 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Markdown Preview</title>
+      <style>
+        body {
+          font-family: sans-serif;
+          padding: 40px;
+          line-height: 1.6;
+          background: #fdfdfd;
+          color: #333;
+        }
+        pre {
+          background: #f4f4f4;
+          padding: 10px;
+          border-radius: 5px;
+          overflow-x: auto;
+        }
+        code {
+          font-family: monospace;
+          background: #eee;
+          padding: 2px 4px;
+        }
+        table {
+          border-collapse: collapse;
+          width: 100%;
+          margin-top: 20px;
+        }
+        th, td {
+          border: 1px solid #ccc;
+          padding: 8px 12px;
+          text-align: left;
+        }
+        th {
+          background-color: #f2f2f2;
+          font-weight: bold;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>TestSprite AI Testing Report (MCP)</h1>
+<hr>
+<h2>1️⃣ Document Metadata</h2>
+<ul>
+<li><strong>Project Name:</strong> invoiceflow</li>
+<li><strong>Version:</strong> N/A</li>
+<li><strong>Date:</strong> 2025-09-04</li>
+<li><strong>Prepared by:</strong> TestSprite AI Team</li>
+</ul>
+<hr>
+<h2>2️⃣ Requirement Validation Summary</h2>
+<h3>Requirement: Authentication - Email/Password Login</h3>
+<ul>
+<li><strong>Description:</strong> LoginForm supports email/password authentication with validation and feedback.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC001</li>
+<li><strong>Test Name:</strong> Email/Password Authentication Success</li>
+<li><strong>Test Code:</strong> N/A</li>
+<li><strong>Test Error:</strong> Test execution timed out after 15 minutes</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/25822af0-191b-4450-b2fa-386ec1aa0b08</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Backend auth responsiveness and frontend timeout handling likely issues. Add retries and clear timeout UX.</li>
+</ul>
+<hr>
+<h4>Test 2</h4>
+<ul>
+<li><strong>Test ID:</strong> TC002</li>
+<li><strong>Test Name:</strong> Email/Password Authentication Failure</li>
+<li><strong>Test Code:</strong> <a href="./TC002_EmailPassword_Authentication_Failure.py">TC002_EmailPassword_Authentication_Failure.py</a></li>
+<li><strong>Test Error:</strong> Login failed as expected but no error message was shown to user; 400 from Firebase observed.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/fab23576-25fc-4e4d-96e7-529e742cbbf0</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> MEDIUM</li>
+<li><strong>Analysis / Findings:</strong> Ensure invalid-credentials feedback is rendered and accessible.</li>
+</ul>
+<hr>
+<h3>Requirement: Authentication - Google Sign-In</h3>
+<ul>
+<li><strong>Description:</strong> GoogleSignInComponent enables OAuth login and routing.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC003</li>
+<li><strong>Test Name:</strong> Google Sign-In Authentication Success</li>
+<li><strong>Test Code:</strong> <a href="./TC003_Google_Sign_In_Authentication_Success.py">TC003_Google_Sign_In_Authentication_Success.py</a></li>
+<li><strong>Test Error:</strong> Sign-in initiated but failed; canvaskit connection closed; user not routed.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/e5a72168-ccff-47d8-8af5-80819b964e40</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Verify OAuth client config and network; ensure required scripts and tokens load.</li>
+</ul>
+<hr>
+<h3>Requirement: Password Recovery</h3>
+<ul>
+<li><strong>Description:</strong> PasswordRecoveryComponent sends reset emails and confirms to user.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC004</li>
+<li><strong>Test Name:</strong> Password Recovery Flow</li>
+<li><strong>Test Code:</strong> <a href="./TC004_Password_Recovery_Flow.py">TC004_Password_Recovery_Flow.py</a></li>
+<li><strong>Test Error:</strong> N/A</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/b472f1ea-411f-4baa-bada-551a3e101f57</li>
+<li><strong>Status:</strong> ✅ Passed</li>
+<li><strong>Severity:</strong> LOW</li>
+<li><strong>Analysis / Findings:</strong> Flow correct; consider retry for email delivery and progress feedback.</li>
+</ul>
+<hr>
+<h3>Requirement: Invoices - Creation and Lifecycle</h3>
+<ul>
+<li><strong>Description:</strong> Users can create invoices; lifecycle transitions enforced.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC005</li>
+<li><strong>Test Name:</strong> Create New Invoice with Valid Data</li>
+<li><strong>Test Code:</strong> <a href="./TC005_Create_New_Invoice_with_Valid_Data.py">TC005_Create_New_Invoice_with_Valid_Data.py</a></li>
+<li><strong>Test Error:</strong> Login blocked due to validation errors and form resets; cannot reach creation screen.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/9bcb1bdf-aa27-4d21-a1ce-3984323b3965</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Fix login form stability and validation before invoice creation.</li>
+</ul>
+<hr>
+<h4>Test 2</h4>
+<ul>
+<li><strong>Test ID:</strong> TC006</li>
+<li><strong>Test Name:</strong> Invoice Lifecycle State Transition Validations</li>
+<li><strong>Test Code:</strong> <a href="./TC006_Invoice_Lifecycle_State_Transition_Validations.py">TC006_Invoice_Lifecycle_State_Transition_Validations.py</a></li>
+<li><strong>Test Error:</strong> Unable to input password; lifecycle verification blocked.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/8923e067-0577-4642-a56d-6684b3cb1d56</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Resolve login password field behavior; then re-run lifecycle checks.</li>
+</ul>
+<hr>
+<h3>Requirement: Invoices - Posting Constraints</h3>
+<ul>
+<li><strong>Description:</strong> Posting enforces stock checks and errors on insufficient inventory.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC007</li>
+<li><strong>Test Name:</strong> Invoice Posting with Insufficient Inventory</li>
+<li><strong>Test Code:</strong> <a href="./TC007_Invoice_Posting_with_Insufficient_Inventory.py">TC007_Invoice_Posting_with_Insufficient_Inventory.py</a></li>
+<li><strong>Test Error:</strong> Account creation/login failed; cannot proceed to posting.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/84f1fa8c-d5d3-4f36-8cb2-339bdffde36b</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Fix account creation UX/feedback and auth path.</li>
+</ul>
+<hr>
+<h3>Requirement: Inventory - Stock Update After Posting</h3>
+<ul>
+<li><strong>Description:</strong> Inventory updates in real-time with audit trail on posting.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC008</li>
+<li><strong>Test Name:</strong> Inventory Stock Update After Invoice Posting</li>
+<li><strong>Test Code:</strong> <a href="./TC008_Inventory_Stock_Update_After_Invoice_Posting.py">TC008_Inventory_Stock_Update_After_Invoice_Posting.py</a></li>
+<li><strong>Test Error:</strong> Login blocked by password retention issue; 400s from Firebase signIn API.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/32947300-e948-4c87-83f4-e6f70f69ca09</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Fix login to enable posting and audit validation.</li>
+</ul>
+<hr>
+<h3>Requirement: Notifications - Low Stock Local Alerts</h3>
+<ul>
+<li><strong>Description:</strong> Local notifications trigger at reorder threshold.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC009</li>
+<li><strong>Test Name:</strong> Low Stock Alert Notification</li>
+<li><strong>Test Code:</strong> <a href="./TC009_Low_Stock_Alert_Notification.py">TC009_Low_Stock_Alert_Notification.py</a></li>
+<li><strong>Test Error:</strong> Login blocked; Forgot Password email input non-functional.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/c30ba1b3-13bd-42e8-920c-ab4c16824cad</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Fix auth and forgot-password forms; then validate local alerts.</li>
+</ul>
+<hr>
+<h3>Requirement: Customers - Profile Update and Lookup</h3>
+<ul>
+<li><strong>Description:</strong> Real-time profile updates and phone lookup work post-login.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC010</li>
+<li><strong>Test Name:</strong> Customer Profile Real-Time Update and Phone Lookup</li>
+<li><strong>Test Code:</strong> <a href="./TC010_Customer_Profile_Real_Time_Update_and_Phone_Lookup.py">TC010_Customer_Profile_Real_Time_Update_and_Phone_Lookup.py</a></li>
+<li><strong>Test Error:</strong> Login rejected due to concatenated invalid emails and empty passwords.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/d831179d-7689-4edb-9872-ce9717c73669</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Correct email/password input handling.</li>
+</ul>
+<hr>
+<h3>Requirement: Analytics - KPI and Chart Rendering</h3>
+<ul>
+<li><strong>Description:</strong> Analytics load within 3s with accurate KPIs and charts.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC011</li>
+<li><strong>Test Name:</strong> Analytics Dashboard KPI and Chart Rendering</li>
+<li><strong>Test Code:</strong> <a href="./TC011_Analytics_Dashboard_KPI_and_Chart_Rendering.py">TC011_Analytics_Dashboard_KPI_and_Chart_Rendering.py</a></li>
+<li><strong>Test Error:</strong> Login resets repeatedly; 400s from Firebase sign-in.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/ba235289-19fb-4f3b-9d30-a783ef570bd4</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Address login stability; then profile analytics loading.</li>
+</ul>
+<hr>
+<h3>Requirement: Cross-Platform UI</h3>
+<ul>
+<li><strong>Description:</strong> UI adheres to Material 3, touch targets, and color palette across platforms.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC012</li>
+<li><strong>Test Name:</strong> Cross-Platform UI Responsiveness</li>
+<li><strong>Test Code:</strong> <a href="./TC012_Cross_Platform_UI_Responsiveness.py">TC012_Cross_Platform_UI_Responsiveness.py</a></li>
+<li><strong>Test Error:</strong> Web: Forgot Password button too small; color scheme mismatch. Android/iOS not accessible.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/323c2952-5617-4081-8481-2e63fc8933b7</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> MEDIUM</li>
+<li><strong>Analysis / Findings:</strong> Increase button size; align palette to Material 3; test mobile.</li>
+</ul>
+<hr>
+<h3>Requirement: Notifications - Scheduling and Triggering</h3>
+<ul>
+<li><strong>Description:</strong> UI exists to configure and trigger local notifications.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC013</li>
+<li><strong>Test Name:</strong> Local Notification Scheduling and Triggering</li>
+<li><strong>Test Code:</strong> <a href="./TC013_Local_Notification_Scheduling_and_Triggering.py">TC013_Local_Notification_Scheduling_and_Triggering.py</a></li>
+<li><strong>Test Error:</strong> Main page empty; no UI to schedule/trigger notifications.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/a5606052-fdb7-453a-a18e-123e9e4a70a3</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Implement notification UI flows.</li>
+</ul>
+<hr>
+<h3>Requirement: Data Migration - CSV Import</h3>
+<ul>
+<li><strong>Description:</strong> CSV import migrates legacy invoices with audit trail.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC014</li>
+<li><strong>Test Name:</strong> CSV Data Migration Integrity</li>
+<li><strong>Test Code:</strong> <a href="./TC014_CSV_Data_Migration_Integrity.py">TC014_CSV_Data_Migration_Integrity.py</a></li>
+<li><strong>Test Error:</strong> Login/account creation blocked; cannot import/verify.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/6526f098-8a99-4871-b51b-c5b7e101c600</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Stabilize auth path; then validate CSV import and audit.</li>
+</ul>
+<hr>
+<h3>Requirement: Security - Firestore Rules</h3>
+<ul>
+<li><strong>Description:</strong> Enforce multi-tenancy and prevent cross-user access.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC015</li>
+<li><strong>Test Name:</strong> Firestore Data Isolation and Security Rules</li>
+<li><strong>Test Code:</strong> <a href="./TC015_Firestore_Data_Isolation_and_Security_Rules.py">TC015_Firestore_Data_Isolation_and_Security_Rules.py</a></li>
+<li><strong>Test Error:</strong> N/A</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/099f1f1d-fcd6-49a5-9818-be54d5083428</li>
+<li><strong>Status:</strong> ✅ Passed</li>
+<li><strong>Severity:</strong> LOW</li>
+<li><strong>Analysis / Findings:</strong> Rules effective; continue periodic reviews.</li>
+</ul>
+<hr>
+<h3>Requirement: Data Operation Atomicity &amp; Errors</h3>
+<ul>
+<li><strong>Description:</strong> Invoice posting and stock updates are atomic with graceful errors.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC016</li>
+<li><strong>Test Name:</strong> Data Operation Atomicity and Error Handling</li>
+<li><strong>Test Code:</strong> <a href="./TC016_Data_Operation_Atomicity_and_Error_Handling.py">TC016_Data_Operation_Atomicity_and_Error_Handling.py</a></li>
+<li><strong>Test Error:</strong> Login blocked by password field issue.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/6583228a-965e-4138-ab3d-1c56a093c3f6</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Fix login; then validate atomic operations.</li>
+</ul>
+<hr>
+<h3>Requirement: Payments - WhatsApp Reminder Integration</h3>
+<ul>
+<li><strong>Description:</strong> Send payment reminders over WhatsApp for unpaid invoices.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC017</li>
+<li><strong>Test Name:</strong> WhatsApp Payment Reminder Integration</li>
+<li><strong>Test Code:</strong> <a href="./TC017_WhatsApp_Payment_Reminder_Integration.py">TC017_WhatsApp_Payment_Reminder_Integration.py</a></li>
+<li><strong>Test Error:</strong> Login repeatedly fails due to email/password validation.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/bffd28ca-7f73-4a10-91f6-45bdf74bbc26</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Correct validation; then test reminder flow.</li>
+</ul>
+<hr>
+<h3>Requirement: Sessions - Auto Management</h3>
+<ul>
+<li><strong>Description:</strong> Auto-login on restart and proper logout.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC018</li>
+<li><strong>Test Name:</strong> User Session Auto Management</li>
+<li><strong>Test Code:</strong> <a href="./TC018_User_Session_Auto_Management.py">TC018_User_Session_Auto_Management.py</a></li>
+<li><strong>Test Error:</strong> Password input issue prevents login for session checks.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/b4f4bdd9-a834-4b1c-aaf7-aa813a598b5c</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Fix login; re-run session validations.</li>
+</ul>
+<hr>
+<h3>Requirement: Profile &amp; Settings - UI &amp; Accessibility</h3>
+<ul>
+<li><strong>Description:</strong> Profile and settings conform to Material 3 and accessibility.</li>
+</ul>
+<h4>Test 1</h4>
+<ul>
+<li><strong>Test ID:</strong> TC019</li>
+<li><strong>Test Name:</strong> Profile and Settings UI Consistency and Accessibility</li>
+<li><strong>Test Code:</strong> <a href="./TC019_Profile_and_Settings_UI_Consistency_and_Accessibility.py">TC019_Profile_and_Settings_UI_Consistency_and_Accessibility.py</a></li>
+<li><strong>Test Error:</strong> Login blocked due to input issues; cannot reach screens.</li>
+<li><strong>Test Visualization and Result:</strong> https://www.testsprite.com/dashboard/mcp/tests/112190c6-2f46-4445-91ff-2f2e890a184f/b006e300-b3d7-40fb-a10e-2c1e0bdace39</li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Resolve login; then verify UI, contrast, and touch targets.</li>
+</ul>
+<hr>
+<h2>3️⃣ Coverage &amp; Matching Metrics</h2>
+<ul>
+<li>
+<p><strong>Requirements covered:</strong> 12</p>
+</li>
+<li>
+<p><strong>Total Tests:</strong> 19</p>
+</li>
+<li>
+<p><strong>✅ Passed:</strong> 2</p>
+</li>
+<li>
+<p><strong>⚠️ Partial:</strong> 0</p>
+</li>
+<li>
+<p><strong>❌ Failed:</strong> 17</p>
+</li>
+<li>
+<p><strong>Key gaps / risks:</strong></p>
+<ul>
+<li>Authentication flow instability blocks most scenarios (password field retention, validation, form reset).</li>
+<li>Missing/insufficient user-facing error messages on failed login.</li>
+<li>Notification configuration UI absent on main page (web).</li>
+<li>Cross-platform parity and Material 3 palette inconsistencies.</li>
+</ul>
+</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Total Tests</th>
+<th style="text-align:right">✅ Passed</th>
+<th style="text-align:right">⚠️ Partial</th>
+<th style="text-align:right">❌ Failed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Authentication - Email/Password Login</td>
+<td>2</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">2</td>
+</tr>
+<tr>
+<td>Authentication - Google Sign-In</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Password Recovery</td>
+<td>1</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+</tr>
+<tr>
+<td>Invoices - Creation &amp; Lifecycle</td>
+<td>2</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">2</td>
+</tr>
+<tr>
+<td>Invoices - Posting Constraints</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Inventory - Stock Update</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Notifications - Low Stock Alerts</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Customers - Profile &amp; Lookup</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Analytics - KPI &amp; Charts</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Cross-Platform UI</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Notifications - Scheduling &amp; Triggering</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Data Migration - CSV Import</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Security - Firestore Rules</td>
+<td>1</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+</tr>
+<tr>
+<td>Data Operation Atomicity &amp; Errors</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Payments - WhatsApp Reminder Integration</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Sessions - Auto Management</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td>Profile &amp; Settings - UI &amp; Accessibility</td>
+<td>1</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">1</td>
+</tr>
+</tbody>
+</table>
+
+    </body>
+    </html>
+  

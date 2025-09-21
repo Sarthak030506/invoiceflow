@@ -1,26 +1,20 @@
 import 'package:uuid/uuid.dart';
 import '../models/customer_model.dart';
 import '../models/invoice_model.dart';
-import './database_service.dart';
+import './firestore_service.dart';
 
 class CustomerService {
-  final DatabaseService _dbService = DatabaseService();
+  final FirestoreService _fs = FirestoreService.instance;
   
-  Future<List<CustomerModel>> getAllCustomers() async {
-    return await _dbService.getAllCustomers();
-  }
+  Future<List<CustomerModel>> getAllCustomers() async => _fs.getAllCustomers();
   
-  Future<CustomerModel?> getCustomerByPhone(String phoneNumber) async {
-    return await _dbService.getCustomerByPhone(phoneNumber);
-  }
+  Future<CustomerModel?> getCustomerByPhone(String phoneNumber) async => _fs.getCustomerByPhone(phoneNumber);
   
-  Future<CustomerModel?> getCustomerById(String id) async {
-    return await _dbService.getCustomerById(id);
-  }
+  Future<CustomerModel?> getCustomerById(String id) async => _fs.getCustomerById(id);
   
   Future<CustomerModel> addCustomer(String name, String phoneNumber) async {
     // Check if customer already exists
-    final existingCustomer = await _dbService.getCustomerByPhone(phoneNumber);
+    final existingCustomer = await _fs.getCustomerByPhone(phoneNumber);
     if (existingCustomer != null) {
       return existingCustomer;
     }
@@ -34,21 +28,15 @@ class CustomerService {
       updatedAt: DateTime.now(),
     );
     
-    await _dbService.insertCustomer(customer);
+    await _fs.upsertCustomer(customer);
     return customer;
   }
   
-  Future<Map<String, double>> getCustomerOutstandingBalances() async {
-    return await _dbService.getCustomerOutstandingBalances();
-  }
+  Future<Map<String, double>> getCustomerOutstandingBalances() async => _fs.getCustomerOutstandingBalances();
   
-  Future<List<InvoiceModel>> getCustomerInvoices(String customerId) async {
-    return await _dbService.getInvoicesByCustomerId(customerId);
-  }
+  Future<List<InvoiceModel>> getCustomerInvoices(String customerId) async => _fs.getInvoicesByCustomerId(customerId);
   
-  Future<void> deleteCustomer(String customerId) async {
-    await _dbService.deleteCustomer(customerId);
-  }
+  Future<void> deleteCustomer(String customerId) async => _fs.deleteCustomer(customerId);
   
   String generateWhatsAppReminderLink(InvoiceModel invoice, String shopName, String shopContact) {
     // Check if invoice is paid or pending

@@ -5,7 +5,8 @@ import '../analytics_screen/widgets/analytics_table_widget.dart';
 import '../../services/analytics_service.dart';
 import '../../services/inventory_service.dart';
 import '../../services/customer_service.dart';
-import '../../services/database_service.dart';
+import '../../services/firestore_service.dart';
+ 
 
 class AnalyticsRedesignScaffold extends StatefulWidget {
   final String? initialSection;
@@ -1128,113 +1129,152 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   }
   
   Widget _buildHoldingCard() {
-    final unsoldItems = _getUnsoldItems();
-    
-    return GestureDetector(
-      onTap: () => _showUnsoldItemsModal(),
-      child: Container(
-        key: const Key('holdingCard'),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.schedule, color: Colors.orange, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Inventory Timeholding — Unsold Items Only',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Icon(
-                  Icons.open_in_new,
-                  size: 16,
-                  color: Colors.grey.shade600,
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _getUnsoldItems(),
+      builder: (context, snapshot) {
+        final unsoldItems = snapshot.data ?? [];
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        
+        return GestureDetector(
+          onTap: () => _showUnsoldItemsModal(),
+          child: Container(
+            key: const Key('holdingCard'),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              '${unsoldItems.length} items',
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Currently unsold',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ...unsoldItems.take(3).map((item) => Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      item['name'] ?? 'Unknown',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.schedule, color: Colors.orange, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Inventory Timeholding — Unsold Items Only',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
                     ),
+                    if (isLoading)
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      Icon(
+                        Icons.open_in_new,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  isLoading ? 'Loading...' : '${unsoldItems.length} items',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: unsoldItems.isEmpty ? Colors.green : Colors.black87,
                   ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      '${item['daysInStock']}d',
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isLoading ? 'Checking inventory...' : 
+                  (unsoldItems.isEmpty ? 'All items moving well' : 'Currently unsold'),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: unsoldItems.isEmpty ? Colors.green.shade600 : Colors.grey.shade600,
+                  ),
+                ),
+                if (!isLoading && unsoldItems.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  ...unsoldItems.take(3).map((item) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            item['name'] ?? 'Unknown',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            item['ageLabel'] ?? '${item['daysInStock']}d',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.end,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )),
+                  if (unsoldItems.length > 3) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '+${unsoldItems.length - 3} more items',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.orange.shade700,
-                        fontWeight: FontWeight.w500,
+                        color: Colors.grey.shade600,
+                        fontStyle: FontStyle.italic,
                       ),
-                      textAlign: TextAlign.end,
-                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ] else if (!isLoading && unsoldItems.isEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.green, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Great! No stagnant inventory',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ),
-            )),
-            if (unsoldItems.length > 3) ...[
-              const SizedBox(height: 8),
-              Text(
-                '+${unsoldItems.length - 3} more items',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
   
@@ -1413,21 +1453,87 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
     return (inventoryValue / (dailySales * 0.7)).clamp(1.0, 365.0);
   }
   
-  List<Map<String, dynamic>> _getUnsoldItems() {
-    final slowMoving = inventoryAnalytics['slowMovingItems'] as List<dynamic>? ?? [];
-    return slowMoving.where((item) => (item.currentStock ?? 0) > 0).map((item) {
-      final lastUpdated = item.lastUpdated ?? DateTime.now().subtract(Duration(days: 30));
-      final daysInStock = DateTime.now().difference(lastUpdated).inDays;
-      return {
-        'name': item.name ?? 'Unknown',
-        'daysInStock': daysInStock,
-        'quantity': (item.currentStock ?? 0).round(),
-      };
-    }).toList();
+  Future<List<Map<String, dynamic>>> _getUnsoldItems() async {
+    try {
+      final inventoryService = InventoryService();
+      final fs = FirestoreService.instance;
+      
+      // Get all items with stock > 0
+      final allItems = await inventoryService.getAllItems();
+      final itemsWithStock = allItems.where((item) => item.currentStock > 0).toList();
+      
+      if (itemsWithStock.isEmpty) return [];
+      
+      // Get all invoices to find last transaction dates
+      final allInvoices = await fs.getAllInvoices();
+      
+      List<Map<String, dynamic>> unsoldItems = [];
+      
+      for (final item in itemsWithStock) {
+        // Find the most recent transaction for this item
+        DateTime? lastTransactionDate;
+        
+        for (final invoice in allInvoices) {
+          for (final invoiceItem in invoice.items) {
+            if (invoiceItem.name == item.name) {
+              if (lastTransactionDate == null || invoice.date.isAfter(lastTransactionDate)) {
+                lastTransactionDate = invoice.date;
+              }
+            }
+          }
+        }
+        
+        // Use last transaction date or item creation date
+        final unsoldSinceDate = lastTransactionDate ?? item.lastUpdated;
+        final now = DateTime.now();
+        final ageInHours = now.difference(unsoldSinceDate).inHours;
+        final ageInDays = now.difference(unsoldSinceDate).inDays;
+        
+        // Calculate age label based on requirements
+        String ageLabel;
+        if (ageInHours < 24) {
+          ageLabel = 'Unsold ${ageInHours}h';
+        } else if (ageInDays < 30) {
+          ageLabel = 'Unsold ${ageInDays}d';
+        } else if (ageInDays < 365) {
+          final months = (ageInDays / 30).floor();
+          ageLabel = 'Unsold ${months}mo';
+        } else {
+          final years = (ageInDays / 365).floor();
+          ageLabel = 'Unsold ${years}y';
+        }
+        
+        unsoldItems.add({
+          'name': item.name,
+          'daysInStock': ageInDays,
+          'ageLabel': ageLabel,
+          'quantity': item.currentStock.round(),
+          'ageInHours': ageInHours,
+          'unsoldSince': unsoldSinceDate,
+        });
+      }
+      
+      // Sort by age (oldest first)
+      unsoldItems.sort((a, b) => (b['ageInHours'] as int).compareTo(a['ageInHours'] as int));
+      
+      return unsoldItems;
+    } catch (e) {
+      print('Error getting unsold items: $e');
+      return [];
+    }
   }
   
-  void _showUnsoldItemsModal() {
-    final unsoldItems = _getUnsoldItems();
+  void _showUnsoldItemsModal() async {
+    final unsoldItems = await _getUnsoldItems();
+    
+    if (unsoldItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No unsold items found')),
+      );
+      return;
+    }
+    
+    final groupedItems = _groupItemsByAge(unsoldItems);
     
     showModalBottomSheet(
       context: context,
@@ -1450,10 +1556,19 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
                 children: [
                   Icon(Icons.schedule, color: Colors.orange, size: 24),
                   const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Unsold Inventory Items',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Inventory Timeholding - Unsold Items',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          '${unsoldItems.length} items currently unsold',
+                          style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                        ),
+                      ],
                     ),
                   ),
                   IconButton(
@@ -1464,90 +1579,135 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
               ),
             ),
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: unsoldItems.length,
-                itemBuilder: (context, index) {
-                  final item = unsoldItems[index];
-                  final daysInStock = item['daysInStock'] as int;
-                  Color statusColor = Colors.green;
-                  if (daysInStock > 60) statusColor = Colors.red;
-                  else if (daysInStock > 30) statusColor = Colors.orange;
-                  
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: statusColor.withOpacity(0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: statusColor,
-                            borderRadius: BorderRadius.circular(4),
+              child: groupedItems.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.inventory_2, size: 64, color: Colors.grey.shade400),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No items to group',
+                            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: groupedItems.length,
+                      itemBuilder: (context, index) {
+                        final group = groupedItems[index];
+                        final items = group['items'] as List<Map<String, dynamic>>;
+                        
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                item['name'] ?? 'Unknown',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: group['color'].withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '${group['label']} (${items.length} items)',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: group['color'],
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Qty: ${item['quantity']} units',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey.shade600,
+                              const SizedBox(height: 8),
+                              ...items.map((item) => Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.grey.shade200),
                                 ),
-                              ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            item['name'],
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                          Text(
+                                            'Qty: ${item['quantity']} units',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Text(
+                                      item['ageLabel'],
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: group['color'],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )),
                             ],
                           ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '$daysInStock days',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: statusColor,
-                              ),
-                            ),
-                            Text(
-                              'in stock',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
           ],
         ),
       ),
     );
+  }
+  
+  List<Map<String, dynamic>> _groupItemsByAge(List<Map<String, dynamic>> items) {
+    if (items.isEmpty) return [];
+    
+    final groups = <String, List<Map<String, dynamic>>>{};
+    
+    for (final item in items) {
+      final ageInHours = item['ageInHours'] as int? ?? 0;
+      final ageInDays = item['daysInStock'] as int? ?? 0;
+      
+      String groupKey;
+      if (ageInHours < 24) {
+        groupKey = ageInHours == 0 ? 'Added Today' : 'Last 24 Hours';
+      } else if (ageInDays < 7) {
+        groupKey = 'Last Week';
+      } else if (ageInDays < 30) {
+        groupKey = 'Last Month';
+      } else if (ageInDays < 365) {
+        groupKey = 'Last Year';
+      } else {
+        groupKey = 'Over 1 Year';
+      }
+      
+      groups.putIfAbsent(groupKey, () => []).add(item);
+    }
+    
+    final groupOrder = ['Added Today', 'Last 24 Hours', 'Last Week', 'Last Month', 'Last Year', 'Over 1 Year'];
+    final colors = [Colors.green, Colors.blue, Colors.orange, Colors.red, Colors.purple, Colors.grey];
+    
+    return groupOrder.asMap().entries.where((entry) => groups.containsKey(entry.value)).map((entry) => {
+      'label': entry.value,
+      'items': groups[entry.value]!,
+      'color': colors[entry.key],
+    }).toList();
   }
   
   void _showFullItemBreakdown() {
@@ -2412,9 +2572,6 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   }
   
   Widget _buildMovementHealthCard() {
-    final fastMoving = _getFastMovingItems();
-    final slowMoving = _getSlowMovingItems();
-    
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -2444,76 +2601,364 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
                   color: Colors.black87,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Icon(Icons.north_east, color: Colors.green[600], size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Fast Moving',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.green[700],
+              const Spacer(),
+              GestureDetector(
+                onTap: _showMovementHealthModal,
+                child: Icon(
+                  Icons.open_in_new,
+                  size: 16,
+                  color: Colors.grey.shade600,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          ...fastMoving.take(3).map((item) => _buildMovementItem(
-            item['name'] ?? 'Unknown',
-            '${item['turnoverRate']?.toStringAsFixed(1) ?? '0'}x',
-            Colors.green[600]!,
-            () => _navigateToInventoryDetail(item),
-          )),
           const SizedBox(height: 20),
-          Row(
-            children: [
-              Icon(Icons.schedule, color: Colors.orange[600], size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Slow Moving',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.orange[700],
-                ),
-              ),
-            ],
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _getFastMovingItems(),
+            builder: (context, snapshot) {
+              final fastMoving = snapshot.data ?? [];
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.north_east, color: Colors.green[600], size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Fast Moving (${fastMoving.length})',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.green[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ...fastMoving.take(3).map((item) => _buildMovementItem(
+                    item['name'] ?? 'Unknown',
+                    '${item['saleCount']}x sold',
+                    Colors.green[600]!,
+                    () => _navigateToInventoryDetail(item),
+                  )),
+                ],
+              );
+            },
           ),
-          const SizedBox(height: 12),
-          ...slowMoving.take(3).map((item) => _buildMovementItem(
-            item['name'] ?? 'Unknown',
-            '${item['daysInStock'] ?? 0}d old',
-            Colors.orange[600]!,
-            () => _navigateToInventoryDetail(item),
-          )),
+          const SizedBox(height: 20),
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _getSlowMovingItems(),
+            builder: (context, snapshot) {
+              final slowMoving = snapshot.data ?? [];
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.schedule, color: Colors.orange[600], size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Slow Moving (${slowMoving.length})',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ...slowMoving.take(3).map((item) => _buildMovementItem(
+                    item['name'] ?? 'Unknown',
+                    '${item['daysInStock']}d old',
+                    Colors.orange[600]!,
+                    () => _navigateToInventoryDetail(item),
+                  )),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
   }
   
-
-  
-  List<Map<String, dynamic>> _getFastMovingItems() {
-    final fastMoving = inventoryAnalytics['fastMovingItems'] as List<dynamic>? ?? [];
-    return fastMoving.map((item) => {
-      'name': item['item']?.name ?? 'Unknown Item',
-      'turnoverRate': item['turnoverRate'] ?? 0.0,
-      'id': item['item']?.id ?? 'unknown',
-    }).toList();
+  void _showMovementHealthModal() async {
+    final fastMoving = await _getFastMovingItems();
+    final slowMoving = await _getSlowMovingItems();
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: DefaultTabController(
+          length: 2,
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.trending_up, color: Colors.green, size: 24),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Movement Health Analysis',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+              TabBar(
+                labelColor: Colors.green,
+                unselectedLabelColor: Colors.grey.shade600,
+                indicatorColor: Colors.green,
+                tabs: [
+                  Tab(text: 'Fast Moving (${fastMoving.length})'),
+                  Tab(text: 'Slow Moving (${slowMoving.length})'),
+                ],
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildMovementList(fastMoving, true),
+                    _buildMovementList(slowMoving, false),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
   
-  List<Map<String, dynamic>> _getSlowMovingItems() {
-    final slowMoving = inventoryAnalytics['slowMovingItems'] as List<dynamic>? ?? [];
-    return slowMoving.map((item) => {
-      'name': item.name ?? 'Unknown Item',
-      'turnoverRate': 0.0,
-      'id': item.id ?? 'unknown',
-      'daysInStock': DateTime.now().difference(item.lastUpdated ?? DateTime.now().subtract(Duration(days: 30))).inDays,
-    }).toList();
+  Widget _buildMovementList(List<Map<String, dynamic>> items, bool isFastMoving) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final color = isFastMoving ? Colors.green : Colors.orange;
+        
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item['name'],
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (isFastMoving) ...[
+                Text(
+                  'Sales: ${item['saleCount']} times (${item['totalSold']} units)',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                ),
+                Text(
+                  'Turnover: ${item['turnoverRate'].toStringAsFixed(1)}x per week',
+                  style: TextStyle(fontSize: 14, color: color, fontWeight: FontWeight.w500),
+                ),
+              ] else ...[
+                Text(
+                  'Stock: ${item['currentStock']} units • Sales: ${item['totalSold']} units',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                ),
+                Text(
+                  item['lastSoldDate'] != null 
+                      ? 'Last sold: ${item['daysInStock']} days ago'
+                      : 'Never sold in last 30 days',
+                  style: TextStyle(fontSize: 14, color: color, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+  
+
+  
+  Future<List<Map<String, dynamic>>> _getFastMovingItems() async {
+    try {
+      final fs = FirestoreService.instance;
+      final allInvoices = await fs.getAllInvoices();
+      final inventoryService = InventoryService();
+      final allItems = await inventoryService.getAllItems();
+      
+      // Calculate sales in last 30 days for each item
+      final now = DateTime.now();
+      final thirtyDaysAgo = now.subtract(Duration(days: 30));
+      
+      Map<String, Map<String, dynamic>> itemSales = {};
+      
+      // Analyze sales invoices from last 30 days
+      for (final invoice in allInvoices) {
+        if (invoice.invoiceType == 'sales' && 
+            invoice.date.isAfter(thirtyDaysAgo) &&
+            invoice.status != 'cancelled') {
+          
+          for (final item in invoice.items) {
+            final itemName = item.name;
+            if (!itemSales.containsKey(itemName)) {
+              itemSales[itemName] = {
+                'totalSold': 0,
+                'saleCount': 0,
+                'lastSoldDate': invoice.date,
+              };
+            }
+            
+            itemSales[itemName]!['totalSold'] += item.quantity;
+            itemSales[itemName]!['saleCount'] += 1;
+            
+            // Update last sold date if this is more recent
+            if (invoice.date.isAfter(itemSales[itemName]!['lastSoldDate'])) {
+              itemSales[itemName]!['lastSoldDate'] = invoice.date;
+            }
+          }
+        }
+      }
+      
+      // Define fast moving threshold: >2 sales OR >10 units sold in 30 days
+      List<Map<String, dynamic>> fastMoving = [];
+      
+      for (final entry in itemSales.entries) {
+        final itemName = entry.key;
+        final salesData = entry.value;
+        final saleCount = salesData['saleCount'] as int;
+        final totalSold = salesData['totalSold'] as int;
+        
+        if (saleCount >= 2 || totalSold >= 10) {
+          // Calculate turnover rate (sales per week)
+          final turnoverRate = (saleCount / 4.3).toDouble(); // 30 days ≈ 4.3 weeks
+          
+          fastMoving.add({
+            'name': itemName,
+            'turnoverRate': turnoverRate,
+            'saleCount': saleCount,
+            'totalSold': totalSold,
+            'lastSoldDate': salesData['lastSoldDate'],
+            'id': itemName.toLowerCase().replaceAll(' ', '_'),
+          });
+        }
+      }
+      
+      // Sort by turnover rate descending
+      fastMoving.sort((a, b) => (b['turnoverRate'] as double).compareTo(a['turnoverRate'] as double));
+      
+      return fastMoving;
+    } catch (e) {
+      print('Error calculating fast moving items: $e');
+      return [];
+    }
+  }
+  
+  Future<List<Map<String, dynamic>>> _getSlowMovingItems() async {
+    try {
+      final fs = FirestoreService.instance;
+      final allInvoices = await fs.getAllInvoices();
+      final inventoryService = InventoryService();
+      final allItems = await inventoryService.getAllItems();
+      
+      final now = DateTime.now();
+      final thirtyDaysAgo = now.subtract(Duration(days: 30));
+      
+      // Get all items that have current stock
+      Map<String, Map<String, dynamic>> itemData = {};
+      
+      for (final item in allItems) {
+        if (item.currentStock > 0) {
+          itemData[item.name] = {
+            'currentStock': item.currentStock,
+            'lastUpdated': item.lastUpdated,
+            'totalSold': 0,
+            'saleCount': 0,
+            'lastSoldDate': null,
+          };
+        }
+      }
+      
+      // Calculate recent sales for items with stock
+      for (final invoice in allInvoices) {
+        if (invoice.invoiceType == 'sales' && 
+            invoice.date.isAfter(thirtyDaysAgo) &&
+            invoice.status != 'cancelled') {
+          
+          for (final item in invoice.items) {
+            final itemName = item.name;
+            if (itemData.containsKey(itemName)) {
+              itemData[itemName]!['totalSold'] += item.quantity;
+              itemData[itemName]!['saleCount'] += 1;
+              
+              if (itemData[itemName]!['lastSoldDate'] == null ||
+                  invoice.date.isAfter(itemData[itemName]!['lastSoldDate'])) {
+                itemData[itemName]!['lastSoldDate'] = invoice.date;
+              }
+            }
+          }
+        }
+      }
+      
+      // Define slow moving: <2 sales AND <10 units sold in 30 days
+      List<Map<String, dynamic>> slowMoving = [];
+      
+      for (final entry in itemData.entries) {
+        final itemName = entry.key;
+        final data = entry.value;
+        final saleCount = data['saleCount'] as int;
+        final totalSold = data['totalSold'] as int;
+        
+        if (saleCount < 2 && totalSold < 10) {
+          final lastSoldDate = data['lastSoldDate'] as DateTime?;
+          final daysInStock = lastSoldDate != null 
+              ? now.difference(lastSoldDate).inDays
+              : now.difference(data['lastUpdated'] as DateTime).inDays;
+          
+          slowMoving.add({
+            'name': itemName,
+            'currentStock': data['currentStock'],
+            'saleCount': saleCount,
+            'totalSold': totalSold,
+            'daysInStock': daysInStock,
+            'lastSoldDate': lastSoldDate,
+            'id': itemName.toLowerCase().replaceAll(' ', '_'),
+          });
+        }
+      }
+      
+      // Sort by days in stock descending (oldest first)
+      slowMoving.sort((a, b) => (b['daysInStock'] as int).compareTo(a['daysInStock'] as int));
+      
+      return slowMoving;
+    } catch (e) {
+      print('Error calculating slow moving items: $e');
+      return [];
+    }
   }
   
   void _navigateToInventoryDetail(Map<String, dynamic> item) {
@@ -3230,11 +3675,11 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   
   Future<Map<String, dynamic>> _getOutstandingPaymentsData() async {
     try {
-      final dbService = DatabaseService();
       final customerService = CustomerService();
+      final fs = FirestoreService.instance;
       
       // Get all invoices with outstanding amounts
-      final allInvoices = await dbService.getAllInvoices();
+      final allInvoices = await fs.getAllInvoices();
       final outstandingInvoices = allInvoices.where((inv) => 
         inv.invoiceType == 'sales' && inv.remainingAmount > 0
       ).toList();
@@ -3615,7 +4060,10 @@ class _DueRemindersScreenState extends State<_DueRemindersScreen> with SingleTic
     return Colors.green;
   }
   
-  void _showCustomerDetail(Map<String, dynamic> customer) {
+  void _showCustomerDetail(Map<String, dynamic> customer) async {
+    // Get actual unpaid invoices for this customer
+    final unpaidInvoices = await _getUnpaidInvoicesForCustomer(customer['name']);
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -3646,7 +4094,7 @@ class _DueRemindersScreenState extends State<_DueRemindersScreen> with SingleTic
                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                         ),
                         Text(
-                          'Total Due: ${widget.formatCurrency(customer['amount'])}',
+                          'Total Due: ${widget.formatCurrency(customer['amount'])} • ${unpaidInvoices.length} invoices',
                           style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                         ),
                       ],
@@ -3670,8 +4118,19 @@ class _DueRemindersScreenState extends State<_DueRemindersScreen> with SingleTic
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 16),
-                    _buildInvoiceItem('INV-001', '2024-01-10', 2500.0),
-                    _buildInvoiceItem('INV-002', '2024-01-08', 2700.0),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: unpaidInvoices.length,
+                        itemBuilder: (context, index) {
+                          final invoice = unpaidInvoices[index];
+                          return _buildInvoiceItem(
+                            invoice['invoiceNumber'],
+                            invoice['date'],
+                            invoice['remainingAmount'],
+                          );
+                        },
+                      ),
+                    ),
                     const SizedBox(height: 20),
                     Row(
                       children: [
@@ -3708,6 +4167,32 @@ class _DueRemindersScreenState extends State<_DueRemindersScreen> with SingleTic
         ),
       ),
     );
+  }
+  
+  Future<List<Map<String, dynamic>>> _getUnpaidInvoicesForCustomer(String customerName) async {
+    try {
+      final fs = FirestoreService.instance;
+      final allInvoices = await fs.getAllInvoices();
+      
+      // Filter for unpaid sales invoices for this specific customer
+      final unpaidInvoices = allInvoices.where((invoice) => 
+        invoice.invoiceType == 'sales' && 
+        invoice.clientName == customerName &&
+        invoice.remainingAmount > 0
+      ).toList();
+      
+      // Convert to map format for display
+      return unpaidInvoices.map((invoice) => {
+        'invoiceNumber': invoice.invoiceNumber,
+        'date': invoice.date.toIso8601String().split('T')[0],
+        'remainingAmount': invoice.remainingAmount,
+        'total': invoice.total,
+        'amountPaid': invoice.amountPaid,
+      }).toList();
+    } catch (e) {
+      print('Error getting unpaid invoices for customer: $e');
+      return [];
+    }
   }
   
   Widget _buildInvoiceItem(String invoiceNo, String date, double amount) {
@@ -3797,8 +4282,8 @@ class _DueRemindersScreenState extends State<_DueRemindersScreen> with SingleTic
   return '2024-01-01'; // Fallback date
   }
   
-  void _showItemDetail(Map<String, dynamic> item) {
-    final customersForItem = _getCustomersForItem(item['name']);
+  void _showItemDetail(Map<String, dynamic> item) async {
+    final customersForItem = await _getCustomersForItem(item['name']);
     
     showModalBottomSheet(
       context: context,
@@ -3830,7 +4315,7 @@ class _DueRemindersScreenState extends State<_DueRemindersScreen> with SingleTic
                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                         ),
                         Text(
-                          'Total Due: ${widget.formatCurrency(item['amount'])} • ${item['debtorCount']} customers',
+                          'Total Due: ${widget.formatCurrency(item['amount'])} • ${customersForItem.length} customers',
                           style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                         ),
                       ],
@@ -3849,7 +4334,7 @@ class _DueRemindersScreenState extends State<_DueRemindersScreen> with SingleTic
                 itemCount: customersForItem.length,
                 itemBuilder: (context, index) {
                   final customerDebt = customersForItem[index];
-                  final daysOverdue = _calculateDaysOverdue(customerDebt['invoiceDate']);
+                  final daysOverdue = _calculateDaysOverdueFromDueDate(customerDebt['dueDate']);
                   
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -3911,29 +4396,62 @@ class _DueRemindersScreenState extends State<_DueRemindersScreen> with SingleTic
     );
   }
   
-  List<Map<String, dynamic>> _getCustomersForItem(String itemName) {
-    // Sample data - in real app, fetch customers who owe for this specific item
-    final sampleData = {
-      'Rice Bag 25kg': [
-        {'customerName': 'ABC Store', 'amount': 1200.0, 'invoiceNo': 'INV-001', 'invoiceDate': '2024-01-12'},
-        {'customerName': 'XYZ Mart', 'amount': 800.0, 'invoiceNo': 'INV-003', 'invoiceDate': '2024-01-10'},
-        {'customerName': 'Quick Shop', 'amount': 400.0, 'invoiceNo': 'INV-005', 'invoiceDate': '2024-01-08'},
-      ],
-      'Wheat Flour 10kg': [
-        {'customerName': 'Super Market', 'amount': 950.0, 'invoiceNo': 'INV-002', 'invoiceDate': '2024-01-09'},
-        {'customerName': 'Corner Store', 'amount': 850.0, 'invoiceNo': 'INV-004', 'invoiceDate': '2024-01-07'},
-      ],
-      'Sugar 1kg': [
-        {'customerName': 'ABC Store', 'amount': 1500.0, 'invoiceNo': 'INV-006', 'invoiceDate': '2023-12-28'},
-        {'customerName': 'Quick Shop', 'amount': 1200.0, 'invoiceNo': 'INV-007', 'invoiceDate': '2023-12-25'},
-        {'customerName': 'XYZ Mart', 'amount': 900.0, 'invoiceNo': 'INV-008', 'invoiceDate': '2023-12-20'},
-        {'customerName': 'Super Market', 'amount': 600.0, 'invoiceNo': 'INV-009', 'invoiceDate': '2023-12-15'},
-        {'customerName': 'Corner Store', 'amount': 300.0, 'invoiceNo': 'INV-010', 'invoiceDate': '2023-12-10'},
-      ],
-    };
-    
-    return sampleData[itemName] ?? [
-      {'customerName': 'Sample Customer', 'amount': 500.0, 'invoiceNo': 'INV-000', 'invoiceDate': '2024-01-01'},
-    ];
+  int _calculateDaysOverdueFromDueDate(String dueDateString) {
+    try {
+      final dueDate = DateTime.parse(dueDateString);
+      final now = DateTime.now();
+      final daysDiff = now.difference(dueDate).inDays;
+      return daysDiff > 0 ? daysDiff : 0; // Only positive overdue days
+    } catch (e) {
+      return 0;
+    }
+  }
+  
+  Future<List<Map<String, dynamic>>> _getCustomersForItem(String itemName) async {
+    try {
+      final fs = FirestoreService.instance;
+      final allInvoices = await fs.getAllInvoices();
+      
+      List<Map<String, dynamic>> customersForItem = [];
+      
+      // Find all unpaid sales invoices that contain this item
+      for (final invoice in allInvoices) {
+        if (invoice.invoiceType == 'sales' && invoice.remainingAmount > 0) {
+          // Check if this invoice contains the specified item
+          for (final item in invoice.items) {
+            if (item.name == itemName) {
+              // Calculate item's share of the outstanding amount
+              final invoiceLineItemsTotal = invoice.items.fold<double>(0.0, 
+                (sum, lineItem) => sum + (lineItem.price * lineItem.quantity));
+              
+              if (invoiceLineItemsTotal > 0) {
+                final itemLineTotal = item.price * item.quantity;
+                final outstandingPercentage = invoice.remainingAmount / invoiceLineItemsTotal;
+                final itemOutstandingAmount = itemLineTotal * outstandingPercentage;
+                
+                if (itemOutstandingAmount > 0) {
+                  customersForItem.add({
+                    'customerName': invoice.clientName,
+                    'amount': itemOutstandingAmount,
+                    'invoiceNo': invoice.invoiceNumber,
+                    'invoiceDate': invoice.date.toIso8601String().split('T')[0],
+                    'dueDate': invoice.date.toIso8601String().split('T')[0],
+                  });
+                }
+              }
+              break; // Found the item in this invoice, no need to check other items
+            }
+          }
+        }
+      }
+      
+      // Sort by amount descending
+      customersForItem.sort((a, b) => (b['amount'] as double).compareTo(a['amount'] as double));
+      
+      return customersForItem;
+    } catch (e) {
+      print('Error getting customers for item: $e');
+      return [];
+    }
   }
 }

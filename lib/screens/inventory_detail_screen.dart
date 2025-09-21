@@ -200,7 +200,7 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen>
                           padding: const EdgeInsets.symmetric(horizontal: 12.0),
                           child: provider.movements.isEmpty
                               ? Padding(
-                                  padding: const EdgeInsets.all(32.0),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                                   child: Column(
                                     children: [
                                       Icon(Icons.history, size: 48, color: Colors.grey[400]),
@@ -244,7 +244,7 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen>
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
           child: Form(
             key: formKey,
             child:
@@ -318,7 +318,7 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen>
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
           child: Form(
             key: formKey,
             child:
@@ -388,7 +388,7 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen>
         return Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
           child: Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
             child: Form(
               key: formKey,
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -634,7 +634,7 @@ class _InfoPill extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
             const SizedBox(height: 4),
             Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))
           ]),
@@ -669,13 +669,13 @@ class _MovementTile extends StatelessWidget {
         leading: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
-            child: Text(_getTypeText(type), style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11))),
+            child: Text(_getTypeText(type), style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13))),
         title: Text('${qty.toInt()} $unit - ${_movementTitle(type)}', style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${created.day}/${created.month}/${created.year} ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'),
           if (note.isNotEmpty) Text(note, style: const TextStyle(color: Colors.grey))
         ]),
-        trailing: src != null && src.toString().isNotEmpty ? Text(src.toString(), style: const TextStyle(fontSize: 12, color: Colors.grey)) : null,
+        trailing: src != null && src.toString().isNotEmpty ? Text(src.toString(), style: const TextStyle(fontSize: 13, color: Colors.grey)) : null,
       ),
     );
   }

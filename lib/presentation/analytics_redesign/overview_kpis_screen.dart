@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import '../../services/analytics_service.dart';
 import '../../services/inventory_service.dart';
-import '../../services/database_service.dart';
+import '../../services/firestore_service.dart';
 
 class OverviewKpisScreen extends StatefulWidget {
   final String selectedDateRange;
@@ -34,7 +34,7 @@ class _OverviewKpisScreenState extends State<OverviewKpisScreen> {
     try {
       final analyticsService = AnalyticsService();
       final inventoryService = InventoryService();
-      final dbService = DatabaseService();
+      final fs = FirestoreService.instance;
       
       String serviceRange = _mapDateRangeToService(widget.selectedDateRange);
       
@@ -42,8 +42,8 @@ class _OverviewKpisScreenState extends State<OverviewKpisScreen> {
         analyticsService.getChartAnalytics(serviceRange),
         analyticsService.fetchPerformanceInsights(),
         inventoryService.getInventoryAnalytics(),
-        dbService.getAllInvoices(),
-        dbService.getAllCustomers(),
+        fs.getAllInvoices(),
+        fs.getAllCustomers(),
       ]);
       
       final chartData = results[0] as Map<String, dynamic>;

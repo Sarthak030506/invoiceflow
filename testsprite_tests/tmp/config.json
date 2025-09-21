@@ -1,0 +1,18 @@
+{
+  "status": "commited",
+  "type": "frontend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:5173",
+  "loginUser": "Test",
+  "loginPassword": "test",
+  "executionArgs": {
+    "projectName": "invoiceflow",
+    "projectPath": "C:\\Users\\hp\\Desktop\\invoiceflow",
+    "testIds": [],
+    "additionalInstruction": "",
+    "envs": {
+      "API_KEY": "sk-user-wCCjYCpBVZ9QB71ui4PNo3hXN-kmELqNEPpo-Kg0UAwMZ_mSA893FzoFwvgZE0_Uc8ZbsXjoiurayv3vcX3RN4OQOl9Ur5eXakHoGlYgxpJqb8FpBok9Lbp1I4Al-QmRTKM"
+    }
+  },
+  "proxy": "http://01725fc0-2620-494e-a800-89c4b02f0bea:wJjKiOMtDE6srL9445YYhxKDlwDUKwgs@tun.testsprite.com:8080"
+}

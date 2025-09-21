@@ -12,7 +12,20 @@
           "package_name": "com.invoiceflow.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "661974956527-gfi5o52vtqor8krbd3e5aolh3mh8ddjo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.invoiceflow.app",
+            "certificate_hash": "ffdebc22d8ee8926704b669c2dca383289964906"
+          }
+        },
+        {
+          "client_id": "661974956527-7o9klctap9art18m4entlj1cokd9ojl0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD3ikztacfkFBWVNOJPlpnOA1i_LX4VuqM"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "661974956527-7o9klctap9art18m4entlj1cokd9ojl0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "661974956527-dool569938nuhbbm3cordeok1gesnitv.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.invoiceflow.app.testProject"
+              }
+            }
+          ]
         }
       }
     }

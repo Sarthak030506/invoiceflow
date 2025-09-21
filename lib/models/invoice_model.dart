@@ -223,8 +223,8 @@ class InvoiceModel {
       status: _parseStatus(row['status']),
       items: items,
       notes: row['notes'],
-      createdAt: _parseDate(row['created_at']) ?? DateTime.now(),
-      updatedAt: _parseDate(row['updated_at']) ?? DateTime.now(),
+      createdAt: _parseDate(row['created_at']),
+      updatedAt: _parseDate(row['updated_at']),
       invoiceType: row['invoiceType'] ?? row['invoice_type'] ?? 'sales',
     );
   }
@@ -242,7 +242,7 @@ class InvoiceModel {
         'MM/dd/yyyy HH:mm:ss',
       ];
 
-      for (String format in formats) {
+      for (String _ in formats) {
         try {
           return DateTime.parse(dateValue);
         } catch (e) {

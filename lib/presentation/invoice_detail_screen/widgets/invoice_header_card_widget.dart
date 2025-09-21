@@ -20,6 +20,12 @@ class InvoiceHeaderCardWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Safely derive a border radius from theme, with a sensible fallback
+    final ShapeBorder? themedShape = Theme.of(context).cardTheme.shape;
+    final BorderRadiusGeometry cardBorderRadius = themedShape is RoundedRectangleBorder
+        ? themedShape.borderRadius
+        : BorderRadius.circular(12);
+
     return Card(
       elevation: AppTheme.lightTheme.cardTheme.elevation,
       shape: AppTheme.lightTheme.cardTheme.shape,
@@ -53,7 +59,7 @@ class InvoiceHeaderCardWidget extends StatelessWidget {
                   padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
                   decoration: BoxDecoration(
                     color: _getStatusColor().withOpacity(0.1),
-                    borderRadius: (Theme.of(context).cardTheme.shape as RoundedRectangleBorder).borderRadius,
+                    borderRadius: cardBorderRadius,
                     border: Border.all(
                       color: _getStatusColor(),
                       width: 1,
@@ -100,7 +106,7 @@ class InvoiceHeaderCardWidget extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppTheme.lightTheme.colorScheme.primary
                     .withValues(alpha: 0.05),
-                borderRadius: (Theme.of(context).cardTheme.shape as RoundedRectangleBorder).borderRadius,
+                borderRadius: cardBorderRadius,
                 border: Border.all(
                   color: AppTheme.lightTheme.colorScheme.primary
                       .withValues(alpha: 0.2),

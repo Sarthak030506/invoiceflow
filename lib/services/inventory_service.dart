@@ -1,7 +1,7 @@
 import '../models/inventory_item_model.dart';
 import '../models/stock_movement_model.dart';
 import '../models/reorder_item_model.dart';
-import '../database/inventory_database.dart';
+import 'inventory_firestore_service.dart';
 import './inventory_notification_service.dart';
 import './stock_map_service.dart';
 import 'dart:async';
@@ -11,7 +11,7 @@ class InventoryService {
   factory InventoryService() => _instance;
   InventoryService._internal();
 
-  final InventoryDatabase _db = InventoryDatabase();
+  final InventoryFirestoreService _db = InventoryFirestoreService.instance;
   final StreamController<void> _inventoryUpdatesController = StreamController<void>.broadcast();
   
   Stream<void> get inventoryUpdates => _inventoryUpdatesController.stream;

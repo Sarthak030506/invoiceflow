@@ -1,10 +1,10 @@
 import '../models/customer_model.dart';
 import '../models/invoice_model.dart';
 import '../models/product_categories.dart';
-import './database_service.dart';
+import './firestore_service.dart';
 
 class AnalyticsService {
-  final DatabaseService _dbService = DatabaseService();
+  final FirestoreService _fs = FirestoreService.instance;
   
   DateTime _calculateStartDate(String dateRange) {
     final now = DateTime.now();
@@ -27,7 +27,7 @@ class AnalyticsService {
   // Add methods needed by analytics_screen.dart
   Future<List<Map<String, dynamic>>> getFilteredAnalytics(String dateRange, {bool salesOnly = true}) async {
     try {
-      final allInvoices = await _dbService.getAllInvoices();
+      final allInvoices = await _fs.getAllInvoices();
       
       // Filter invoices by date range
       final DateTime startDate = _calculateStartDate(dateRange);
@@ -36,7 +36,7 @@ class AnalyticsService {
       final invoices = allInvoices.where((invoice) {
         final isAfterDate = invoice.date.isAfter(startDate.subtract(const Duration(days: 1))); // Include the start date
         if (salesOnly) {
-          return isAfterDate && (invoice.invoiceType?.toLowerCase() == 'sales');
+          return isAfterDate && (invoice.invoiceType.toLowerCase() == 'sales');
         }
         return isAfterDate;
       }).toList();
@@ -58,24 +58,24 @@ class AnalyticsService {
         }
         
         // Skip non-sales invoices when salesOnly is true (should be handled by the filter above)
-        if (salesOnly && invoice.invoiceType?.toLowerCase() != 'sales') {
+        if (salesOnly && invoice.invoiceType.toLowerCase() != 'sales') {
           continue;
         }
         
         for (final item in invoice.items) {
-          final quantity = item.quantity ?? 0;
-          final price = item.price ?? 0.0;
+          final quantity = item.quantity;
+          final price = item.price;
           
           // Debug: Print all items, even those with 0 quantity
           print('Found item: ${item.name}, Qty: $quantity, Price: $price');
           
           // Skip items with zero or negative quantity
           if (quantity <= 0) {
-            print('Skipping item ${item.name} with quantity $quantity');
+            print('Skipping item ${item.name} wth quantity $quantity');
             continue;
           }
-          
-          final itemName = item.name?.trim() ?? 'Unknown Item';
+           
+          final itemName = item.name.trim();
           if (itemName.isEmpty) {
             print('Skipping empty item name');
             continue;
@@ -127,7 +127,7 @@ class AnalyticsService {
   
   Future<Map<String, dynamic>> getChartAnalytics(String dateRange) async {
     try {
-      final allInvoices = await _dbService.getAllInvoices();
+      final allInvoices = await _fs.getAllInvoices();
       
       // Filter invoices by date range
       final DateTime startDate = _calculateStartDate(dateRange);
@@ -163,8 +163,8 @@ class AnalyticsService {
         // Calculate revenue from line items
         double invoiceRevenue = 0.0;
         for (final item in invoice.items) {
-          final quantity = item.quantity ?? 0;
-          final price = item.price ?? 0.0;
+          final quantity = item.quantity;
+          final price = item.price;
           
           // Skip items with zero or negative quantity
           if (quantity <= 0) {
@@ -176,7 +176,7 @@ class AnalyticsService {
           
           // Top items (only for sales)
           if (invoice.invoiceType == 'sales') {
-            final itemName = item.name ?? 'Unknown Item';
+            final itemName = item.name;
             itemRevenue[itemName] = (itemRevenue[itemName] ?? 0.0) + itemTotal;
           }
         }
@@ -242,8 +242,8 @@ class AnalyticsService {
   }
   
   Future<Map<String, dynamic>> fetchPerformanceInsights() async {
-    final invoices = await _dbService.getAllInvoices();
-    final customers = await _dbService.getAllCustomers();
+    final invoices = await _fs.getAllInvoices();
+    final customers = await _fs.getAllCustomers();
     
     // Calculate insights
     Set<String> uniqueItems = {};
@@ -259,8 +259,8 @@ class AnalyticsService {
       // Calculate revenue from line items
       double invoiceRevenue = 0.0;
       for (final item in invoice.items) {
-        final quantity = item.quantity ?? 0;
-        final price = item.price ?? 0.0;
+        final quantity = item.quantity;
+        final price = item.price;
         
         // Skip items with zero or negative quantity
         if (quantity <= 0) {
@@ -338,8 +338,8 @@ class AnalyticsService {
   }
   
   Future<Map<String, dynamic>> getCustomerAnalytics(String customerId) async {
-    final List<InvoiceModel> invoices = await _dbService.getInvoicesByCustomerId(customerId);
-    final CustomerModel? customer = await _dbService.getCustomerById(customerId);
+    final List<InvoiceModel> invoices = await _fs.getInvoicesByCustomerId(customerId);
+    final CustomerModel? customer = await _fs.getCustomerById(customerId);
     
     if (customer == null) {
       return {
@@ -362,8 +362,8 @@ class AnalyticsService {
       // Calculate spent amount from line items
       double invoiceTotal = 0.0;
       for (final item in invoice.items) {
-        final quantity = item.quantity ?? 0;
-        final price = item.price ?? 0.0;
+        final quantity = item.quantity;
+        final price = item.price;
         invoiceTotal += price * quantity;
         
         // Track item purchases
@@ -416,11 +416,11 @@ class AnalyticsService {
   
   // Get aggregated customer data for all customers
   Future<List<Map<String, dynamic>>> getCustomerAggregatedData() async {
-    final List<CustomerModel> customers = await _dbService.getAllCustomers();
+    final List<CustomerModel> customers = await _fs.getAllCustomers();
     final List<Map<String, dynamic>> result = [];
     
     for (final customer in customers) {
-      final List<InvoiceModel> invoices = await _dbService.getInvoicesByCustomerId(customer.id);
+      final List<InvoiceModel> invoices = await _fs.getInvoicesByCustomerId(customer.id);
       
       double totalSpent = 0.0;
       double totalPaid = 0.0;
@@ -430,8 +430,8 @@ class AnalyticsService {
         // Calculate spent amount from line items
         double invoiceTotal = 0.0;
         for (final item in invoice.items) {
-          final quantity = item.quantity ?? 0;
-          final price = item.price ?? 0.0;
+          final quantity = item.quantity;
+          final price = item.price;
           invoiceTotal += price * quantity;
         }
         

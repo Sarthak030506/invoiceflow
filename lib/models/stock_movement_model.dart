@@ -18,6 +18,7 @@ class StockMovement {
   final DateTime createdAt;
   final String? reversalOfMovementId; // Links to original movement being reversed
   final bool reversalFlag; // True if this is a reversal movement
+  final String? note; // Note or comment about this movement
 
   const StockMovement({
     required this.id,
@@ -30,6 +31,7 @@ class StockMovement {
     required this.createdAt,
     this.reversalOfMovementId,
     this.reversalFlag = false,
+    this.note,
   });
 
   StockMovement copyWith({
@@ -43,6 +45,7 @@ class StockMovement {
     DateTime? createdAt,
     String? reversalOfMovementId,
     bool? reversalFlag,
+    String? note,
   }) {
     return StockMovement(
       id: id ?? this.id,
@@ -55,6 +58,7 @@ class StockMovement {
       createdAt: createdAt ?? this.createdAt,
       reversalOfMovementId: reversalOfMovementId ?? this.reversalOfMovementId,
       reversalFlag: reversalFlag ?? this.reversalFlag,
+      note: note ?? this.note,
     );
   }
 
@@ -70,6 +74,7 @@ class StockMovement {
       'createdAt': createdAt.toIso8601String(),
       'reversalOfMovementId': reversalOfMovementId,
       'reversalFlag': reversalFlag ? 1 : 0,
+      'note': note,
     };
   }
 
@@ -85,6 +90,7 @@ class StockMovement {
       createdAt: DateTime.parse(json['createdAt']),
       reversalOfMovementId: json['reversalOfMovementId'],
       reversalFlag: (json['reversalFlag'] ?? 0) == 1,
+      note: json['note'],
     );
   }
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+
 
 import '../../../models/invoice_model.dart';
 import '../../../services/customer_service.dart';
@@ -21,13 +21,8 @@ class WhatsAppReminderButton extends StatelessWidget {
   Future<void> _sendWhatsAppReminder() async {
     try {
       if (invoice.customerPhone == null || invoice.customerPhone!.isEmpty) {
-        Fluttertoast.showToast(
-          msg: "No customer phone number available",
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.BOTTOM,
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-        );
+        // Note: Cannot show SnackBar from StatelessWidget without context
+        print("No customer phone number available");
         return;
       }
       
@@ -48,11 +43,7 @@ class WhatsAppReminderButton extends StatelessWidget {
       final Uri whatsappUri = Uri.parse(whatsappUrl);
       
       // Show loading indicator
-      Fluttertoast.showToast(
-        msg: "Opening WhatsApp...",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-      );
+      print("Opening WhatsApp...");
       
       // Check if WhatsApp can be launched
       bool canLaunch = await canLaunchUrl(whatsappUri);
@@ -82,31 +73,15 @@ class WhatsAppReminderButton extends StatelessWidget {
           final whatsappUri = Uri.parse('whatsapp://');
           if (await canLaunchUrl(whatsappUri)) {
             await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
-            Fluttertoast.showToast(
-              msg: "WhatsApp opened. Please search for ${invoice.customerPhone} manually.",
-              toastLength: Toast.LENGTH_LONG,
-              gravity: ToastGravity.BOTTOM,
-            );
+            print("WhatsApp opened. Please search for ${invoice.customerPhone} manually.");
           } else {
-            Fluttertoast.showToast(
-              msg: "Could not launch WhatsApp. Make sure WhatsApp is installed.",
-              toastLength: Toast.LENGTH_LONG,
-              gravity: ToastGravity.BOTTOM,
-              backgroundColor: Colors.red,
-              textColor: Colors.white,
-            );
+            print("Could not launch WhatsApp. Make sure WhatsApp is installed.");
           }
         }
       }
     } catch (e) {
       print('Error sending WhatsApp message: $e');
-      Fluttertoast.showToast(
-        msg: "Error sending WhatsApp message: ${e.toString()}",
-        toastLength: Toast.LENGTH_LONG,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-      );
+      print("Error sending WhatsApp message: ${e.toString()}");
     }
   }
 

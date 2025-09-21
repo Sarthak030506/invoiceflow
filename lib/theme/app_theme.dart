@@ -7,13 +7,15 @@ class AppTheme {
 
   // Sophisticated Color Palette - Gentle & Professional
   // Primary Colors - Deep Navy & Serene Blue
-  static const Color primaryLight = Color(0xFF1B3A57); // Deep Navy Blue
-  static const Color primaryVariantLight = Color(0xFF2C5F85); // Medium Navy
-  static const Color primaryAccentLight = Color(0xFF4A90B8); // Serene Blue
+  // Updated to vibrant modern blue shades
+  static const Color primaryLight = Color(0xFF0F62FE); // Vibrant Blue
+  static const Color primaryVariantLight = Color(0xFF2D8CFF); // Lighter Blue
+  static const Color primaryAccentLight = Color(0xFF8CC8FF); // Soft Sky Blue
 
   // Secondary Colors - Sophisticated Green & Gold
-  static const Color secondaryLight = Color(0xFF5D8A72); // Sage Green
-  static const Color secondaryVariantLight = Color(0xFF4A6B5A); // Deep Sage
+  // Updated to emerald green
+  static const Color secondaryLight = Color(0xFF10B981); // Emerald
+  static const Color secondaryVariantLight = Color(0xFF059669); // Deep Emerald
   static const Color accentGoldLight = Color(0xFFB8860B); // Sophisticated Gold
   static const Color accentGoldVariantLight = Color(0xFFD4AF37); // Light Gold
 
@@ -38,13 +40,13 @@ class AppTheme {
 
   // Dark Theme - Sophisticated & Gentle
   // Primary Colors - Lighter Navy & Bright Serene Blue
-  static const Color primaryDark = Color(0xFF4A90B8); // Serene Blue
-  static const Color primaryVariantDark = Color(0xFF2C5F85); // Medium Navy
-  static const Color primaryAccentDark = Color(0xFF6BB6D6); // Light Serene Blue
+  static const Color primaryDark = Color(0xFF60A5FA); // Light Blue (dark theme)
+  static const Color primaryVariantDark = Color(0xFF3B82F6); // Blue
+  static const Color primaryAccentDark = Color(0xFF93C5FD); // Lighter Blue
 
   // Secondary Colors - Softer variants
-  static const Color secondaryDark = Color(0xFF7BA68A); // Light Sage
-  static const Color secondaryVariantDark = Color(0xFF5D8A72); // Sage Green
+  static const Color secondaryDark = Color(0xFF34D399); // Light Emerald
+  static const Color secondaryVariantDark = Color(0xFF10B981); // Emerald
   static const Color accentGoldDark = Color(0xFFD4AF37); // Light Gold
   static const Color accentGoldVariantDark = Color(0xFFE6C84A); // Bright Gold
 

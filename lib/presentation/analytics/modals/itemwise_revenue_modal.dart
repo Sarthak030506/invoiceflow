@@ -321,6 +321,7 @@ class _ItemwiseRevenueModalState extends State<ItemwiseRevenueModal> {
           items.add({
             'name': name,
             'quantity': quantity, // Keep original quantity, even if 0
+            'quantitySold': quantity, // Add quantitySold field for consistency
             'rate': rate,
             'revenue': revenue,
             'category': _getCategoryForItem(name),

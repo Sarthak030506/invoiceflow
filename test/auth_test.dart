@@ -20,6 +20,7 @@ void main() {
     });
 
     test('Auth service is initialized', () {
+      final authService = AuthService();
       expect(authService, isNotNull);
     });
 

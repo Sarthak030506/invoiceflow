@@ -1,124 +1,194 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../services/auth_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
+
   User? _user;
-  bool _isLoading = false;
+  bool _isLoading = true; // start loading while we detect auth state
   String? _error;
 
+  StreamSubscription<User?>? _authSub;
+
+  // getters
   User? get user => _user;
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isAuthenticated => _user != null;
+  bool get isFirstTimeUser => _isFirstTimeUser;
+
+  bool _isFirstTimeUser = false;
+  bool _hasCompletedOnboarding = false;
+  bool get hasCompletedOnboarding => _hasCompletedOnboarding;
 
   AuthProvider() {
     _init();
   }
 
   Future<void> _init() async {
-    _user = _authService.currentUser;
-    _authService.authStateChanges.listen((User? user) {
-      _user = user;
+    // Observe authStateChanges and make it the single source-of-truth.
+    _authSub = _authService.authStateChanges.listen((User? u) async {
+      debugPrint('[AuthProvider] authStateChanges: user=${u?.uid}');
+      _user = u;
+
+      // Mark loading complete first (we are now aware of current auth state)
+      _isLoading = false;
+      
+      // Notify listeners immediately so UI can update
+      notifyListeners();
+      debugPrint('[AuthProvider] notifyListeners called after setting user');
+
+      // If the user just signed in or signed up, ensure first-time prefs are set
+      if (_user != null) {
+        await _handleNewlySignedInUser();
+        // Notify again after handling new user setup to trigger any UI updates
+        notifyListeners();
+        debugPrint('[AuthProvider] notifyListeners called after handling new user');
+      }
+    }, onError: (e) {
+      debugPrint('[AuthProvider] authStateChanges error: $e');
+      _isLoading = false;
+      _error = e.toString();
       notifyListeners();
     });
+
+    // If you want an immediate value from currentUser, set it synchronously:
+    final current = _authService.currentUser;
+    if (current != null) {
+      // If currentUser exists immediately, let the stream listener still handle it,
+      // but set fields to avoid a long loading state.
+      _user = current;
+      _isLoading = false;
+    }
   }
 
-  Future<UserCredential?> signInWithEmailAndPassword(
-      String email, String password) async {
+  /// Called when the provider sees a non-null user from Firebase.
+  /// Idempotent: it will only mark prefs if needed.
+  Future<void> _handleNewlySignedInUser() async {
     try {
-      _setLoading(true);
-      _error = null;
-      print('Attempting to sign in with email: $email');
+      debugPrint('[AuthProvider] _handleNewlySignedInUser called for user: ${_user?.uid}');
+      final prefs = await SharedPreferences.getInstance();
       
-      final userCredential = await _authService.signInWithEmailAndPassword(
+      // Debug: Check current state of preferences
+      final hasFirstTimeKey = prefs.containsKey('is_first_time_user');
+      final firstTimeValue = prefs.getBool('is_first_time_user');
+      final hasOnboardingKey = prefs.containsKey('has_completed_items_onboarding');
+      final onboardingValue = prefs.getBool('has_completed_items_onboarding');
+      
+      debugPrint('[AuthProvider] Current prefs state:');
+      debugPrint('  - has_first_time_key: $hasFirstTimeKey, value: $firstTimeValue');
+      debugPrint('  - has_onboarding_key: $hasOnboardingKey, value: $onboardingValue');
+
+      // Default to not being a first-time user
+      _isFirstTimeUser = false;
+
+      // If there is no explicit flag set, treat it as first sign-in and mark it
+      if (!prefs.containsKey('is_first_time_user')) {
+        debugPrint('[AuthProvider] Setting first-time user flags...');
+        await prefs.setBool('is_first_time_user', true);
+        _isFirstTimeUser = true; // Update the state
+
+        // ensure we don't mark onboarding completed accidentally
+        await prefs.remove('has_completed_items_onboarding');
+        debugPrint('[AuthProvider] Marked user as first-time for onboarding (prefs updated).');
+        
+        // Force a small delay to ensure SharedPreferences are fully committed
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        // Verify the changes were saved
+        final verifyFirstTime = prefs.getBool('is_first_time_user');
+        final verifyOnboarding = prefs.containsKey('has_completed_items_onboarding');
+        debugPrint('[AuthProvider] Verification - is_first_time_user: $verifyFirstTime, has_onboarding_key: $verifyOnboarding');
+      } else {
+        // If the flag exists, respect its value
+        _isFirstTimeUser = prefs.getBool('is_first_time_user') ?? false;
+        debugPrint('[AuthProvider] is_first_time_user already present: $_isFirstTimeUser');
+      }
+    } catch (e) {
+      debugPrint('[AuthProvider] _handleNewlySignedInUser error: $e');
+    }
+  }
+
+  Future<void> completeOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_first_time_user', false);
+    _isFirstTimeUser = false;
+    notifyListeners();
+    debugPrint('[AuthProvider] Onboarding completed, is_first_time_user set to false.');
+  }
+
+  
+  Future<UserCredential?> signUpWithEmailAndPassword(String email, String password) async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+      
+      final userCredential = await _authService.signUpWithEmailAndPassword(
         email: email,
         password: password,
       );
-      
-      _setLoading(false);
-      
-      if (userCredential == null) {
-        print('Sign in failed - null user credential');
-        _setError('Failed to sign in. Please try again.');
-        return null;
-      }
-      
-      final user = userCredential.user;
-      if (user != null) {
-        print('Successfully signed in user: ${user.uid}');
-      } else {
-        print('Sign in successful but user is null');
-        _setError('Failed to retrieve user information. Please try again.');
-        return null;
-      }
-      
-      return userCredential;
+
+      _user = userCredential?.user;
+      await _handleNewlySignedInUser();
+      notifyListeners();
     } on FirebaseAuthException catch (e) {
-      print('Firebase Auth Error (${e.code}): ${e.message}');
-      String errorMessage = _getUserFriendlyErrorMessage(e);
-      _setError(errorMessage);
+      _setError(_getUserFriendlyErrorMessage(e));
       return null;
-    } catch (e, stackTrace) {
-      print('Unexpected error during sign in: $e');
-      print('Stack trace: $stackTrace');
-      _setError('An unexpected error occurred. Please try again.');
+    } catch (e) {
+      _setError('An unexpected error occurred during sign-up.');
       return null;
     } finally {
       _setLoading(false);
     }
   }
 
-  Future<UserCredential?> signUpWithEmailAndPassword(
-      String email, String password) async {
+  Future<UserCredential?> signInWithEmailAndPassword(String email, String password) async {
     try {
       _setLoading(true);
       _error = null;
-      final userCredential = await _authService.signUpWithEmailAndPassword(
+      final userCredential = await _authService.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-      _setLoading(false);
       return userCredential;
-    } catch (e) {
-      _setError(e.toString());
+    } on FirebaseAuthException catch (e) {
+      _setError(_getUserFriendlyErrorMessage(e));
       return null;
+    } catch (e) {
+      _setError('An unexpected error occurred during sign-in.');
+      return null;
+    } finally {
+      _setLoading(false);
     }
   }
 
+  /// Google sign-in
   Future<UserCredential?> signInWithGoogle() async {
     try {
       _setLoading(true);
       _error = null;
-      print('Starting Google Sign-In process');
-      
+      debugPrint('Starting Google Sign-In process');
+
       final userCredential = await _authService.signInWithGoogle();
-      
+
       if (userCredential == null) {
-        print('Google Sign-In failed - null user credential');
         _setError('Failed to sign in with Google. Please try again.');
         return null;
       }
-      
-      final user = userCredential.user;
-      if (user != null) {
-        print('Google Sign-In successful for user: ${user.uid}');
-      } else {
-        print('Google Sign-In successful but user is null');
-        _setError('Failed to retrieve user information. Please try again.');
-        return null;
-      }
-      
+
+      // Let authStateChanges handle setting _user
       return userCredential;
     } on FirebaseAuthException catch (e) {
-      print('Firebase Auth Error during Google Sign-In (${e.code}): ${e.message}');
-      String errorMessage = _getGoogleSignInErrorMessage(e);
-      _setError(errorMessage);
+      debugPrint('Firebase Auth Error during Google Sign-In (${e.code}): ${e.message}');
+      _setError(_getGoogleSignInErrorMessage(e));
       return null;
-    } catch (e, stackTrace) {
-      print('Unexpected error during Google Sign-In: $e');
-      print('Stack trace: $stackTrace');
+    } catch (e, st) {
+      debugPrint('Unexpected error during Google Sign-In: $e\n$st');
       _setError('An unexpected error occurred during Google Sign-In. Please try again.');
       return null;
     } finally {
@@ -131,10 +201,11 @@ class AuthProvider extends ChangeNotifier {
       _setLoading(true);
       _error = null;
       await _authService.signOut();
-      _user = null;
-      _setLoading(false);
+      // authStateChanges listener will update _user -> null and notify
     } catch (e) {
       _setError(e.toString());
+    } finally {
+      _setLoading(false);
     }
   }
 
@@ -143,14 +214,26 @@ class AuthProvider extends ChangeNotifier {
       _setLoading(true);
       _error = null;
       await _authService.sendPasswordResetEmail(email);
-      _setLoading(false);
     } catch (e) {
       _setError(e.toString());
+    } finally {
+      _setLoading(false);
     }
   }
 
   void _setLoading(bool value) {
     _isLoading = value;
+    notifyListeners();
+  }
+
+  void _setError(String? error) {
+    _error = error;
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  void clearError() {
+    _error = null;
     notifyListeners();
   }
 
@@ -200,14 +283,9 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  void _setError(String? error) {
-    _error = error;
-    _isLoading = false;
-    notifyListeners();
-  }
-
-  void clearError() {
-    _error = null;
-    notifyListeners();
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 }

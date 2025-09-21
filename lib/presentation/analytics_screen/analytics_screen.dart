@@ -6,7 +6,8 @@ import '../../widgets/custom_icon_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
 import '../../services/analytics_service.dart';
 import '../../services/inventory_service.dart';
-import './widgets/analytics_charts_widget.dart';
+import './widgets/analytics_charts_widget.dart'
+    if (dart.library.html) './widgets/analytics_charts_widget_web.dart';
 import './widgets/analytics_table_widget.dart';
 import './widgets/date_range_picker_widget.dart';
 import './widgets/export_button_widget.dart';

@@ -1,24 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/app_export.dart';
+import '../../theme/app_theme.dart';
+
+import '../../providers/auth_provider.dart';
 import '../invoice_type_selection_screen.dart';
 import '../../models/invoice_model.dart';
 import '../../services/invoice_service.dart';
 import '../../services/csv_invoice_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/background_service.dart';
 import '../../services/inventory_service.dart';
 import '../../services/event_service.dart';
+import '../../services/debug_service.dart';
 import './widgets/metric_card_widget.dart';
 import './widgets/recent_invoice_item_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
+import '../../widgets/primary_button.dart';
 import '../../animations/fluid_animations.dart';
 import 'dart:async';
 
 class HomeDashboard extends StatefulWidget {
   final String csvPath;
-  const HomeDashboard({required this.csvPath, super.key});
+  
+  const HomeDashboard({
+    required this.csvPath,
+    Key? key,
+  }) : super(key: key);
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -40,6 +51,66 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _csvInvoiceService = CsvInvoiceService(assetPath: widget.csvPath);
     _loadDashboardData();
     _setupEventListening();
+  }
+
+  // Colored pill for invoice type (SALES/PURCHASE)
+  Widget _typeBadge(String text, Color base) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 0.6.h),
+      decoration: BoxDecoration(
+        color: base.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: base.withOpacity(0.35), width: 1),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: base,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+
+  // High-contrast status badge (PAID/POSTED/OVERDUE etc.)
+  Widget _statusBadge(String raw) {
+    final status = raw.toUpperCase();
+    Color bg;
+    Color fg = Colors.white;
+    switch (status) {
+      case 'PAID':
+        bg = Colors.green.shade600;
+        break;
+      case 'POSTED':
+        bg = Colors.blueGrey.shade600;
+        break;
+      case 'PURCHASE':
+        bg = AppTheme.secondaryLight;
+        break;
+      case 'SALES':
+        bg = AppTheme.primaryAccentLight;
+        break;
+      default:
+        bg = Colors.orange.shade600; // for DUE/OVERDUE
+        break;
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 0.6.h),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(color: bg.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 3)),
+        ],
+      ),
+      child: Text(
+        status,
+        style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.w800),
+      ),
+    );
   }
 
   void _setupEventListening() {
@@ -80,6 +151,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _errorMessage = '';
       });
 
+      // Skip debug operations for performance
+      
       // Fetch dashboard metrics and invoices concurrently from CSV
       final inventoryService = InventoryService();
       final results = await Future.wait([
@@ -105,8 +178,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         _isLoading = false;
       });
 
-      // Validate CSV connection in background without blocking UI
-      Future.microtask(() => _validateConnection());
+      // Skip connection validation for faster loading
     } catch (e) {
       // Check if widget is still mounted before updating state
       if (!mounted) return;
@@ -189,30 +261,37 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   void _onBottomNavTap(int index) {
-    if (index == _selectedIndex) return; // Don't navigate if already on current tab
+    if (index == 0) return; // Already on home
     
+    // Navigate immediately without setState
     switch (index) {
-      case 0:
-        // Already on Home
-        break;
       case 1:
-        Navigator.pushNamed(context, '/invoices-list-screen');
+        Navigator.pushNamed(context, AppRoutes.invoicesListScreen);
         break;
       case 2:
-        Navigator.pushNamed(context, '/analytics-screen');
+        Navigator.pushNamed(context, AppRoutes.analyticsScreen);
         break;
       case 3:
-        Navigator.pushNamed(context, '/customers-screen');
+        Navigator.pushNamed(context, AppRoutes.customersScreen);
         break;
       case 4:
-        Navigator.pushNamed(context, '/profile-screen');
+        Navigator.pushNamed(context, AppRoutes.profileScreen);
         break;
     }
+  }
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Get the height after the widget is built
+    final height = SizerUtil.height;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -222,101 +301,65 @@ class _HomeDashboardState extends State<HomeDashboard> {
           physics: AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverAppBar(
-              expandedHeight: 12.h,
+              expandedHeight: 120,
               floating: false,
               pinned: true,
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              backgroundColor: Colors.transparent,
               elevation: 0,
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.getPrimaryGradient(isDark),
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(24),
+                    ),
+                  ),
                   child: SafeArea(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Flexible(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 2.h),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                'Good ${_getGreeting()}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(
-                                      color: isDark
-                                          ? AppTheme.textSecondaryDark
-                                          : AppTheme.textSecondaryLight,
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Good ${_getGreeting()}',
+                                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      color: Colors.white.withOpacity(0.9),
+                                      fontWeight: FontWeight.w500,
                                     ),
+                                  ),
+                                  SizedBox(height: 0.5.h),
+                                  Text(
+                                    'InvoiceFlow',
+                                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              SizedBox(height: 0.5.h),
-                              Text(
-                                'John Doe',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .headlineSmall
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                              Container(
+                                padding: EdgeInsets.all(3.w),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Icon(
+                                  Icons.notifications_outlined,
+                                  color: Colors.white,
+                                  size: 6.w,
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                        Row(
-                          children: [
-                            Container(
-                              width: 10.w,
-                              height: 10.w,
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.surface,
-                                borderRadius: BorderRadius.circular(2.w),
-                                border: Border.all(
-                                  color: Theme.of(context).dividerColor,
-                                  width: 1,
-                                ),
-                              ),
-                              child: IconButton(
-                                onPressed: () {},
-                                icon: CustomIconWidget(
-                                  iconName: 'notifications_outlined',
-                                  color:
-                                      Theme.of(context).colorScheme.onSurface,
-                                  size: 5.w,
-                                ),
-                                padding: EdgeInsets.zero,
-                              ),
-                            ),
-                            SizedBox(width: 3.w),
-                            Container(
-                              width: 10.w,
-                              height: 10.w,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(2.w),
-                                border: Border.all(
-                                  color: Theme.of(context).dividerColor,
-                                  width: 1,
-                                ),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(2.w),
-                                child: CustomImageWidget(
-                                  imageUrl:
-                                      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face",
-                                  width: 10.w,
-                                  height: 10.w,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -380,71 +423,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
                           children: [
                             // Pending Follow-ups Section
                             Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4.w),
+                              padding: EdgeInsets.symmetric(horizontal: 3.w),
                               child: _buildPendingFollowupsSection(),
                             ),
 
                             SizedBox(height: 4.h),
 
-                            // Send To Section
-                            Container(
-                              margin: EdgeInsets.symmetric(
-                                  horizontal: 4.w, vertical: 2.h),
-                              padding: EdgeInsets.all(5.w),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Color(0xFFF8FFFE),
-                                    Color(0xFFF0F9FF)
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(24),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.blue.withOpacity(0.08),
-                                    blurRadius: 20,
-                                    offset: Offset(0, 8),
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Last Recipients',
-                                    style: TextStyle(
-                                      fontSize: 12.sp,
-                                      color: Colors.grey.shade500,
-                                      fontWeight: FontWeight.w400,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                  SizedBox(height: 0.5.h),
-                                  Text(
-                                    'Send to',
-                                    style: TextStyle(
-                                      fontSize: 24.sp,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.grey.shade800,
-                                      letterSpacing: -0.5,
-                                    ),
-                                  ),
-                                  SizedBox(height: 3.h),
-                                  Container(
-                                    height: 12.h,
-                                    child: SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
-                                      child: Row(
-                                        children: _buildRecentCustomers(),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),           
+                            // Recent Recipients Section
+                            _buildRecentRecipientsSection(),           
 
                             SizedBox(height: 4.h),
 
@@ -455,7 +441,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
                             // Recent Invoices Section
                             Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4.w),
+                              padding: EdgeInsets.symmetric(horizontal: 5.w),
                               child: Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
@@ -464,9 +450,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                     'Recent Invoices',
                                     style: Theme.of(context)
                                         .textTheme
-                                        .titleLarge
+                                        .headlineSmall
                                         ?.copyWith(
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                   ),
                                   TextButton(
@@ -476,12 +462,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                       'View All',
                                       style: Theme.of(context)
                                           .textTheme
-                                          .bodyMedium
+                                          .titleMedium
                                           ?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary,
-                                            fontWeight: FontWeight.w500,
+                                            color: Theme.of(context).colorScheme.primary,
+                                            fontWeight: FontWeight.bold,
                                           ),
                                     ),
                                   ),
@@ -489,129 +473,103 @@ class _HomeDashboardState extends State<HomeDashboard> {
                               ),
                             ),
 
-                            SizedBox(height: 1.h),
+                            SizedBox(height: 1.5.h),
 
                             recentInvoices.isEmpty
                                 ? _buildEmptyState()
                                 : Container(
-                                    height: 25.h,
+                                    height: 22.h,
                                     child: ListView.builder(
                                       scrollDirection: Axis.horizontal,
-                                      padding: EdgeInsets.symmetric(horizontal: 2.w),
+                                      padding: EdgeInsets.symmetric(horizontal: 5.w),
                                       itemCount: recentInvoices.length,
                                       key: PageStorageKey('recent_invoices'),
                                       itemBuilder: (context, index) {
                                         final invoice = recentInvoices[index];
-                                        return FluidAnimations.createStaggeredListAnimation(
-                                          index: index,
-                                          child: Container(
-                                            width: 75.w,
-                                            margin: EdgeInsets.only(right: 3.w),
-                                            decoration: BoxDecoration(
-                                              gradient: LinearGradient(
-                                                colors: invoice.invoiceType == 'sales'
-                                                    ? [Colors.blue.shade50, Colors.blue.shade100]
-                                                    : [Colors.green.shade50, Colors.green.shade100],
-                                                begin: Alignment.topLeft,
-                                                end: Alignment.bottomRight,
-                                              ),
-                                              borderRadius: BorderRadius.circular(20),
-                                              border: Border.all(
-                                                color: invoice.invoiceType == 'sales' ? Colors.blue.shade200 : Colors.green.shade200,
-                                                width: 1.5,
-                                              ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: (invoice.invoiceType == 'sales' ? Colors.blue : Colors.green).withOpacity(0.1),
-                                                  blurRadius: 15,
-                                                  offset: Offset(0, 5),
-                                                  spreadRadius: 2,
-                                                ),
-                                              ],
+                                        final isSales = invoice.invoiceType.toLowerCase() == 'sales';
+                                        final Color base = isSales
+                                            ? AppTheme.primaryAccentLight
+                                            : AppTheme.secondaryLight;
+                                        final Color base2 = isSales
+                                            ? AppTheme.primaryVariantLight
+                                            : AppTheme.secondaryVariantLight;
+
+                                        return SizedBox(
+                                          width: 78.w,
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(20),
+                                            onTap: () => Navigator.pushNamed(
+                                              context,
+                                              '/invoice-detail-screen',
+                                              arguments: invoice,
                                             ),
-                                            child: Material(
-                                              color: Colors.transparent,
-                                              child: InkWell(
-                                                borderRadius: BorderRadius.circular(20),
-                                                onTap: () => Navigator.pushNamed(
-                                                  context,
-                                                  '/invoice-detail-screen',
-                                                  arguments: invoice,
+                                            child: Container(
+                                              margin: EdgeInsets.only(right: 4.w),
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  colors: [
+                                                    base.withOpacity(0.18),
+                                                    base2.withOpacity(0.10),
+                                                  ],
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
                                                 ),
-                                                child: Padding(
-                                                  padding: EdgeInsets.all(4.w),
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Row(
-                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                        children: [
-                                                          Container(
-                                                            padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 0.5.h),
-                                                            decoration: BoxDecoration(
-                                                              color: invoice.invoiceType == 'sales' ? Colors.blue.shade600 : Colors.green.shade600,
-                                                              borderRadius: BorderRadius.circular(12),
-                                                            ),
-                                                            child: Text(
-                                                              invoice.invoiceType.toUpperCase(),
-                                                              style: TextStyle(color: Colors.white, fontSize: 10.sp, fontWeight: FontWeight.bold),
-                                                            ),
-                                                          ),
-                                                          Container(
-                                                            padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
-                                                            decoration: BoxDecoration(
-                                                              color: invoice.status.toLowerCase() == 'paid' ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
-                                                              borderRadius: BorderRadius.circular(8),
-                                                            ),
-                                                            child: Text(
-                                                              invoice.status.toUpperCase(),
-                                                              style: TextStyle(
-                                                                color: invoice.status.toLowerCase() == 'paid' ? Colors.green.shade700 : Colors.orange.shade700,
-                                                                fontSize: 9.sp,
-                                                                fontWeight: FontWeight.w600,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                      SizedBox(height: 2.h),
-                                                      Text(
-                                                        invoice.invoiceNumber,
-                                                        style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
-                                                      ),
-                                                      SizedBox(height: 0.5.h),
-                                                      Text(
-                                                        invoice.clientName,
-                                                        style: TextStyle(fontSize: 13.sp, color: Colors.grey.shade600),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                                      SizedBox(height: 1.h),
-                                                      Text(
-                                                        invoice.getFormattedDate(),
-                                                        style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade500),
-                                                      ),
-                                                      Spacer(),
-                                                      Row(
-                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                        children: [
-                                                          Text(
-                                                            '₹${invoice.total.toStringAsFixed(2)}',
-                                                            style: TextStyle(
-                                                              fontSize: 18.sp,
-                                                              fontWeight: FontWeight.bold,
-                                                              color: invoice.invoiceType == 'sales' ? Colors.blue.shade700 : Colors.green.shade700,
-                                                            ),
-                                                          ),
-                                                          Icon(
-                                                            Icons.arrow_forward_ios,
-                                                            size: 4.w,
-                                                            color: Colors.grey.shade400,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ],
+                                                borderRadius: BorderRadius.circular(20),
+                                                border: Border.all(color: base.withOpacity(0.25), width: 1),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: base.withOpacity(0.15),
+                                                    blurRadius: 12,
+                                                    offset: const Offset(0, 6),
                                                   ),
+                                                ],
+                                              ),
+                                              child: Padding(
+                                                padding: EdgeInsets.all(4.w),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        _typeBadge(invoice.invoiceType.toUpperCase(), base),
+                                                        _statusBadge(invoice.status),
+                                                      ],
+                                                    ),
+                                                    SizedBox(height: 1.2.h),
+                                                    Text(
+                                                      invoice.invoiceNumber,
+                                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                            fontWeight: FontWeight.w700,
+                                                          ),
+                                                    ),
+                                                    SizedBox(height: 0.6.h),
+                                                    Text(
+                                                      invoice.clientName,
+                                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                            color: AppTheme.textSecondaryLight,
+                                                          ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                    const Spacer(),
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        Text(
+                                                          '₹${invoice.total.toStringAsFixed(2)}',
+                                                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                                                fontWeight: FontWeight.w800,
+                                                              ),
+                                                        ),
+                                                        Icon(
+                                                          Icons.arrow_forward_ios,
+                                                          size: 16,
+                                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.45),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             ),
@@ -625,7 +583,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
                             // Data Source Info
                             Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4.w),
+                              padding: EdgeInsets.symmetric(horizontal: 3.w),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -635,9 +593,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                         .textTheme
                                         .bodySmall
                                         ?.copyWith(
-                                          color: isDark
-                                              ? AppTheme.textSecondaryDark
-                                              : AppTheme.textSecondaryLight,
+                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                           fontWeight: FontWeight.w500,
                                         ),
                                   ),
@@ -648,9 +604,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                         .textTheme
                                         .bodySmall
                                         ?.copyWith(
-                                          color: isDark
-                                              ? AppTheme.textSecondaryDark
-                                              : AppTheme.textSecondaryLight,
+                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                         ),
                                   ),
                                 ],
@@ -694,38 +648,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                 borderRadius: BorderRadius.circular(10),
                               ),
                             ),
-                            ListTile(
-                              leading: Icon(Icons.document_scanner_rounded, color: Theme.of(context).colorScheme.primary),
-                              title: Text('Smart Scan Invoice'),
-                              onTap: () {
-                                Navigator.pop(context);
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.notifications_outlined, color: Theme.of(context).colorScheme.primary),
-                              title: Text('Test Notification'),
-                              onTap: () async {
-                                Navigator.pop(context);
-                                await NotificationService().testNotification(context);
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.money_off_outlined, color: Colors.orange),
-                              title: Text('Mark 3 Invoices Unpaid'),
-                              onTap: () async {
-                                Navigator.pop(context);
-                                await _invoiceService.markLastThreeInvoicesUnpaid();
-                                await _loadDashboardData();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Last 3 sales invoices marked as unpaid'),
-                                    backgroundColor: Colors.orange,
-                                  ),
-                                );
-                              },
-                            ),
-                            ListTile(
-                              leading: Icon(Icons.add_circle_outline, color: Colors.green),
+                                                        ListTile(
+                              leading: Icon(Icons.add_circle_outline, color: Theme.of(context).colorScheme.primary),
                               title: Text('Create Invoice'),
                               subtitle: Text('Add new sales or purchase invoice'),
                               onTap: () {
@@ -757,11 +681,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 },
                 child: Icon(
                   Icons.add_rounded,
-                  size: 7.w,
+                  size: 8.w,
                   color: Colors.white,
                 ),
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 elevation: 8,
+                shape: CircleBorder(),
               ),
             ),
           );
@@ -777,6 +702,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   Widget _buildPendingFollowupsSection() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     // Filter truly pending invoices from all invoices (not just recent)
     final pendingInvoices = allInvoices
@@ -796,90 +722,112 @@ class _HomeDashboardState extends State<HomeDashboard> {
       return a.date.compareTo(b.date);
     });
     
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Pending Follow-ups',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+      decoration: AppTheme.createSophisticatedContainer(
+        isLight: !isDark,
+        borderRadius: 24.0,
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(6.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(2.5.w),
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.getPrimaryGradient(!isDark),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    Icons.schedule_outlined,
+                    color: Colors.white,
+                    size: 5.w,
+                  ),
+                ),
+                SizedBox(width: 4.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Pending Follow-ups',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimaryLight,
+                        ),
+                      ),
+                      SizedBox(height: 0.5.h),
+                      Text(
+                        'Payment reminders & overdue invoices',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textSecondaryLight,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 3.h),
+            
+            if (pendingInvoices.isEmpty)
+              _buildAllCaughtUpCard()
+            else
+              _buildPendingPaymentsCard(pendingInvoices),
+          ],
         ),
-        SizedBox(height: 2.h),
-        
-        if (pendingInvoices.isEmpty)
-          _buildAllCaughtUpCard()
-        else
-          _buildPendingPaymentsCard(pendingInvoices),
-      ],
+      ),
     );
   }
   
   Widget _buildAllCaughtUpCard() {
-    // Safely derive border radius from card theme (fallback to 20 if null or non-rounded)
-    final ShapeBorder? themeShape = Theme.of(context).cardTheme.shape;
-    final BorderRadiusGeometry safeRadius =
-        themeShape is RoundedRectangleBorder
-            ? themeShape.borderRadius
-            : BorderRadius.circular(20);
-
-    return Container(
-      width: double.infinity,
-      margin: EdgeInsets.symmetric(vertical: 1.h),
-      decoration: BoxDecoration(
-        borderRadius: safeRadius,
-        gradient: LinearGradient(
-          colors: [Colors.green.shade400, Colors.green.shade600],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).cardTheme.shadowColor ?? Colors.green.withOpacity(0.3),
-            blurRadius: Theme.of(context).cardTheme.elevation ?? 12,
-            offset: Offset(0, 4),
-          ),
-        ],
+    return Card(
+      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Padding(
-        padding: EdgeInsets.all(5.w),
-        child: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(3.w),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: CustomIconWidget(
-                iconName: 'check_circle',
-                color: Colors.white,
-                size: 8.w,
-              ),
-            ),
-            SizedBox(width: 4.w),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'All Caught Up! ✨',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [Colors.green.shade300, Colors.green.shade500],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(4.w),
+          child: Row(
+            children: [
+              Icon(Icons.check_circle_outline, color: Colors.white, size: 7.w),
+              SizedBox(width: 4.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'All Caught Up! ✨',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 0.5.h),
-                  Text(
-                    'No pending payments to review',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withOpacity(0.9),
+                    SizedBox(height: 0.5.h),
+                    Text(
+                      'No pending payments to review',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withOpacity(0.9),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -890,49 +838,32 @@ class _HomeDashboardState extends State<HomeDashboard> {
       0.0, (sum, invoice) => sum + invoice.remainingAmount);
     
     return Container(
-      width: double.infinity,
-      margin: EdgeInsets.symmetric(vertical: 1.h),
+      margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 2.h),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        color: Theme.of(context).cardColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.amber.withOpacity(0.15),
-            blurRadius: 20,
-            offset: Offset(0, 8),
-            spreadRadius: 2,
-          ),
-        ],
+        gradient: LinearGradient(
+          colors: [AppTheme.primaryAccentLight, AppTheme.primaryLight],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
       child: Column(
         children: [
           // Enhanced Header
-          Container(
-            width: double.infinity,
+          Padding(
             padding: EdgeInsets.all(5.w),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.amber.shade600, Colors.orange.shade500],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
-              ),
-            ),
             child: Row(
               children: [
                 Container(
                   padding: EdgeInsets.all(3.w),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.25),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                   child: Icon(
                     Icons.access_time_rounded,
                     color: Colors.white,
-                    size: 7.w,
+                    size: 8.w,
                   ),
                 ),
                 SizedBox(width: 4.w),
@@ -941,26 +872,17 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${pendingInvoices.length}',
-                        style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
+                        '${pendingInvoices.length} Invoice${pendingInvoices.length > 1 ? 's' : ''} Need Action',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           color: Colors.white,
-                          fontSize: 32.sp,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      Text(
-                        'Invoice${pendingInvoices.length > 1 ? 's' : ''} Need Action',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Colors.white.withOpacity(0.95),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      SizedBox(height: 0.5.h),
+                      SizedBox(height: 1.h),
                       Text(
                         'Total: ₹${_formatCurrency(totalPending)}',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           color: Colors.white.withOpacity(0.9),
-                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
@@ -972,10 +894,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
           
           // Animated Invoice List
           Padding(
-            padding: EdgeInsets.all(4.w),
+            padding: EdgeInsets.fromLTRB(4.w, 0, 4.w, 4.w),
             child: Column(
               children: [
-                ...pendingInvoices.take(4).toList().asMap().entries.map((entry) {
+                ...pendingInvoices.take(3).toList().asMap().entries.map((entry) {
                   final index = entry.key;
                   final invoice = entry.value;
                   return TweenAnimationBuilder<double>(
@@ -994,30 +916,23 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   );
                 }),
                 
-                if (pendingInvoices.length > 4)
+                if (pendingInvoices.length > 3)
                   Container(
                     width: double.infinity,
                     margin: EdgeInsets.only(top: 3.h),
-                    child: OutlinedButton.icon(
+                    child: ElevatedButton(
                       onPressed: () => Navigator.pushNamed(context, '/invoices-list-screen'),
-                      icon: Icon(
-                        Icons.visibility_outlined,
-                        color: Colors.amber.shade700,
-                        size: 5.w,
-                      ),
-                      label: Text(
+                      child: Text(
                         'View All ${pendingInvoices.length} Invoices',
                         style: TextStyle(
-                          color: Colors.amber.shade700,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14.sp,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16.sp,
                         ),
                       ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: Colors.amber.shade300, width: 2),
-                        padding: EdgeInsets.symmetric(vertical: 2.h, horizontal: 6.w),
+                      style: ElevatedButton.styleFrom(
+                        padding: EdgeInsets.symmetric(vertical: 2.h),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
                     ),
@@ -1034,88 +949,44 @@ class _HomeDashboardState extends State<HomeDashboard> {
     final isOverdue = invoice.followUpDate != null && 
         invoice.followUpDate!.isBefore(DateTime.now().subtract(Duration(days: 1)));
     
-    return Container(
-      margin: EdgeInsets.only(bottom: 2.h),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isOverdue ? Colors.red.shade200 : Colors.grey.shade200,
-          width: 1,
+    return ListTile(
+      contentPadding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
+      leading: CircleAvatar(
+        radius: 28,
+        backgroundColor: isOverdue ? AppTheme.errorLight.withOpacity(0.1) : AppTheme.primaryAccentLight.withOpacity(0.1),
+        child: Icon(
+          isOverdue ? Icons.schedule_outlined : Icons.access_time_rounded,
+          color: isOverdue ? AppTheme.errorLight : AppTheme.primaryAccentLight,
+          size: 6.w,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
       ),
-      child: ListTile(
-        contentPadding: EdgeInsets.all(4.w),
-        leading: Container(
-          width: 12.w,
-          height: 12.w,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: isOverdue 
-                  ? [Colors.red.shade400, Colors.red.shade600]
-                  : [Colors.blue.shade400, Colors.blue.shade600],
-            ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            isOverdue ? Icons.schedule_outlined : Icons.access_time_rounded,
-            color: Colors.white,
-            size: 6.w,
-          ),
+      title: Text(
+        invoice.clientName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w600,
         ),
-        title: Text(
-          invoice.clientName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+      ),
+      subtitle: Text(
+        'Invoice #${invoice.invoiceNumber}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: AppTheme.textSecondaryLight,
         ),
-        subtitle: Text(
-          isOverdue 
-              ? 'Invoice #${invoice.invoiceNumber} • Overdue'
-              : 'Invoice #${invoice.invoiceNumber}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: isOverdue ? Colors.red.shade600 : Colors.grey.shade600,
-            fontWeight: isOverdue ? FontWeight.w600 : FontWeight.normal,
-          ),
+      ),
+      trailing: Text(
+        '₹${_formatCurrency(invoice.remainingAmount)}',
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: isOverdue ? AppTheme.errorLight : AppTheme.accentGoldLight,
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '₹${_formatCurrency(invoice.remainingAmount)}',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: isOverdue ? Colors.red.shade700 : Colors.amber.shade700,
-              ),
-            ),
-            IconButton(
-              onPressed: () => _showSnoozeDialog(invoice),
-              icon: Icon(
-                Icons.schedule_outlined,
-                color: Colors.amber.shade600,
-                size: 5.w,
-              ),
-              padding: EdgeInsets.all(1.w),
-              constraints: BoxConstraints(minWidth: 8.w, minHeight: 8.w),
-            ),
-          ],
-        ),
-        onTap: () => Navigator.pushNamed(
-          context,
-          '/invoice-detail-screen',
-          arguments: invoice,
-        ),
+      ),
+      onTap: () => Navigator.pushNamed(
+        context,
+        '/invoice-detail-screen',
+        arguments: invoice,
       ),
     );
   }
@@ -1397,9 +1268,84 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
+  Widget _buildRecentRecipientsSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 4.w),
+      decoration: AppTheme.createSophisticatedContainer(
+        isLight: !isDark,
+        borderRadius: 24.0,
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(6.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(2.5.w),
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.getSuccessGradient(!isDark),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    Icons.people_outline,
+                    color: Colors.white,
+                    size: 5.w,
+                  ),
+                ),
+                SizedBox(width: 4.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Recent Recipients',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimaryLight,
+                        ),
+                      ),
+                      SizedBox(height: 0.5.h),
+                      Text(
+                        'Quick access to frequent customers',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textSecondaryLight,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 3.h),
+            Container(
+              height: 12.h,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: _buildRecentCustomers(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   List<Widget> _buildRecentCustomers() {
     final uniqueCustomers = <String, InvoiceModel>{};
-    final colors = [Colors.blue, Colors.green, Colors.orange, Colors.purple, Colors.red, Colors.teal];
+    final colors = [
+      AppTheme.primaryLight,
+      AppTheme.secondaryLight,
+      AppTheme.accentGoldLight,
+      AppTheme.primaryAccentLight,
+      AppTheme.secondaryVariantLight,
+      AppTheme.primaryVariantLight,
+    ];
     
     // Get unique customers from recent invoices, prioritizing most recent
     for (final invoice in allInvoices.reversed) {
@@ -1414,44 +1360,38 @@ class _HomeDashboardState extends State<HomeDashboard> {
       final initials = customer.clientName.split(' ').map((name) => name.isNotEmpty ? name[0] : '').take(2).join();
       
       return Container(
-        margin: EdgeInsets.only(right: 20),
+        margin: EdgeInsets.only(right: 4.w),
         child: Column(
           children: [
-            GestureDetector(
-              onTap: () {
-                Navigator.pushNamed(context, '/invoice-type-selection-screen');
-              },
-              child: Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [colors[index % colors.length].shade400, colors[index % colors.length].shade600],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.8),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 12,
-                      offset: Offset(0, 6),
-                      spreadRadius: 1,
-                    ),
+            Container(
+              width: 16.w,
+              height: 16.w,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    colors[index % colors.length],
+                    colors[index % colors.length].withOpacity(0.7),
                   ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                child: Center(
-                  child: Text(
-                    initials.toUpperCase(),
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors[index % colors.length].withOpacity(0.3),
+                    offset: const Offset(0, 4),
+                    blurRadius: 8,
+                    spreadRadius: 0,
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Text(
+                  initials.toUpperCase(),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
@@ -1462,8 +1402,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 11.sp,
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textSecondaryLight,
               ),
             ),
           ],
@@ -1492,88 +1432,123 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   // Builds the inventory summary card with key metrics
   Widget _buildInventorySummaryCard() {
-    return GestureDetector(
-      onTap: () {
-        // Prevent any parent gestures from being triggered
-        FocusScope.of(context).unfocus();
-        // Navigate to inventory screen
-        Navigator.pushNamed(context, '/inventory-screen');
-      },
-      behavior: HitTestBehavior.opaque, // Ensure taps are captured by this widget
-      child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 4.w),
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFE3F2FD), Color(0xFFBBDEFB)],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.blue.withOpacity(0.1),
-              blurRadius: 12,
-              offset: Offset(0, 4),
-            ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 4.w),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.primaryAccentLight.withOpacity(0.12),
+            AppTheme.primaryVariantLight.withOpacity(0.08),
           ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Inventory Summary',
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.blue.shade900,
-                  ),
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${lowStockCount > 0 ? '$lowStockCount Low Stock' : 'All Good' }',
-                    style: TextStyle(
-                      color: lowStockCount > 0 ? Colors.orange.shade800 : Colors.green.shade800,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 12.sp,
+        borderRadius: BorderRadius.circular(24.0),
+        border: Border.all(color: AppTheme.primaryAccentLight.withOpacity(0.22), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryAccentLight.withOpacity(0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.pushNamed(context, '/inventory-screen');
+        },
+        borderRadius: BorderRadius.circular(24),
+        child: Padding(
+          padding: EdgeInsets.all(5.w),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(2.5.w),
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.getGoldGradient(!isDark),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.inventory_2_outlined,
+                      color: Colors.white,
+                      size: 5.w,
                     ),
                   ),
-                ),
-              ],
-            ),
-            SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildInventoryMetric(
-                  value: inStockSKUs.toString(),
-                  label: 'In Stock SKUs',
-                  icon: Icons.inventory_2_outlined,
-                  color: Colors.blue.shade700,
-                ),
-                _buildInventoryMetric(
-                  value: totalUnits.toString(),
-                  label: 'Total Units',
-                  icon: Icons.layers_outlined,
-                  color: Colors.blue.shade600,
-                ),
-                _buildInventoryMetric(
-                  value: '\$${inventoryValue.toStringAsFixed(2)}',
-                  label: 'Total Value',
-                  icon: Icons.attach_money_outlined,
-                  color: Colors.blue.shade800,
-                ),
-              ],
-            ),
-          ],
+                  SizedBox(width: 4.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Inventory Summary',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textPrimaryLight,
+                          ),
+                        ),
+                        SizedBox(height: 0.5.h),
+                        Text(
+                          'Stock levels & inventory value',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.textSecondaryLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (lowStockCount > 0)
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppTheme.warningLight, AppTheme.warningLight.withOpacity(0.8)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '$lowStockCount Low',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11.sp,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              SizedBox(height: 2.8.h),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildInventoryMetric(
+                    value: inStockSKUs.toString(),
+                    label: 'In Stock',
+                    icon: Icons.inventory_2_outlined,
+                    color: AppTheme.primaryAccentLight,
+                  ),
+                  _buildInventoryMetric(
+                    value: totalUnits.toString(),
+                    label: 'Total Units',
+                    icon: Icons.layers_outlined,
+                    color: AppTheme.secondaryLight,
+                  ),
+                  _buildInventoryMetric(
+                    value: '₹${_formatCurrency(inventoryValue)}',
+                    label: 'Total Value',
+                    icon: Icons.attach_money_outlined,
+                    color: AppTheme.accentGoldLight,
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1588,27 +1563,38 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return Column(
       children: [
         Container(
-          padding: EdgeInsets.all(8),
+          width: 15.w,
+          height: 15.w,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors: [color.withOpacity(0.2), color.withOpacity(0.1)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: color.withOpacity(0.3),
+              width: 1,
+            ),
           ),
-          child: Icon(icon, size: 20, color: color),
+          child: Icon(icon, size: 6.w, color: color),
         ),
-        SizedBox(height: 6),
+        SizedBox(height: 1.5.h),
         Text(
           value,
           style: TextStyle(
             fontSize: 16.sp,
             fontWeight: FontWeight.bold,
-            color: Colors.blue.shade900,
+            color: AppTheme.textPrimaryLight,
           ),
         ),
+        SizedBox(height: 0.5.h),
         Text(
           label,
           style: TextStyle(
-            fontSize: 10.sp,
-            color: Colors.blueGrey.shade600,
+            fontSize: 11.sp,
+            fontWeight: FontWeight.w500,
+            color: AppTheme.textSecondaryLight,
           ),
         ),
       ],

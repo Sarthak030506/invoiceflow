@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/invoice_model.dart';
 import 'package:flutter/services.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
@@ -27,7 +27,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   bool _isEditMode = false;
   bool _isOffline = false;
 
-  late InvoiceModel _invoice;
+  InvoiceModel? _invoice;
   late InvoiceService _invoiceService;
   
   // Controllers for editable fields
@@ -52,7 +52,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
         setState(() {
           _invoice = args;
           _initControllers();
-          _editedItems = _invoice.items.map((item) => item.toJson()).toList();
+          _editedItems = _invoice!.items.map((item) => item.toJson()).toList();
         });
       }
     });
@@ -62,24 +62,27 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Refresh invoice data when returning from other screens
-    _refreshInvoiceData();
+    if (_invoice != null) {
+      _refreshInvoiceData();
+    }
   }
 
   Future<void> _refreshInvoiceData() async {
+    if (_invoice == null) return;
     try {
       // Get the latest invoice data from the database
       final allInvoices = await _invoiceService.fetchAllInvoices();
       final updatedInvoice = allInvoices.firstWhere(
-        (invoice) => invoice.id == _invoice.id,
-        orElse: () => _invoice,
+        (invoice) => invoice.id == _invoice!.id,
+        orElse: () => _invoice!,
       );
       
       // Only update if the invoice has actually changed
-      if (updatedInvoice.updatedAt.isAfter(_invoice.updatedAt)) {
+      if (updatedInvoice.updatedAt.isAfter(_invoice!.updatedAt)) {
         setState(() {
           _invoice = updatedInvoice;
           _initControllers();
-          _editedItems = _invoice.items.map((item) => item.toJson()).toList();
+          _editedItems = _invoice!.items.map((item) => item.toJson()).toList();
         });
       }
     } catch (e) {
@@ -89,10 +92,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   }
   
   void _initControllers() {
-    _clientNameController.text = _invoice.clientName;
-    _invoiceDateController.text = _invoice.getFormattedDate();
-    _notesController.text = _invoice.notes ?? '';
-    _taxRateController.text = _invoice.taxRate.toStringAsFixed(1);
+    if (_invoice == null) return;
+    _clientNameController.text = _invoice!.clientName;
+    _invoiceDateController.text = _invoice!.getFormattedDate();
+    _notesController.text = _invoice!.notes ?? '';
+    _taxRateController.text = _invoice!.taxRate.toStringAsFixed(1);
   }
   
   @override
@@ -111,35 +115,31 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       if (_isEditMode) {
         // Reset controllers to current invoice values when entering edit mode
         _initControllers();
-        _editedItems = _invoice.items.map((item) => item.toJson()).toList();
+        _editedItems = _invoice!.items.map((item) => item.toJson()).toList();
       }
     });
 
     HapticFeedback.lightImpact();
 
-    Fluttertoast.showToast(
-      msg: _isEditMode ? "Edit mode enabled" : "Edit mode disabled",
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_isEditMode ? "Edit mode enabled" : "Edit mode disabled")),
     );
   }
 
   void _shareInvoice() {
     HapticFeedback.mediumImpact();
 
-    Fluttertoast.showToast(
-      msg: "Generating PDF and opening share sheet...",
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Generating PDF and opening share sheet...")),
     );
 
     // Simulate PDF generation and sharing
     Future.delayed(const Duration(milliseconds: 1500), () {
-      Fluttertoast.showToast(
-        msg: "Invoice shared successfully",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Invoice shared successfully")),
+        );
+      }
     });
   }
 
@@ -149,9 +149,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       _isLoading = true;
     });
     try {
-      final updatedInvoice = _invoice.copyWith(
+      final updatedInvoice = _invoice!.copyWith(
         status: 'paid',
-        amountPaid: _invoice.total,
+        amountPaid: _invoice!.total,
         updatedAt: DateTime.now(),
       );
       await _invoiceService.updateInvoice(updatedInvoice);
@@ -159,39 +159,34 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
         _invoice = updatedInvoice;
         _isLoading = false;
       });
-      Fluttertoast.showToast(
-        msg: "Invoice marked as paid",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Invoice marked as paid")),
       );
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      Fluttertoast.showToast(
-        msg: "Error marking as paid: ${e.toString()}",
-        toastLength: Toast.LENGTH_LONG,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error marking as paid: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
 
   void _downloadPdf() async {
     HapticFeedback.mediumImpact();
-    Fluttertoast.showToast(
-      msg: "Generating and downloading PDF...",
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Generating and downloading PDF...")),
     );
     // Simulate PDF generation and download
     await Future.delayed(const Duration(milliseconds: 1500));
-    Fluttertoast.showToast(
-      msg: "PDF downloaded successfully",
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("PDF downloaded successfully")),
+      );
+    }
   }
 
   void _deleteInvoice() async {
@@ -200,14 +195,12 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       _isLoading = true;
     });
     try {
-      await _invoiceService.deleteInvoice(_invoice.id);
+      await _invoiceService.deleteInvoice(_invoice!.id);
       setState(() {
         _isLoading = false;
       });
-      Fluttertoast.showToast(
-        msg: "Invoice deleted successfully",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Invoice deleted successfully")),
       );
       if (mounted) {
         Navigator.of(context).pop();
@@ -216,12 +209,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       setState(() {
         _isLoading = false;
       });
-      Fluttertoast.showToast(
-        msg: "Error deleting invoice: ${e.toString()}",
-        toastLength: Toast.LENGTH_LONG,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error deleting invoice: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -229,10 +221,8 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   void _duplicateInvoice() {
     HapticFeedback.lightImpact();
 
-    Fluttertoast.showToast(
-      msg: "Invoice duplicated successfully",
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Invoice duplicated successfully")),
     );
   }
   
@@ -254,7 +244,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ],
         ),
         content: Text(
-          'Process return for Invoice #${_invoice.invoiceNumber}?\n\nThis will create a return entry for this ${_invoice.invoiceType} invoice.',
+          'Process return for Invoice #${_invoice!.invoiceNumber}?\n\nThis will create a return entry for this ${_invoice!.invoiceType} invoice.',
         ),
         actions: [
           TextButton(
@@ -267,7 +257,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ReturnGoodsScreen(invoice: _invoice),
+                  builder: (context) => ReturnGoodsScreen(invoice: _invoice!),
                 ),
               );
             },
@@ -308,7 +298,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       );
       
       // Create updated invoice
-      final updatedInvoice = _invoice.copyWith(
+      final updatedInvoice = _invoice!.copyWith(
         clientName: _clientNameController.text,
         notes: _notesController.text,
         items: updatedItems,
@@ -329,10 +319,8 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
         _isEditMode = false;
       });
 
-      Fluttertoast.showToast(
-        msg: "Invoice updated successfully",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.BOTTOM,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Invoice updated successfully")),
       );
     } catch (e) {
       // Check if widget is still mounted before updating state
@@ -342,22 +330,32 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
         _isLoading = false;
       });
       
-      Fluttertoast.showToast(
-        msg: "Error updating invoice: ${e.toString()}",
-        toastLength: Toast.LENGTH_LONG,
-        gravity: ToastGravity.BOTTOM,
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error updating invoice: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Guard while arguments load
+    if (_invoice == null) {
+      return Scaffold(
+        backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text('Invoice'),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: _invoice.invoiceType == 'sales' ? Colors.blue.shade700 : Colors.green.shade700,
+        backgroundColor: _invoice!.invoiceType == 'sales' ? Colors.blue.shade700 : Colors.green.shade700,
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.pop(context),
@@ -367,11 +365,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _invoice.invoiceNumber,
+              _invoice!.invoiceNumber,
               style: TextStyle(color: Colors.white, fontSize: 18.sp, fontWeight: FontWeight.bold),
             ),
             Text(
-              '${_invoice.invoiceType.toUpperCase()} INVOICE',
+              '${_invoice!.invoiceType.toUpperCase()} INVOICE',
               style: TextStyle(color: Colors.white70, fontSize: 12.sp),
             ),
           ],
@@ -389,7 +387,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 onPressed: _isLoading ? null : _saveChanges,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
-                  foregroundColor: _invoice.invoiceType == 'sales' ? Colors.blue.shade700 : Colors.green.shade700,
+                  foregroundColor: _invoice!.invoiceType == 'sales' ? Colors.blue.shade700 : Colors.green.shade700,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 ),
@@ -409,7 +407,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   scale: value,
                   child: FloatingActionButton(
                     onPressed: _toggleEditMode,
-                    backgroundColor: _invoice.invoiceType == 'sales' ? Colors.blue.shade600 : Colors.green.shade600,
+                    backgroundColor: _invoice!.invoiceType == 'sales' ? Colors.blue.shade600 : Colors.green.shade600,
                     child: Icon(Icons.edit, color: Colors.white, size: 24),
                   ),
                 );
@@ -482,14 +480,14 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: _invoice.status.toLowerCase() == 'paid'
+                      colors: _invoice?.status.toLowerCase() == 'paid'
                           ? [Colors.green.shade400, Colors.green.shade600]
                           : [Colors.orange.shade400, Colors.orange.shade600],
                     ),
                     borderRadius: BorderRadius.circular(25),
                     boxShadow: [
                       BoxShadow(
-                        color: (_invoice.status.toLowerCase() == 'paid' ? Colors.green : Colors.orange).withOpacity(0.3),
+                        color: (_invoice?.status.toLowerCase() == 'paid' ? Colors.green : Colors.orange).withOpacity(0.3),
                         blurRadius: 8,
                         offset: Offset(0, 4),
                       ),
@@ -499,13 +497,13 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _invoice.status.toLowerCase() == 'paid' ? Icons.check_circle : Icons.schedule,
+                        _invoice?.status.toLowerCase() == 'paid' ? Icons.check_circle : Icons.schedule,
                         color: Colors.white,
                         size: 5.w,
                       ),
                       SizedBox(width: 2.w),
                       Text(
-                        _invoice.status.toUpperCase(),
+                        _invoice?.status.toUpperCase() ?? '',
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -520,7 +518,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ),
           
           // Modified Badge (if invoice has been modified)
-          if (_invoice.modifiedFlag && _invoice.modifiedAt != null)
+          if (_invoice?.modifiedFlag ?? false && _invoice?.modifiedAt != null)
             FluidAnimations.createStaggeredListAnimation(
               index: 0,
               child: Container(
@@ -554,7 +552,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                           ),
                           SizedBox(height: 0.5.h),
                           Text(
-                            'Modified on: ${_invoice.modifiedAt!.day}/${_invoice.modifiedAt!.month}/${_invoice.modifiedAt!.year} - ${_invoice.modifiedReason ?? 'Unknown reason'}',
+                            'Modified on: ${_invoice?.modifiedAt?.day}/${_invoice?.modifiedAt?.month}/${_invoice?.modifiedAt?.year} - ${_invoice?.modifiedReason ?? 'Unknown reason'}',
                             style: TextStyle(
                               color: Colors.orange.shade700,
                               fontSize: 12.sp,
@@ -574,7 +572,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             index: 0,
             child: RepaintBoundary(
               child: InvoiceHeaderCardWidget(
-                invoice: _invoice,
+                invoice: _invoice!,
                 isEditMode: _isEditMode,
                 clientNameController: _clientNameController,
                 invoiceDateController: _invoiceDateController,
@@ -589,7 +587,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             index: 1,
             child: RepaintBoundary(
               child: InvoiceItemsTableWidget(
-                items: _isEditMode ? _editedItems : _invoice.items.map((item) => item.toJson()).toList(),
+                items: _isEditMode ? _editedItems : _invoice!.items.map((item) => item.toJson()).toList(),
                 isEditMode: _isEditMode,
                 onItemsChanged: (updatedItems) {
                   setState(() {
@@ -606,7 +604,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           FluidAnimations.createStaggeredListAnimation(
             index: 2,
             child: InvoiceSummaryWidget(
-              invoice: _invoice,
+              invoice: _invoice!,
               isEditMode: _isEditMode,
               notesController: _notesController,
               taxRateController: _taxRateController,
@@ -619,16 +617,16 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           // Payment Information Section with animation
           FluidAnimations.createStaggeredListAnimation(
             index: 3,
-            child: InvoicePaymentInfoWidget(invoice: _invoice),
+            child: InvoicePaymentInfoWidget(invoice: _invoice!),
           ),
           
           SizedBox(height: 4.h),
 
           // WhatsApp Reminder Button (only for sales invoices with customer phone)
-          if (!_isEditMode && _invoice.invoiceType == 'sales' && 
-              _invoice.customerPhone != null && _invoice.customerPhone!.isNotEmpty)
+          if (!_isEditMode && _invoice!.invoiceType == 'sales' && 
+              _invoice!.customerPhone != null && _invoice!.customerPhone!.isNotEmpty)
             WhatsAppReminderButton(
-              invoice: _invoice,
+              invoice: _invoice!,
               shopName: 'Your Shop Name', // Replace with actual shop name from settings
               shopContact: '+91 9876543210', // Replace with actual shop contact from settings
             ),

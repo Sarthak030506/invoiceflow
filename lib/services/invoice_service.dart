@@ -1,30 +1,59 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/invoice_model.dart';
 import '../models/inventory_item_model.dart';
-import './database_service.dart';
 import './csv_invoice_service.dart';
 import './inventory_service.dart';
+import './firestore_service.dart';
 
 class InvoiceService {
   // --- Start of Singleton Implementation ---
-  static late final InvoiceService _instance;
+  static InvoiceService? _instance;
 
   // Private constructor. No one can create an instance of this from outside.
   InvoiceService._internal({required this.csvPath}) : _csvInvoiceService = CsvInvoiceService(assetPath: csvPath);
 
   // The static 'instance' getter. This is how you will access the service.
-  static InvoiceService get instance => _instance;
+  static InvoiceService get instance {
+    if (_instance == null) {
+      throw StateError('InvoiceService not initialized. Call InvoiceService.initialize() first.');
+    }
+    return _instance!;
+  }
 
   // A one-time setup method to be called from main().
   static Future<void> initialize({required String csvPath}) async {
+    if (_instance != null) return; // Already initialized
     // Create the single instance.
     _instance = InvoiceService._internal(csvPath: csvPath);
     // Perform the one-time migration here, once, when the app starts.
-    await _instance._migrateCsvToDbIfNeeded();
+    try {
+      await _instance!._migrateCsvToDbIfNeeded();
+    } catch (e) {
+      print('Warning: CSV migration failed but continuing: $e');
+      // Continue even if migration fails - this allows web version to work
+    }
+  }
+
+  String _sanitizeFirestoreId(String id) {
+    // Replace characters not allowed or problematic in document IDs
+    // Firestore allows most characters, but slashes create path segments.
+    var safe = id.trim();
+    if (safe.isEmpty) {
+      return 'INV_${DateTime.now().millisecondsSinceEpoch}';
+    }
+    // Replace forward/back slashes and control whitespace with underscore
+    safe = safe.replaceAll(RegExp(r"[\\/\n\r\t]"), '_');
+    // Collapse multiple underscores
+    safe = safe.replaceAll(RegExp(r'_+'), '_');
+    // Limit length to a reasonable size
+    if (safe.length > 150) {
+      safe = safe.substring(0, 150);
+    }
+    return safe;
   }
   // --- End of Singleton Implementation ---
 
-  final DatabaseService _dbService = DatabaseService();
+  final FirestoreService _fsService = FirestoreService.instance;
   final CsvInvoiceService _csvInvoiceService;
   final String csvPath;
 
@@ -44,14 +73,32 @@ class InvoiceService {
     try {
       final csvInvoices = await _csvInvoiceService.loadInvoicesFromCsv();
       print('Migrating ${csvInvoices.length} invoices from CSV...');
-      
-      for (final invoice in csvInvoices) {
-        await _dbService.insertInvoice(invoice);
+
+      int success = 0;
+      int failed = 0;
+      for (final original in csvInvoices) {
+        try {
+          // Sanitize ID to be Firestore-safe
+          final safeId = _sanitizeFirestoreId(original.id);
+          final safeNumber = original.invoiceNumber.isEmpty ? safeId : original.invoiceNumber;
+          final inv = original.copyWith(id: safeId, invoiceNumber: safeNumber);
+          await _fsService.upsertInvoice(inv);
+          success++;
+        } catch (e) {
+          failed++;
+          print('CSV migrate failed for id="${original.id}": $e');
+          // continue with next invoice
+        }
       }
-      
-      // IMPORTANT: Set the flag to true ONLY after a successful migration.
-      await prefs.setBool('csv_migrated', true);
-      print('CSV migration completed successfully.');
+
+      if (failed == 0) {
+        // Set the flag to true ONLY after successful migration of all records.
+        await prefs.setBool('csv_migrated', true);
+        print('CSV migration completed successfully. migrated=$success failed=$failed');
+      } else {
+        print('CSV migration partially completed. migrated=$success failed=$failed');
+        // Leave flag false to retry or handle later
+      }
     } catch (e) {
       print('CSV migration failed: $e');
       // Do NOT set the flag if it fails, so it can try again on the next launch.
@@ -61,23 +108,23 @@ class InvoiceService {
   // --- Update all data-fetching methods to REMOVE the migration call ---
 
   Future<List<InvoiceModel>> fetchRecentInvoices() async {
-    return await _dbService.getRecentInvoices(limit: 5);
+    return await _fsService.getRecentInvoices(limit: 5);
   }
 
   Future<List<InvoiceModel>> fetchAllInvoices() async {
-    return await _dbService.getAllInvoices();
+    return await _fsService.getAllInvoices();
   }
 
   Future<void> addInvoice(InvoiceModel invoice) async {
-    await _dbService.insertInvoice(invoice);
+    await _fsService.upsertInvoice(invoice);
     if (invoice.status == 'posted') {
       await _processInvoiceInventory(invoice);
     }
   }
 
   Future<void> updateInvoice(InvoiceModel invoice) async {
-    final oldInvoice = await _dbService.getInvoiceById(invoice.id);
-    await _dbService.updateInvoice(invoice);
+    final oldInvoice = await _fsService.getInvoice(invoice.id);
+    await _fsService.upsertInvoice(invoice);
     
     // Handle status changes that affect inventory
     if (oldInvoice != null) {
@@ -95,24 +142,33 @@ class InvoiceService {
   }
 
   Future<void> deleteInvoice(String invoiceId) async {
-    final invoice = await _dbService.getInvoiceById(invoiceId);
+    final invoice = await _fsService.getInvoiceById(invoiceId);
     if (invoice == null) return;
     
-    if (invoice.status == 'posted' && invoice.invoiceType == 'purchase') {
-      await cancelInvoice(invoiceId);
+    if (invoice.status == 'posted') {
+      if (invoice.invoiceType == 'purchase') {
+        // Delegate to cancellation flow which validates and reverses as needed
+        await cancelInvoice(invoiceId);
+      } else if (invoice.invoiceType == 'sales') {
+        // Reverse issued stock for posted sales before delete
+        await _reverseInvoiceInventory(invoice);
+        await _fsService.deleteInvoice(invoiceId);
+      } else {
+        await _fsService.deleteInvoice(invoiceId);
+      }
     } else {
-      await _dbService.deleteInvoice(invoiceId);
+      await _fsService.deleteInvoice(invoiceId);
     }
   }
 
   /// Gets invoice by ID
   Future<InvoiceModel?> getInvoiceById(String invoiceId) async {
-    return await _dbService.getInvoiceById(invoiceId);
+    return await _fsService.getInvoice(invoiceId);
   }
 
   /// Validates if an invoice can be cancelled safely
   Future<Map<String, dynamic>> validateInvoiceCancellation(String invoiceId) async {
-    final invoice = await _dbService.getInvoiceById(invoiceId);
+    final invoice = await _fsService.getInvoice(invoiceId);
     if (invoice == null) {
       return {'canCancel': false, 'error': 'Invoice not found'};
     }
@@ -130,7 +186,7 @@ class InvoiceService {
   }
 
   Future<void> cancelInvoice(String invoiceId, {bool adminOverride = false, String? adminReason}) async {
-    final invoice = await _dbService.getInvoiceById(invoiceId);
+    final invoice = await _fsService.getInvoice(invoiceId);
     if (invoice == null || invoice.status == 'cancelled') return;
     
     // Validate cancellation for purchase invoices
@@ -181,11 +237,11 @@ class InvoiceService {
       cancelReason: adminOverride ? 'Admin override: $adminReason' : 'Standard cancellation',
     );
     
-    await _dbService.updateInvoice(cancelledInvoice);
+    await _fsService.upsertInvoice(cancelledInvoice);
   }
 
   Future<Map<String, dynamic>> fetchDashboardMetrics() async {
-    final invoices = await _dbService.getAllInvoices();
+    final invoices = await _fsService.getAllInvoices();
     double totalRevenue = invoices.fold(0.0, (sum, inv) => sum + inv.revenue);
     int totalItemsSold = invoices.fold(0, (sum, inv) => sum + inv.items.fold(0, (s, item) => s + item.quantity));
     int totalInvoices = invoices.length;
@@ -339,7 +395,7 @@ class InvoiceService {
   }
 
   Future<void> markInvoiceAsModified(String invoiceId, String reason) async {
-    final invoice = await _dbService.getInvoiceById(invoiceId);
+    final invoice = await _fsService.getInvoice(invoiceId);
     if (invoice == null) return;
     
     final modifiedInvoice = invoice.copyWith(
@@ -349,11 +405,11 @@ class InvoiceService {
       updatedAt: DateTime.now(),
     );
     
-    await _dbService.updateInvoice(modifiedInvoice);
+    await _fsService.upsertInvoice(modifiedInvoice);
   }
 
   Future<void> markLastThreeInvoicesUnpaid() async {
-    final invoices = await _dbService.getAllInvoices();
+    final invoices = await _fsService.getAllInvoices();
     if (invoices.length >= 3) {
       final lastThree = invoices.take(3).toList();
       
@@ -365,7 +421,7 @@ class InvoiceService {
             followUpDate: null,
             updatedAt: DateTime.now(),
           );
-          await _dbService.updateInvoice(updatedInvoice);
+          await _fsService.upsertInvoice(updatedInvoice);
         }
       }
     }

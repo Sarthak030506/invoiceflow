@@ -1,4 +1,4 @@
-import 'package:flutter/cupertino.dart';
+
 import 'package:flutter/material.dart';
 
 /// Fluid animation utilities for smooth transitions and interactions
@@ -510,12 +510,12 @@ class PulseAnimationWidget extends StatefulWidget {
   final double maxScale;
 
   const PulseAnimationWidget({
-    Key? key,
+    super.key,
     required this.child,
     this.duration = const Duration(milliseconds: 1000),
     this.minScale = 0.95,
     this.maxScale = 1.05,
-  }) : super(key: key);
+  });
 
   @override
   State<PulseAnimationWidget> createState() => _PulseAnimationWidgetState();

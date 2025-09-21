@@ -1,19 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:invoiceflow/services/inventory_service.dart';
-import 'package:invoiceflow/database/inventory_database.dart';
 import 'package:invoiceflow/models/inventory_item_model.dart';
 
 void main() {
   group('Item Picker Performance Tests', () {
     late InventoryService inventoryService;
-    late InventoryDatabase inventoryDatabase;
+    // Local InventoryDatabase removed; tests run against Firestore-backed InventoryService
 
     setUpAll(() async {
       inventoryService = InventoryService();
-      inventoryDatabase = InventoryDatabase();
-      
-      // Clean up any existing test data
-      await inventoryDatabase.deleteDatabaseFile();
+      // No local DB to clean up
     });
 
     test('getItemsForPicker handles items with no stock records', () async {
@@ -137,8 +133,7 @@ void main() {
     });
 
     tearDownAll(() async {
-      // Clean up test data
-      await inventoryDatabase.deleteDatabaseFile();
+      // No local DB teardown required
     });
   });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../../services/auth_service.dart';
+
+import 'package:provider/provider.dart';
+import '../../../providers/auth_provider.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -37,13 +38,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      await authService.signUpWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final cred = await authProvider.signUpWithEmailAndPassword(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
       );
-      // Navigation to home will be handled by the auth state listener
-    } on String catch (e) {
-      setState(() => _errorMessage = e);
+      if (cred != null) {
+        // Account created successfully - AuthWrapper will handle navigation
+        print('Account created successfully for: ${cred.user?.email}');
+        // No manual navigation needed - AuthWrapper will detect auth state change
+      } else {
+        if (!mounted) return;
+        setState(() => _errorMessage = authProvider.error ?? 'Failed to create account');
+      }
+    } catch (e) {
+      print('Registration error: $e');
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Failed to create account. Please try again.');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -63,7 +74,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
           child: Form(
             key: _formKey,
             child: Column(
@@ -71,8 +82,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
               children: [
                 Text(
                   'Create Account',
-                  style: GoogleFonts.poppins(
-                    fontSize: 28,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
                   textAlign: TextAlign.center,
@@ -181,7 +192,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                   child: _isLoading
-                      ? const CircularProgressIndicator()
+                      ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Text('Create Account'),
                 ),
                 const SizedBox(height: 24),

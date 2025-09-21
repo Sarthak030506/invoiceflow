@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 
@@ -7,6 +8,7 @@ import './widgets/logout_button_widget.dart';
 import './widgets/profile_header_widget.dart';
 import './widgets/settings_section_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
+import '../../services/notification_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -342,6 +344,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           onChanged: _toggleNotifications,
                         ),
                       ),
+                      if (!kIsWeb) ...[
+                        SettingsItem(
+                          icon: 'notification_add',
+                          title: 'Test Follow-up Notification',
+                          subtitle: 'Send a test notification for follow-ups',
+                          onTap: () async {
+                            await NotificationService().testFollowUpNotification(context);
+                          },
+                        ),
+                        SettingsItem(
+                          icon: 'notification_add',
+                          title: 'Test Purchase Notification',
+                          subtitle: 'Send a test notification for unpaid purchases',
+                          onTap: () async {
+                            await NotificationService().testUnpaidPurchaseNotification(context);
+                          },
+                        ),
+                      ] else ...[
+                        SettingsItem(
+                          icon: 'info',
+                          title: 'Notification Tests',
+                          subtitle: 'Not available on web platform',
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Notifications are not supported on web'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                       SettingsItem(
                         icon: 'fingerprint',
                         title: 'Biometric Authentication',

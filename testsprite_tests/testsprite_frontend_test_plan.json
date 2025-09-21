@@ -1,0 +1,505 @@
+[
+  {
+    "id": "TC001",
+    "title": "Email/Password Authentication Success",
+    "description": "Verify that a user can successfully log in with valid email and password credentials.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the login screen."
+      },
+      {
+        "type": "action",
+        "description": "Enter a valid registered email address."
+      },
+      {
+        "type": "action",
+        "description": "Enter the corresponding valid password."
+      },
+      {
+        "type": "action",
+        "description": "Tap the login button."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that the user is authenticated and routed to the Home Dashboard within 2 seconds."
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "Email/Password Authentication Failure",
+    "description": "Verify that login fails with invalid email or password and shows appropriate error messages.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the login screen."
+      },
+      {
+        "type": "action",
+        "description": "Enter an invalid or unregistered email address."
+      },
+      {
+        "type": "action",
+        "description": "Enter an incorrect password."
+      },
+      {
+        "type": "action",
+        "description": "Tap the login button."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that login fails and an informative error message is displayed."
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "Google Sign-In Authentication Success",
+    "description": "Verify that a user can sign in successfully using Google Sign-In and is routed correctly.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the login screen."
+      },
+      {
+        "type": "action",
+        "description": "Tap on the Google Sign-In button."
+      },
+      {
+        "type": "action",
+        "description": "Complete the Google authentication flow with valid account."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify user is authenticated via Google and routed to Home Dashboard within 2 seconds."
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Password Recovery Flow",
+    "description": "Verify password recovery process sends reset email and displays confirmation.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the login screen."
+      },
+      {
+        "type": "action",
+        "description": "Tap the 'Forgot Password' link."
+      },
+      {
+        "type": "action",
+        "description": "Enter a registered email address."
+      },
+      {
+        "type": "action",
+        "description": "Submit password recovery request."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify confirmation message that reset email was sent is displayed."
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Create New Invoice with Valid Data",
+    "description": "Verify that users can create a new invoice, save it as draft, and see it in the list.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in and navigate to the invoice creation screen."
+      },
+      {
+        "type": "action",
+        "description": "Fill out all required fields with valid data."
+      },
+      {
+        "type": "action",
+        "description": "Save the invoice as a draft."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the draft invoice appears in the invoice list with correct status."
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "Invoice Lifecycle State Transition Validations",
+    "description": "Verify invoice status changes across Draft, Posted, Paid, and Cancelled states with business rules enforced.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Create a draft invoice with valid stock items."
+      },
+      {
+        "type": "action",
+        "description": "Post the invoice, triggering stock validation and automatic inventory update."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify invoice status updated to Posted and inventory stock decreased accordingly."
+      },
+      {
+        "type": "action",
+        "description": "Mark the Posted invoice as Paid."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify invoice status updated to Paid and payment tracking updated."
+      },
+      {
+        "type": "action",
+        "description": "Attempt to cancel a Paid invoice and check if business rules permit cancellation or deny."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify correct enforcement of cancellation rules and audit trail entry created."
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Invoice Posting with Insufficient Inventory",
+    "description": "Verify that posting an invoice with item quantities exceeding available stock is prevented with an error.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Create a draft invoice containing items with quantities greater than current inventory."
+      },
+      {
+        "type": "action",
+        "description": "Attempt to post the invoice."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify posting is blocked and user is notified of insufficient stock."
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Inventory Stock Update After Invoice Posting",
+    "description": "Verify that inventory stock levels update in real-time after invoice posting and audit trail records the movement.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Post an invoice that reduces the quantity of inventory items."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify inventory stock is decreased correctly and stock movement audit trail is created."
+      },
+      {
+        "type": "action",
+        "description": "View the inventory detail screen for affected items."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify updated stock quantities and recent movements are displayed accurately."
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Low Stock Alert Notification",
+    "description": "Verify that a local notification is triggered when inventory for an item reaches its reorder threshold.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Post invoices reducing inventory stock below reorder point."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that a local notification alert for low stock is received."
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Customer Profile Real-Time Update and Phone Lookup",
+    "description": "Verify that changes to customer profiles and purchase history appear in real-time and phone-based lookup returns correct results.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Modify a customer's profile or purchase data in Firestore."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the app reflects updates in customer profile and analytics dashboards immediately."
+      },
+      {
+        "type": "action",
+        "description": "Search customer list using a valid phone number."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the correct customer profile is retrieved and displayed."
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "Analytics Dashboard KPI and Chart Rendering",
+    "description": "Verify KPIs and interactive charts load within 3 seconds and reflect real-time data accurately for all analytics cards.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the Analytics section from Home Dashboard."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the 7 KPI cards and charts are rendered fully within 3 seconds."
+      },
+      {
+        "type": "action",
+        "description": "Modify underlying data such as invoices or payments that impact KPIs."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm that analytics updates with real-time changes without delay or inconsistency."
+      },
+      {
+        "type": "action",
+        "description": "Use date range selectors to filter analytics data."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify charts and KPIs refresh properly according to selected ranges."
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Cross-Platform UI Responsiveness",
+    "description": "Verify the app UI maintains proper layout, color scheme, and minimum touch targets across Android, iOS, and Web platforms.",
+    "category": "ui",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Launch the app on Android, iOS, and Web environments."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that Material 3 design with navy and sage palette is consistent."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify all interactive elements meet minimum touch target sizes."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify layouts adapt properly on different screen sizes and orientations."
+      }
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "Local Notification Scheduling and Triggering",
+    "description": "Verify local notifications for inventory alerts and scheduled reminders trigger reliably at correct times.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Schedule a local notification setup for inventory reorder and invoice reminders."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that notifications trigger on device at correct scheduled times."
+      },
+      {
+        "type": "action",
+        "description": "Simulate real-time inventory changes causing immediate alerts."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm instantaneous notification reception for critical inventories."
+      }
+    ]
+  },
+  {
+    "id": "TC014",
+    "title": "CSV Data Migration Integrity",
+    "description": "Verify CSV import utility accurately migrates legacy invoice data without data loss and preserves audit trails.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Import a well-formed CSV file containing legacy invoice data."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify invoices are created in the system with correct fields and status."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify audit trails and associated data relations are preserved."
+      },
+      {
+        "type": "action",
+        "description": "Attempt importing a malformed or corrupted CSV file."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify error is reported and no partial data import occurs."
+      }
+    ]
+  },
+  {
+    "id": "TC015",
+    "title": "Firestore Data Isolation and Security Rules",
+    "description": "Verify Firestore security rules enforce multi-tenancy by preventing cross-user data access.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Attempt to query or modify invoices, customers, or inventory data belonging to another user."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify access is denied by Firestore security rules."
+      },
+      {
+        "type": "action",
+        "description": "Perform allowed reads and writes on authenticated user's own data."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify operations succeed without error."
+      }
+    ]
+  },
+  {
+    "id": "TC016",
+    "title": "Data Operation Atomicity and Error Handling",
+    "description": "Verify that invoice posting and stock updates are atomic and handle errors gracefully without exposing sensitive info.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Simulate network disruption or Firestore failure during invoice posting."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the operation rolls back any partial changes and shows user friendly error message."
+      },
+      {
+        "type": "action",
+        "description": "Attempt concurrent updates on inventory data."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm consistent data state with no race conditions or data corruption."
+      }
+    ]
+  },
+  {
+    "id": "TC017",
+    "title": "WhatsApp Payment Reminder Integration",
+    "description": "Verify that payment reminder messages can be sent correctly to customers via WhatsApp integration.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Select an unpaid invoice from customer profile."
+      },
+      {
+        "type": "action",
+        "description": "Trigger the WhatsApp payment reminder action."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that WhatsApp is opened or prompted with correct pre-filled payment reminder content."
+      }
+    ]
+  },
+  {
+    "id": "TC018",
+    "title": "User Session Auto Management",
+    "description": "Verify that user sessions are managed automatically with auto-login on app restart and logout clears session.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log into the app successfully."
+      },
+      {
+        "type": "action",
+        "description": "Close the app completely and reopen it."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the user is auto-logged in and routed to Home Dashboard."
+      },
+      {
+        "type": "action",
+        "description": "Perform a logout from the app."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify session is cleared and user is routed back to login screen."
+      }
+    ]
+  },
+  {
+    "id": "TC019",
+    "title": "Profile and Settings UI Consistency and Accessibility",
+    "description": "Verify that profile and settings screens follow Material 3 theming, maintain consistent UI, and meet accessibility standards.",
+    "category": "ui",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to Profile and Settings screens."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify all UI elements match navy and sage palette and Material 3 guidelines."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify text sizes, contrast ratios, and touch targets meet accessibility guidelines."
+      },
+      {
+        "type": "action",
+        "description": "Navigate using keyboard and screen readers."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify all interactive elements are accessible and navigable."
+      }
+    ]
+  }
+]

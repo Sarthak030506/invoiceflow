@@ -73,7 +73,7 @@ class InventoryProvider extends ChangeNotifier {
   Future<List<StockMovement>> _inventory_service_getMovementsSafe(String itemId) async {
     try {
       final ms = await _inventoryService.getMovementsByItem(itemId);
-      return ms ?? <StockMovement>[];
+      return ms;
     } catch (e) {
       debugPrint('Error fetching movements: $e');
       return <StockMovement>[];

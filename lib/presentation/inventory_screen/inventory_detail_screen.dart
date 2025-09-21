@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/inventory_provider.dart';
+import '../../models/stock_movement_model.dart';
 
-/// InventoryDetailScreen
-/// - Self-contained implementation that does not assume exact provider method names.
-/// - Uses dynamic calls and try/catch to support different provider APIs.
-/// - Local widgets for summary, info pills, movement tiles and sticky action bar.
-/// NOTE: Replace local widgets with your own if you prefer.
 class InventoryDetailScreen extends StatefulWidget {
   final String itemId;
 
@@ -34,9 +30,8 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
     _initAnimations();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // attempt to load item using common provider API names
-      final provider = Provider.of<dynamic>(context, listen: false);
-      _callProviderLoad(provider, widget.itemId);
+      final provider = Provider.of<InventoryProvider>(context, listen: false);
+      provider.load(widget.itemId);
     });
   }
 
@@ -74,376 +69,284 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
     _slideController.forward();
   }
 
-  // ------------------ provider-adapter helpers ------------------
-
-  Future<void> _callProviderLoad(dynamic provider, String itemId) async {
-    if (provider == null) return;
-    try {
-      // common variants
-      if (_hasMethod(provider, 'load')) {
-        await provider.load(itemId);
-        return;
-      }
-      if (_hasMethod(provider, 'loadItem')) {
-        await provider.loadItem(itemId);
-        return;
-      }
-      if (_hasMethod(provider, 'fetchItem')) {
-        await provider.fetchItem(itemId);
-        return;
-      }
-      // fallback no-op
-      // print warning for developer
-      // ignore: avoid_print
-      print('Warning: provider has no load/loadItem/fetchItem method. Provide one or call load before opening screen.');
-    } catch (e) {
-      // ignore runtime errors here, but print for debugging
-      // ignore: avoid_print
-      print('Error calling provider load: $e');
-    }
-  }
-
-  bool _hasMethod(dynamic object, String name) {
-    // best-effort: check typical members on common provider shapes
-    // This is not reflection but a safe best-effort check using try/catch.
-    try {
-      final v = object.toJson; // just to touch object (may not exist)
-      // ignore: avoid_returning_null
-      return true; // not a real check; we'll rely on try/catch when calling.
-    } catch (_) {
-      // still allow; we will catch on call
-      return true;
-    }
-  }
-
-  // robust wrapper to attempt many method names for actions
-  Future<void> _safeReceive(dynamic provider, double qty, double unitCost, {String? note}) async {
-    if (provider == null) throw Exception('Provider not found');
-    // try multiple common method names
-    final attempts = <Future<void> Function()>[
-      () async => await provider.receive(qty, unitCost),
-      () async => await provider.receiveStock(widget.itemId, qty, unitCost),
-      () async => await provider.addStock(widget.itemId, qty, unitCost),
-      () async => await provider.updateStock(widget.itemId, qty, 'IN'),
-    ];
-    await _runAttempts(attempts, 'receive');
-  }
-
-  Future<void> _safeIssue(dynamic provider, double qty, {String? note}) async {
-    if (provider == null) throw Exception('Provider not found');
-    final attempts = <Future<void> Function()>[
-      () async => await provider.issue(qty),
-      () async => await provider.issueStock(widget.itemId, qty),
-      () async => await provider.removeStock(widget.itemId, qty),
-      () async => await provider.updateStock(widget.itemId, -qty, 'OUT'),
-    ];
-    await _runAttempts(attempts, 'issue');
-  }
-
-  Future<void> _safeAdjust(dynamic provider, double qty, {String? reason}) async {
-    if (provider == null) throw Exception('Provider not found');
-    final attempts = <Future<void> Function()>[
-      () async => await provider.adjust(qty, reason),
-      () async => await provider.adjustStock(widget.itemId, qty, reason),
-      () async => await provider.updateStock(widget.itemId, qty, 'ADJUST'),
-    ];
-    await _runAttempts(attempts, 'adjust');
-  }
-
-  Future<void> _runAttempts(List<Future<void> Function()> attempts, String name) async {
-    Exception? last;
-    for (final attempt in attempts) {
-      try {
-        await attempt();
-        return; // success
-      } catch (e) {
-        last = Exception('$name attempt failed: $e');
-        continue;
-      }
-    }
-    throw last ?? Exception('No $name attempts provided');
-  }
-
-  // updateItem fallback
-  Future<void> _safeUpdateItem(dynamic provider, Map<String, dynamic> updates) async {
-    if (provider == null) throw Exception('Provider not found');
-    final attempts = <Future<void> Function()>[
-      () async => await provider.updateItem(updates),
-      () async => await provider.saveItem(updates),
-      () async => await provider.editItem(updates),
-    ];
-    await _runAttempts(attempts, 'updateItem');
-  }
-
-  // ------------------ UI & flows ------------------
-
   @override
   Widget build(BuildContext context) {
-    // we expect a Provider to exist. Use 'dynamic' so file compiles even if provider methods differ.
-    final provider = Provider.of<dynamic>(context);
+    return Consumer<InventoryProvider>(
+      builder: (context, provider, child) {
+        // Start animations once when data appears
+        if (!_animationsStarted && provider.title.isNotEmpty) {
+          _animationsStarted = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) => _startAnimations(provider.currentStock, provider.inventoryValue));
+        }
 
-    // retrieve item info defensively (many app providers use different fields)
-    final title = _getProviderField(provider, ['title', 'name', 'itemName', 'currentItem?.name']);
-    final sku = _getProviderField(provider, ['sku', 'code', 'currentItem?.sku']);
-    final unit = _getProviderField(provider, ['unit', 'uom']) ?? 'pcs';
-    final category = _getProviderField(provider, ['category']) ?? 'General';
-    final barcode = _getProviderField(provider, ['barcode']) ?? '';
-    final reorderPointRaw = _getProviderField(provider, ['reorderPoint', 'reorder'], fallbackNumeric: true);
-    final currentStockRaw = _getProviderField(provider, ['currentStock', 'stock', 'quantity'], fallbackNumeric: true);
-    final avgCostRaw = _getProviderField(provider, ['avgCost', 'averageCost', 'cost'], fallbackNumeric: true);
-    final inventoryValueRaw = _getProviderField(provider, ['inventoryValue', 'value'], fallbackNumeric: true);
+        if (provider.isLoading) {
+          return Scaffold(
+            appBar: AppBar(
+              title: Text('Loading...'),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Colors.white,
+            ),
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-    final reorderPoint = (reorderPointRaw is num) ? reorderPointRaw.toDouble() : double.tryParse('$reorderPointRaw') ?? 0.0;
-    final currentStock = (currentStockRaw is num) ? currentStockRaw.toDouble() : double.tryParse('$currentStockRaw') ?? 0.0;
-    final avgCost = (avgCostRaw is num) ? avgCostRaw.toDouble() : double.tryParse('$avgCostRaw') ?? 0.0;
-    final inventoryValue = (inventoryValueRaw is num) ? inventoryValueRaw.toDouble() : double.tryParse('$inventoryValueRaw') ?? 0.0;
-
-    // Movements list retrieval: try provider.movements or provider.currentItem?.movements
-    final rawMovements = _getProviderField(provider, ['movements', 'currentItem?.movements', 'movementList']) ?? <dynamic>[];
-    final movements = (rawMovements is List) ? rawMovements : <dynamic>[];
-
-    // start animations once when data appears
-    if (!_animationsStarted && (title != null)) {
-      _animationsStarted = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _startAnimations(currentStock, inventoryValue));
-    }
-
-    // Bottom action bar height for calculations
-    const double bottomBarHeight = 80.0;
-    
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Row(
+        if (provider.title.isEmpty) {
+          return Scaffold(
+            appBar: AppBar(
+              title: Text('Item Not Found'),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Colors.white,
+            ),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                  Icon(Icons.error_outline, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('Item not found', style: Theme.of(context).textTheme.titleLarge),
+                  SizedBox(height: 8),
+                  Text('The requested item could not be loaded.'),
+                ],
+              ),
+            ),
+          );
+        }
+
+        const double bottomBarHeight = 80.0;
+        
+        return Scaffold(
+          body: SafeArea(
+            child: Column(
+              children: [
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.arrow_back),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              provider.title,
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              provider.sku,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => _showEditDialog(provider),
+                        icon: const Icon(Icons.edit_outlined),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      IconButton(
+                        onPressed: () => _showBarcodeDialog(provider),
+                        icon: const Icon(Icons.qr_code_2),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Expanded(
+                ),
+                // Main scrollable content
+                Expanded(
+                  child: SingleChildScrollView(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          title ?? 'Item',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                overflow: TextOverflow.ellipsis,
+                        // Summary card
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          child: SlideTransition(
+                            position: _slideAnimation,
+                            child: FadeTransition(
+                              opacity: _fadeAnimation,
+                              child: _buildSummaryCard(context, provider),
+                            ),
+                          ),
+                        ),
+
+                        // Info pills
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).cardColor,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
                               ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                            ],
+                          ),
+                          child: Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              _infoPill(icon: Icons.category_outlined, label: 'Category', value: provider.category),
+                              _infoPill(icon: Icons.straighten, label: 'Unit', value: provider.unit),
+                              _infoPill(icon: Icons.notification_important_outlined, label: 'Reorder', value: provider.reorderPoint.toInt().toString()),
+                              _infoPill(icon: Icons.qr_code, label: 'Barcode', value: provider.barcode.isEmpty ? 'Not set' : provider.barcode),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          sku ?? '',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+
+                        const SizedBox(height: 24),
+
+                        // Movements header
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Recent Movements',
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.9),
+                                    ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Filters
+                              SizedBox(
+                                height: 40,
+                                child: ListView.separated(
+                                  physics: const BouncingScrollPhysics(),
+                                  scrollDirection: Axis.horizontal,
+                                  itemBuilder: (c, i) {
+                                    final label = _filters[i];
+                                    final selected = label == _selectedFilter;
+                                    return ChoiceChip(
+                                      label: Text(
+                                        label,
+                                        style: TextStyle(
+                                          color: selected ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                                          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                                        ),
+                                      ),
+                                      selected: selected,
+                                      onSelected: (v) => setState(() => _selectedFilter = v ? label : 'All'),
+                                      backgroundColor: Colors.transparent,
+                                      side: BorderSide(
+                                        color: selected ? Theme.of(context).primaryColor : Colors.grey[300]!,
+                                        width: selected ? 0 : 1,
+                                      ),
+                                      selectedColor: Theme.of(context).primaryColor,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                                      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                                    );
+                                  },
+                                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                  itemCount: _filters.length,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+
+                        // Movement list or empty state
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: provider.movements.isEmpty ? _emptyMovementState() : _buildMovementList(provider),
+                        ),
+                        const SizedBox(height: 24),
                       ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => _showEditDialog(provider),
-                    icon: const Icon(Icons.edit_outlined),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                ),
+                // Bottom action bar
+                Container(
+                  height: bottomBarHeight,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    onPressed: () => _showBarcodeDialog(provider),
-                    icon: const Icon(Icons.qr_code_2),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-            ),
-            // Main scrollable content
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // summary card with improved spacing
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: SlideTransition(
-                        position: _slideAnimation,
-                        child: FadeTransition(
-                          opacity: _fadeAnimation,
-                          child: _buildSummaryCard(context, currentStock, reorderPoint, avgCost, inventoryValue, unit),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _openStockForm(context, provider, 'receive'),
+                          icon: const Icon(Icons.add_business_outlined, size: 20),
+                          label: const Text('Receive'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
                         ),
                       ),
-                    ),
-
-                    // info pills with better spacing
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _openStockForm(context, provider, 'issue'),
+                          icon: const Icon(Icons.remove_circle_outline, size: 20),
+                          label: const Text('Issue'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            backgroundColor: Colors.green[600],
+                            foregroundColor: Colors.white,
                           ),
-                        ],
+                        ),
                       ),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          _infoPill(icon: Icons.category_outlined, label: 'Category', value: category),
-                          _infoPill(icon: Icons.straighten, label: 'Unit', value: unit),
-                          _infoPill(icon: Icons.notification_important_outlined, label: 'Reorder', value: reorderPoint.toInt().toString()),
-                          _infoPill(icon: Icons.qr_code, label: 'Barcode', value: barcode.isEmpty ? 'Not set' : barcode),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // movements header with improved spacing
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Recent Movements',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.9),
-                                ),
+                      const SizedBox(width: 10),
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: IconButton(
+                          onPressed: () => _openStockForm(context, provider, 'adjust'),
+                          icon: const Icon(Icons.tune, size: 22),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.grey[100],
+                            padding: const EdgeInsets.all(12),
                           ),
-                          const SizedBox(height: 12),
-                          // filters with better visual treatment
-                          SizedBox(
-                            height: 40,
-                            child: ListView.separated(
-                              physics: const BouncingScrollPhysics(),
-                              scrollDirection: Axis.horizontal,
-                              itemBuilder: (c, i) {
-                                final label = _filters[i];
-                                final selected = label == _selectedFilter;
-                                return ChoiceChip(
-                                  label: Text(
-                                    label,
-                                    style: TextStyle(
-                                      color: selected ? Colors.white : Theme.of(context).colorScheme.onSurface,
-                                      fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                                    ),
-                                  ),
-                                  selected: selected,
-                                  onSelected: (v) => setState(() => _selectedFilter = v ? label : 'All'),
-                                  backgroundColor: Colors.transparent,
-                                  side: BorderSide(
-                                    color: selected ? Theme.of(context).primaryColor : Colors.grey[300]!,
-                                    width: selected ? 0 : 1,
-                                  ),
-                                  selectedColor: Theme.of(context).primaryColor,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                                  labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-                                );
-                              },
-                              separatorBuilder: (_, __) => const SizedBox(width: 8),
-                              itemCount: _filters.length,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-
-                    // movement list or empty state
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: movements.isEmpty ? _emptyMovementState() : _buildMovementList(movements),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              ],
             ),
-            // Bottom action bar
-            Container(
-              height: bottomBarHeight,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _openStockForm(context, provider, 'receive'),
-                      icon: const Icon(Icons.add_business_outlined, size: 20),
-                      label: const Text('Receive'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _openStockForm(context, provider, 'issue'),
-                      icon: const Icon(Icons.remove_circle_outline, size: 20),
-                      label: const Text('Issue'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        backgroundColor: Colors.green[600],
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                    child: IconButton(
-                      onPressed: () => _openStockForm(context, provider, 'adjust'),
-                      icon: const Icon(Icons.tune, size: 22),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.grey[100],
-                        padding: const EdgeInsets.all(12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  // ------------------ small local widgets ------------------
-
-  Widget _buildSummaryCard(BuildContext context, double stock, double reorder, double avgCost, double invValue, String unit) {
+  Widget _buildSummaryCard(BuildContext context, InventoryProvider provider) {
     final theme = Theme.of(context);
-    final low = stock <= reorder;
+    final low = provider.currentStock <= provider.reorderPoint;
     
     return Container(
       decoration: BoxDecoration(
@@ -500,7 +403,7 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
                       builder: (context, child) {
                         final val = _stockAnimation.value;
                         return Text(
-                          '${val.toInt()} $unit',
+                          '${val.toInt()} ${provider.unit}',
                           style: theme.textTheme.headlineSmall?.copyWith(
                             color: Theme.of(context).primaryColor,
                             fontWeight: FontWeight.bold,
@@ -519,7 +422,7 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Reorder at ${reorder.toInt()}',
+                      'Reorder at ${provider.reorderPoint.toInt()}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.hintColor.withOpacity(0.8),
                         fontSize: 13,
@@ -541,7 +444,7 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '₹${avgCost.toStringAsFixed(2)}',
+                      '₹${provider.avgCost.toStringAsFixed(2)}',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: theme.colorScheme.onSurface,
@@ -583,77 +486,135 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
     return Container(
       width: (MediaQuery.of(context).size.width - 56) / 2,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade200)),
-      child: Row(children: [
-        Icon(icon, size: 18, color: Colors.grey[700]), const SizedBox(width: 10),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)), const SizedBox(height: 4), Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))])),
-      ]),
+      decoration: BoxDecoration(
+        color: Colors.grey[50], 
+        borderRadius: BorderRadius.circular(10), 
+        border: Border.all(color: Colors.grey.shade200)
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.grey[700]), 
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, 
+              children: [
+                Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)), 
+                const SizedBox(height: 4), 
+                Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))
+              ]
+            )
+          ),
+        ]
+      ),
     );
   }
 
   Widget _emptyMovementState() {
     return Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(children: [Icon(Icons.history, size: 56, color: Colors.grey[300]), const SizedBox(height: 12), Text('No movements yet — perform Receive, Issue or Adjust.', style: TextStyle(color: Colors.grey[700]), textAlign: TextAlign.center)]),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      child: Column(
+        children: [
+          Icon(Icons.history, size: 56, color: Colors.grey[300]), 
+          const SizedBox(height: 12), 
+          Text('No movements yet — perform Receive, Issue or Adjust.', 
+            style: TextStyle(color: Colors.grey[700]), 
+            textAlign: TextAlign.center
+          )
+        ]
+      ),
     );
   }
 
-  Widget _buildMovementList(List<dynamic> movements) {
-    final filtered = _getFilteredMovements(movements);
+  Widget _buildMovementList(InventoryProvider provider) {
+    final filtered = _getFilteredMovements(provider.movements);
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: filtered.length,
-      itemBuilder: (c, i) => _movementTile(filtered[i]),
+      itemBuilder: (c, i) => _movementTile(filtered[i], provider),
       separatorBuilder: (_, __) => Divider(height: 1, indent: 16, endIndent: 16, color: Colors.grey[200]),
     );
   }
 
-  Widget _movementTile(dynamic m) {
-    final type = _getField(m, ['type', 'movementType', 'txnType'])?.toString() ?? 'adjust';
-    final qty = _getField(m, ['quantity', 'qty']) ?? 0;
-    final created = _getField(m, ['createdAt', 'created', 'date']);
-    final note = _getField(m, ['note', 'notes', 'reason']) ?? '';
-    final src = _getField(m, ['sourceType', 'source'])?.toString() ?? '';
+  Widget _movementTile(dynamic movement, InventoryProvider provider) {
+    final rawType = movement.type;
+    final typeKey = _typeKey(rawType);
+    final qty = movement.quantity ?? 0;
+    final created = movement.createdAt;
+    final note = movement.note ?? '';
 
     Color badgeColor = Colors.grey;
-    if (type.toUpperCase().contains('IN')) badgeColor = Colors.green;
-    if (type.toUpperCase().contains('OUT')) badgeColor = Colors.blue;
-    if (type.toUpperCase().contains('ADJUST')) badgeColor = Colors.grey;
+    if (typeKey.contains('IN')) badgeColor = Colors.green;
+    if (typeKey.contains('OUT')) badgeColor = Colors.blue;
+    if (typeKey.contains('ADJUST')) badgeColor = Colors.grey;
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ListTile(
-        leading: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), decoration: BoxDecoration(color: badgeColor.withOpacity(0.12), borderRadius: BorderRadius.circular(8)), child: Text(type, style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 11))),
-        title: Text('${qty.toInt()} ${_getProviderField(Provider.of<dynamic>(context, listen: false), ['unit'], fallbackNumeric: false) ?? 'pcs'} - ${_movementTitle(type)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_movementSubtitle(created)), if (note.isNotEmpty) Text(note, style: const TextStyle(color: Colors.grey))]),
-        trailing: src.isNotEmpty ? Text(src, style: const TextStyle(fontSize: 12, color: Colors.grey)) : null,
+        leading: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), 
+          decoration: BoxDecoration(
+            color: badgeColor.withOpacity(0.12), 
+            borderRadius: BorderRadius.circular(8)
+          ), 
+          child: Text(typeKey.replaceAll('_', ' '), style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 11))
+        ),
+        title: Text('${qty.toInt()} ${provider.unit} - ${_movementTitle(typeKey)}', 
+          style: const TextStyle(fontWeight: FontWeight.w600)
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, 
+          children: [
+            Text(_movementSubtitle(created)), 
+            if (note.isNotEmpty) Text(note, style: const TextStyle(color: Colors.grey))
+          ]
+        ),
       ),
     );
   }
 
-  String _movementTitle(String type) {
-    final t = type.toUpperCase();
+  String _typeKey(dynamic type) {
+    if (type == null) return '';
+    // Normalize to a simple upper-case key like 'IN', 'OUT', 'ADJUSTMENT', 'RETURN_IN'
+    final s = type.toString();
+    // If enum, toString returns 'EnumName.value'
+    final dot = s.lastIndexOf('.');
+    final raw = dot != -1 ? s.substring(dot + 1) : s;
+    return raw.toUpperCase();
+  }
+
+  String _movementTitle(dynamic type) {
+    final t = _typeKey(type);
     if (t.contains('IN')) return 'Receive';
     if (t.contains('OUT')) return 'Issue';
     if (t.contains('ADJUST')) return 'Adjustment';
     return 'Movement';
   }
 
-  String _movementSubtitle(dynamic created) {
-    if (created is DateTime) {
-      final d = created;
-      return '${d.day}/${d.month}/${d.year} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  String _movementSubtitle(DateTime? created) {
+    if (created != null) {
+      return '${created.day}/${created.month}/${created.year} ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}';
     }
-    return created?.toString() ?? '';
+    return '';
   }
 
-  // ------------------ action forms ------------------
+  List<dynamic> _getFilteredMovements(List<dynamic> movements) {
+    if (_selectedFilter == 'All') return movements;
+    final up = _selectedFilter.toUpperCase();
+    return movements.where((m) {
+      final t = _typeKey(m.type);
+      if (up == 'IN') return t.contains('IN');
+      if (up == 'OUT') return t.contains('OUT');
+      if (up == 'ADJUST') return t.contains('ADJUST');
+      return true;
+    }).toList();
+  }
 
-  void _openStockForm(BuildContext context, dynamic provider, String type) {
+  void _openStockForm(BuildContext context, InventoryProvider provider, String type) {
     final qtyController = TextEditingController(text: '1');
-    final costController = TextEditingController(text: _getProviderField(provider, ['avgCost', 'cost', 'averageCost'])?.toString() ?? '0');
+    final costController = TextEditingController(text: provider.avgCost.toString());
     final reasonController = TextEditingController();
     final noteController = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -665,28 +626,52 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
         padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
         child: Form(
           key: formKey,
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${type.toUpperCase()} Stock', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            TextFormField(controller: qtyController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantity *', border: const OutlineInputBorder()), validator: (v) => (double.tryParse(v ?? '') == null || double.parse(v!) <= 0) ? 'Enter positive quantity' : null),
-            if (type == 'receive') ...[
+          child: Column(
+            mainAxisSize: MainAxisSize.min, 
+            crossAxisAlignment: CrossAxisAlignment.start, 
+            children: [
+              Text('${type.toUpperCase()} Stock', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: qtyController, 
+                keyboardType: TextInputType.number, 
+                decoration: InputDecoration(labelText: 'Quantity *', border: const OutlineInputBorder()), 
+                validator: (v) => (double.tryParse(v ?? '') == null || double.parse(v!) <= 0) ? 'Enter positive quantity' : null
+              ),
+              if (type == 'receive') ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: costController, 
+                  keyboardType: TextInputType.number, 
+                  decoration: const InputDecoration(labelText: 'Unit cost *', border: OutlineInputBorder(), prefixText: '₹'), 
+                  validator: (v) => (double.tryParse(v ?? '') == null || double.parse(v!) < 0) ? 'Enter valid cost' : null
+                ),
+              ],
+              if (type == 'adjust') ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: reasonController, 
+                  decoration: const InputDecoration(labelText: 'Reason *', border: OutlineInputBorder()), 
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Reason required' : null
+                ),
+              ],
               const SizedBox(height: 12),
-              TextFormField(controller: costController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Unit cost *', border: OutlineInputBorder(), prefixText: '₹'), validator: (v) => (double.tryParse(v ?? '') == null || double.parse(v!) < 0) ? 'Enter valid cost' : null),
-            ],
-            if (type == 'adjust') ...[
-              const SizedBox(height: 12),
-              TextFormField(controller: reasonController, decoration: const InputDecoration(labelText: 'Reason *', border: OutlineInputBorder()), validator: (v) => (v == null || v.trim().isEmpty) ? 'Reason required' : null),
-            ],
-            const SizedBox(height: 12),
-            TextFormField(controller: noteController, maxLines: 2, decoration: const InputDecoration(labelText: 'Note (optional)', border: OutlineInputBorder())),
-            const SizedBox(height: 18),
-            Row(children: [
-              Expanded(child: TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel'))),
-              const SizedBox(width: 12),
-              Expanded(child: ElevatedButton(onPressed: () => _submitStockForm(ctx, provider, type, formKey, qtyController, costController, reasonController, noteController), child: const Text('Confirm'))),
-            ]),
-            const SizedBox(height: 8),
-          ]),
+              TextFormField(
+                controller: noteController, 
+                maxLines: 2, 
+                decoration: const InputDecoration(labelText: 'Note (optional)', border: OutlineInputBorder())
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(child: TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel'))),
+                  const SizedBox(width: 12),
+                  Expanded(child: ElevatedButton(onPressed: () => _submitStockForm(ctx, provider, type, formKey, qtyController, costController, reasonController, noteController), child: const Text('Confirm'))),
+                ]
+              ),
+              const SizedBox(height: 8),
+            ]
+          ),
         ),
       ),
     );
@@ -694,7 +679,7 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
 
   Future<void> _submitStockForm(
     BuildContext ctx,
-    dynamic provider,
+    InventoryProvider provider,
     String type,
     GlobalKey<FormState> formKey,
     TextEditingController qtyController,
@@ -708,67 +693,41 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
     final reason = reasonController.text.trim();
     final note = noteController.text.trim();
 
-    final prevStockRaw = _getProviderField(provider, ['currentStock', 'stock', 'quantity']);
-    final prevStock = (prevStockRaw is num) ? prevStockRaw.toDouble() : double.tryParse('$prevStockRaw') ?? 0.0;
+    final prevStock = provider.currentStock;
 
     Navigator.pop(ctx); // close modal while processing
 
     try {
       if (type == 'receive') {
-        await _safeReceive(provider, q, cost, note: note);
+        await provider.receive(q, cost, note: note);
       } else if (type == 'issue') {
-        await _safeIssue(provider, q, note: note);
+        await provider.issue(q, note: note);
       } else {
-        await _safeAdjust(provider, q, reason: reason);
+        await provider.adjust(q, reason);
       }
 
-      // show snackbar with undo
-      final newStockRaw = _getProviderField(provider, ['currentStock', 'stock', 'quantity']);
-      final newStock = (newStockRaw is num) ? newStockRaw.toDouble() : double.tryParse('$newStockRaw') ?? prevStock;
+      final newStock = provider.currentStock;
       final delta = newStock - prevStock;
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${type.toUpperCase()} completed. Stock: ${newStock.toInt()} (${delta >= 0 ? '+' : ''}${delta.toInt()})'),
-        action: SnackBarAction(label: 'Undo', onPressed: () async {
-          try {
-            // best-effort undo
-            if (type == 'receive') {
-              await _safeIssue(provider, q, note: 'Undo receive');
-            } else if (type == 'issue') {
-              await _safeReceive(provider, q, cost, note: 'Undo issue');
-            } else {
-              // revert adjust by opposite
-              await _safeAdjust(provider, -q, reason: 'Undo adjust');
-            }
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Undo successful')));
-          } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Undo failed: $e'), backgroundColor: Colors.red));
-          }
-        }),
-        duration: const Duration(seconds: 6),
+        duration: const Duration(seconds: 3),
       ));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error: ${e.toString()}'), 
+        backgroundColor: Colors.red
+      ));
     }
   }
 
-  // ------------------ edit & barcode dialogs ------------------
-
-  void _showEditDialog(dynamic provider) {
-    // gather existing values defensively
-    final name = _getProviderField(provider, ['title', 'name', 'currentItem?.name'])?.toString() ?? '';
-    final sku = _getProviderField(provider, ['sku', 'code', 'currentItem?.sku'])?.toString() ?? '';
-    final unit = _getProviderField(provider, ['unit'])?.toString() ?? 'pcs';
-    final category = _getProviderField(provider, ['category'])?.toString() ?? 'General';
-    final reorder = _getProviderField(provider, ['reorderPoint', 'reorder'])?.toString() ?? '0';
-    final barcode = _getProviderField(provider, ['barcode'])?.toString() ?? '';
-
-    final nameCtrl = TextEditingController(text: name);
-    final skuCtrl = TextEditingController(text: sku);
-    final unitCtrl = TextEditingController(text: unit);
-    final catCtrl = TextEditingController(text: category);
-    final reorderCtrl = TextEditingController(text: reorder);
-    final barcodeCtrl = TextEditingController(text: barcode);
+  void _showEditDialog(InventoryProvider provider) {
+    final nameCtrl = TextEditingController(text: provider.title);
+    final skuCtrl = TextEditingController(text: provider.sku);
+    final unitCtrl = TextEditingController(text: provider.unit);
+    final catCtrl = TextEditingController(text: provider.category);
+    final reorderCtrl = TextEditingController(text: provider.reorderPoint.toString());
+    final barcodeCtrl = TextEditingController(text: provider.barcode);
     final formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -778,19 +737,22 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
         content: SingleChildScrollView(
           child: Form(
             key: formKey,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
-              const SizedBox(height: 8),
-              TextFormField(controller: skuCtrl, decoration: const InputDecoration(labelText: 'SKU'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
-              const SizedBox(height: 8),
-              TextFormField(controller: unitCtrl, decoration: const InputDecoration(labelText: 'Unit'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
-              const SizedBox(height: 8),
-              TextFormField(controller: catCtrl, decoration: const InputDecoration(labelText: 'Category')),
-              const SizedBox(height: 8),
-              TextFormField(controller: reorderCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Reorder Point')),
-              const SizedBox(height: 8),
-              TextFormField(controller: barcodeCtrl, decoration: const InputDecoration(labelText: 'Barcode (optional)')),
-            ]),
+            child: Column(
+              mainAxisSize: MainAxisSize.min, 
+              children: [
+                TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
+                const SizedBox(height: 8),
+                TextFormField(controller: skuCtrl, decoration: const InputDecoration(labelText: 'SKU'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
+                const SizedBox(height: 8),
+                TextFormField(controller: unitCtrl, decoration: const InputDecoration(labelText: 'Unit'), validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
+                const SizedBox(height: 8),
+                TextFormField(controller: catCtrl, decoration: const InputDecoration(labelText: 'Category')),
+                const SizedBox(height: 8),
+                TextFormField(controller: reorderCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Reorder Point')),
+                const SizedBox(height: 8),
+                TextFormField(controller: barcodeCtrl, decoration: const InputDecoration(labelText: 'Barcode (optional)')),
+              ]
+            ),
           ),
         ),
         actions: [
@@ -798,18 +760,16 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
           ElevatedButton(
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
-              // prepare updates map
-              final updates = <String, dynamic>{
-                'title': nameCtrl.text.trim(),
-                'sku': skuCtrl.text.trim(),
-                'unit': unitCtrl.text.trim(),
-                'category': catCtrl.text.trim(),
-                'reorderPoint': double.tryParse(reorderCtrl.text) ?? 0,
-                'barcode': barcodeCtrl.text.trim(),
-              };
               Navigator.pop(ctx);
               try {
-                await _safeUpdateItem(provider, updates);
+                await provider.updateItem(
+                  title: nameCtrl.text.trim(),
+                  sku: skuCtrl.text.trim(),
+                  unit: unitCtrl.text.trim(),
+                  category: catCtrl.text.trim(),
+                  reorderPoint: double.tryParse(reorderCtrl.text) ?? 0,
+                  barcode: barcodeCtrl.text.trim(),
+                );
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Item updated')));
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Update failed: $e'), backgroundColor: Colors.red));
@@ -822,9 +782,8 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
     );
   }
 
-  void _showBarcodeDialog(dynamic provider) {
-    final currentBarcode = _getProviderField(provider, ['barcode'])?.toString() ?? '';
-    final barcodeCtrl = TextEditingController(text: currentBarcode);
+  void _showBarcodeDialog(InventoryProvider provider) {
+    final barcodeCtrl = TextEditingController(text: provider.barcode);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -835,9 +794,15 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              final updates = {'barcode': barcodeCtrl.text.trim()};
               try {
-                await _safeUpdateItem(Provider.of<dynamic>(context, listen: false), updates);
+                await provider.updateItem(
+                  title: provider.title,
+                  sku: provider.sku,
+                  unit: provider.unit,
+                  category: provider.category,
+                  reorderPoint: provider.reorderPoint,
+                  barcode: barcodeCtrl.text.trim(),
+                );
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Barcode saved')));
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: Colors.red));
@@ -848,104 +813,5 @@ class _InventoryDetailScreenState extends State<InventoryDetailScreen> with Tick
         ],
       ),
     );
-  }
-
-  // ------------------ small helpers to read dynamic fields ------------------
-
-  dynamic _getProviderField(dynamic provider, List<String> keys, {bool fallbackNumeric = false}) {
-    if (provider == null) return null;
-    try {
-      // Common direct fields
-      for (final k in keys) {
-        if (k.contains('?.')) {
-          // handle "currentItem?.name" style
-          final parts = k.split('?.');
-          var obj = provider;
-          var ok = true;
-          for (final p in parts) {
-            try {
-              obj = obj is Map ? obj[p] : (obj?.toJson != null ? obj[p] : (obj?.toMap != null ? obj[p] : (obj?.runtimeType.toString()))); // best-effort
-            } catch (_) {
-              ok = false;
-              break;
-            }
-            if (obj == null) {
-              ok = false;
-              break;
-            }
-          }
-          if (ok && obj != null) return obj;
-        } else {
-          try {
-            // try property access (dynamic)
-            final v = provider is Map ? provider[k] : provider?.toJson != null ? provider[k] : provider[k];
-            if (v != null) return v;
-          } catch (_) {
-            // fallback to Map-like access
-            try {
-              final v2 = provider is Map ? provider[k] : null;
-              if (v2 != null) return v2;
-            } catch (_) {}
-          }
-        }
-      }
-
-      // If provider has currentItem Map
-      try {
-        final cur = provider.currentItem ?? provider.item ?? provider.data;
-        if (cur != null) {
-          for (final k in keys) {
-            if (cur is Map && cur.containsKey(k)) return cur[k];
-            try {
-              final v = cur[k];
-              if (v != null) return v;
-            } catch (_) {}
-          }
-        }
-      } catch (_) {}
-
-      // if fallback numeric requested
-      if (fallbackNumeric) return 0.0;
-    } catch (_) {}
-    return null;
-  }
-
-  dynamic _getField(dynamic obj, List<String> keys) {
-    if (obj == null) return null;
-    try {
-      if (obj is Map) {
-        for (final k in keys) {
-          if (obj.containsKey(k)) return obj[k];
-        }
-      } else {
-        for (final k in keys) {
-          try {
-            final v = obj[k];
-            if (v != null) return v;
-          } catch (_) {}
-        }
-      }
-      // try properties
-      try {
-        for (final k in keys) {
-          final v = (obj as dynamic).toJson != null ? obj[k] : (obj as dynamic)[k];
-          if (v != null) return v;
-        }
-      } catch (_) {}
-    } catch (_) {}
-    return null;
-  }
-
-  // filter movements by chip
-  List<dynamic> _getFilteredMovements(List<dynamic> movs) {
-    if (_selectedFilter == 'All') return movs;
-    final up = _selectedFilter.toUpperCase();
-    return movs.where((m) {
-      final t = _getField(m, ['type', 'movementType', 'txnType'])?.toString().toUpperCase() ?? '';
-      if (up == 'IN') return t.contains('IN');
-      if (up == 'OUT') return t.contains('OUT');
-      if (up == 'ADJUST') return t.contains('ADJUST');
-      return true;
-    }).toList();
   }
 }

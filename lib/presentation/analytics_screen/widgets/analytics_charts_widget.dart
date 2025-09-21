@@ -213,8 +213,6 @@ class AnalyticsChartsWidget extends StatelessWidget {
                         barTouchData: BarTouchData(
                           enabled: true,
                           touchTooltipData: BarTouchTooltipData(
-                            tooltipBgColor: Theme.of(context).colorScheme.primary,
-                            tooltipRoundedRadius: 8,
                             getTooltipItem: (group, groupIndex, rod, rodIndex) {
                               final revenue = rod.toY;
                               return BarTooltipItem(
