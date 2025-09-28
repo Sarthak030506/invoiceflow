@@ -29,4 +29,25 @@ class AppScaling {
   );
   static const EdgeInsets cardPadding2 = EdgeInsets.all(14.0);
   static const EdgeInsets sectionMargin = EdgeInsets.symmetric(vertical: 8.0);
+
+  // Opacity values
+  static const double maxOpacity = 1.0;
+  static const double minOpacity = 0.0;
+  static const double highEmphasis = 0.87;
+  static const double mediumEmphasis = 0.60;
+  static const double lowEmphasis = 0.38;
+  static const double disabled = 0.38;
+  
+  // Utility methods
+  static double clampOpacity(double value) {
+    return value.clamp(minOpacity, maxOpacity);
+  }
+  
+  static Color withOpacity(Color color, double opacity) {
+    return color.withOpacity(clampOpacity(opacity));
+  }
+  
+  static Color emphasize(Color color, {double emphasis = highEmphasis}) {
+    return color.withOpacity(clampOpacity(emphasis));
+  }
 }

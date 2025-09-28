@@ -22,14 +22,22 @@ class CustomImageWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // If no imageUrl provided, show fallback asset directly
+    if (imageUrl == null || imageUrl!.isEmpty) {
+      return errorWidget ??
+          Image.asset(
+            "assets/images/no-image.jpg",
+            fit: fit,
+            width: width,
+            height: height,
+          );
+    }
+
     return CachedNetworkImage(
-      imageUrl: imageUrl ??
-          'https://images.unsplash.com/photo-1584824486509-112e4181ff6b?q=80&w=2940&auto=format&fit=crop',
+      imageUrl: imageUrl!,
       width: width,
       height: height,
       fit: fit,
-
-      // Use caller-supplied widget if provided, else fallback asset.
       errorWidget: (context, url, error) =>
           errorWidget ??
           Image.asset(
@@ -38,7 +46,6 @@ class CustomImageWidget extends StatelessWidget {
             width: width,
             height: height,
           ),
-
       placeholder: (context, url) => Container(
         width: width,
         height: height,

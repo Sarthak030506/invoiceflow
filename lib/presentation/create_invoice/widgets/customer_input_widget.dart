@@ -5,6 +5,7 @@ import 'package:sizer/sizer.dart';
 import '../../../core/app_export.dart';
 import '../../../models/customer_model.dart';
 import '../../../services/customer_service.dart';
+import '../../../services/contact_picker_service.dart';
 
 class CustomerInputWidget extends StatefulWidget {
   final String? initialName;
@@ -130,6 +131,27 @@ class _CustomerInputWidgetState extends State<CustomerInputWidget> {
     }
   }
   
+  Future<void> _pickFromContacts() async {
+    print('CustomerInputWidget: Pick from contacts button pressed');
+    final ContactModel? selectedContact = await ContactPickerService.pickContact();
+    print('CustomerInputWidget: Selected contact: ${selectedContact?.name}');
+    
+    if (selectedContact != null) {
+      setState(() {
+        _nameController.text = selectedContact.name;
+        _phoneController.text = selectedContact.phoneNumber;
+        _isPhoneValid = true;
+        _selectedCustomerId = null; // New contact, not existing customer
+      });
+      
+      widget.onCustomerSelected(
+        selectedContact.name,
+        selectedContact.phoneNumber,
+        null,
+      );
+    }
+  }
+  
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -156,6 +178,23 @@ class _CustomerInputWidgetState extends State<CustomerInputWidget> {
             ),
           ),
           onChanged: _onNameChanged,
+        ),
+        SizedBox(height: 1.h),
+        
+        // Pick from Contacts Button
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _pickFromContacts,
+            icon: Icon(Icons.contacts, size: 20),
+            label: Text('Pick from Call List'),
+            style: OutlinedButton.styleFrom(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
         ),
         SizedBox(height: 2.h),
         

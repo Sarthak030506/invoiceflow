@@ -15,7 +15,7 @@ import '../../services/notification_service.dart';
 import '../../services/background_service.dart';
 import '../../services/inventory_service.dart';
 import '../../services/event_service.dart';
-import '../../services/debug_service.dart';
+import '../../utils/app_logger.dart';
 import './widgets/metric_card_widget.dart';
 import './widgets/recent_invoice_item_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
@@ -75,7 +75,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   // High-contrast status badge (PAID/POSTED/OVERDUE etc.)
-  Widget _statusBadge(String raw) {
+  Widget _oldStatusBadge(String raw) {
     final status = raw.toUpperCase();
     Color bg;
     Color fg = Colors.white;
@@ -223,7 +223,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         }
       }
     } catch (e) {
-      print('Connection validation error: $e');
+      AppLogger.error('Connection validation error', 'HomeDashboard', e);
     }
   }
 
@@ -439,145 +439,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
                             SizedBox(height: 4.h),
 
-                            // Recent Invoices Section
-                            Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 5.w),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Recent Invoices',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .headlineSmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => Navigator.pushNamed(
-                                        context, '/invoices-list-screen'),
-                                    child: Text(
-                                      'View All',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                            color: Theme.of(context).colorScheme.primary,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            SizedBox(height: 1.5.h),
-
-                            recentInvoices.isEmpty
-                                ? _buildEmptyState()
-                                : Container(
-                                    height: 22.h,
-                                    child: ListView.builder(
-                                      scrollDirection: Axis.horizontal,
-                                      padding: EdgeInsets.symmetric(horizontal: 5.w),
-                                      itemCount: recentInvoices.length,
-                                      key: PageStorageKey('recent_invoices'),
-                                      itemBuilder: (context, index) {
-                                        final invoice = recentInvoices[index];
-                                        final isSales = invoice.invoiceType.toLowerCase() == 'sales';
-                                        final Color base = isSales
-                                            ? AppTheme.primaryAccentLight
-                                            : AppTheme.secondaryLight;
-                                        final Color base2 = isSales
-                                            ? AppTheme.primaryVariantLight
-                                            : AppTheme.secondaryVariantLight;
-
-                                        return SizedBox(
-                                          width: 78.w,
-                                          child: InkWell(
-                                            borderRadius: BorderRadius.circular(20),
-                                            onTap: () => Navigator.pushNamed(
-                                              context,
-                                              '/invoice-detail-screen',
-                                              arguments: invoice,
-                                            ),
-                                            child: Container(
-                                              margin: EdgeInsets.only(right: 4.w),
-                                              decoration: BoxDecoration(
-                                                gradient: LinearGradient(
-                                                  colors: [
-                                                    base.withOpacity(0.18),
-                                                    base2.withOpacity(0.10),
-                                                  ],
-                                                  begin: Alignment.topLeft,
-                                                  end: Alignment.bottomRight,
-                                                ),
-                                                borderRadius: BorderRadius.circular(20),
-                                                border: Border.all(color: base.withOpacity(0.25), width: 1),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: base.withOpacity(0.15),
-                                                    blurRadius: 12,
-                                                    offset: const Offset(0, 6),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Padding(
-                                                padding: EdgeInsets.all(4.w),
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Row(
-                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                      children: [
-                                                        _typeBadge(invoice.invoiceType.toUpperCase(), base),
-                                                        _statusBadge(invoice.status),
-                                                      ],
-                                                    ),
-                                                    SizedBox(height: 1.2.h),
-                                                    Text(
-                                                      invoice.invoiceNumber,
-                                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                                            fontWeight: FontWeight.w700,
-                                                          ),
-                                                    ),
-                                                    SizedBox(height: 0.6.h),
-                                                    Text(
-                                                      invoice.clientName,
-                                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                                            color: AppTheme.textSecondaryLight,
-                                                          ),
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                    const Spacer(),
-                                                    Row(
-                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                      children: [
-                                                        Text(
-                                                          '₹${invoice.total.toStringAsFixed(2)}',
-                                                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                                                fontWeight: FontWeight.w800,
-                                                              ),
-                                                        ),
-                                                        Icon(
-                                                          Icons.arrow_forward_ios,
-                                                          size: 16,
-                                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.45),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
+                            _buildRecentInvoicesSection(recentInvoices),
 
                             SizedBox(height: 2.h),
 
@@ -699,13 +561,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
+  // Track which tab is selected in the Pending Follow-ups section
+  int _selectedFollowUpTab = 0; // 0 = Customer Dues, 1 = Your Dues
+
   Widget _buildPendingFollowupsSection() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // Filter truly pending invoices from all invoices (not just recent)
-    final pendingInvoices = allInvoices
+    // Filter customer pending invoices (sales invoices)
+    final pendingCustomerInvoices = allInvoices
         .where((invoice) => 
             invoice.invoiceType == 'sales' && 
             invoice.status.toLowerCase() != 'paid' &&
@@ -715,112 +580,68 @@ class _HomeDashboardState extends State<HomeDashboard> {
              DateTime(invoice.followUpDate!.year, invoice.followUpDate!.month, invoice.followUpDate!.day).isAtSameMomentAs(today)))
         .toList();
     
-    // Sort by remaining amount (highest first) and date (oldest first)
-    pendingInvoices.sort((a, b) {
+    // Filter shopkeeper's own pending invoices (purchase invoices)
+    final pendingPurchaseInvoices = allInvoices
+        .where((invoice) => 
+            invoice.invoiceType == 'purchase' && 
+            invoice.status.toLowerCase() != 'paid' &&
+            invoice.paymentStatus == PaymentStatus.balanceDue)
+        .toList();
+    
+    // Sort customer invoices by remaining amount (highest first) and date (oldest first)
+    pendingCustomerInvoices.sort((a, b) {
       final amountComparison = b.absoluteRemainingAmount.compareTo(a.absoluteRemainingAmount);
       if (amountComparison != 0) return amountComparison;
       return a.date.compareTo(b.date);
     });
     
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-      decoration: AppTheme.createSophisticatedContainer(
-        isLight: !isDark,
-        borderRadius: 24.0,
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(6.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(2.5.w),
-                  decoration: BoxDecoration(
-                    gradient: AppTheme.getPrimaryGradient(!isDark),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Icon(
-                    Icons.schedule_outlined,
-                    color: Colors.white,
-                    size: 5.w,
-                  ),
-                ),
-                SizedBox(width: 4.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Pending Follow-ups',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimaryLight,
-                        ),
-                      ),
-                      SizedBox(height: 0.5.h),
-                      Text(
-                        'Payment reminders & overdue invoices',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppTheme.textSecondaryLight,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 3.h),
-            
-            if (pendingInvoices.isEmpty)
-              _buildAllCaughtUpCard()
-            else
-              _buildPendingPaymentsCard(pendingInvoices),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildAllCaughtUpCard() {
-    return Card(
-      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            colors: [Colors.green.shade300, Colors.green.shade500],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.all(4.w),
+    // Sort purchase invoices by remaining amount (highest first) and date (oldest first)
+    pendingPurchaseInvoices.sort((a, b) {
+      final amountComparison = b.absoluteRemainingAmount.compareTo(a.absoluteRemainingAmount);
+      if (amountComparison != 0) return amountComparison;
+      return a.date.compareTo(b.date);
+    });
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Add vertical spacing above the section
+        SizedBox(height: 3.h),
+        
+        // Section header - moved outside the card
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 5.w),
           child: Row(
             children: [
-              Icon(Icons.check_circle_outline, color: Colors.white, size: 7.w),
+              Container(
+                padding: EdgeInsets.all(2.5.w),
+                decoration: BoxDecoration(
+                  gradient: AppTheme.getPrimaryGradient(!isDark),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  Icons.schedule_outlined,
+                  color: Colors.white,
+                  size: 5.w,
+                ),
+              ),
               SizedBox(width: 4.w),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'All Caught Up! ✨',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      'Pending Follow-ups',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: isDark ? Colors.white : AppTheme.textPrimaryLight,
                       ),
                     ),
                     SizedBox(height: 0.5.h),
                     Text(
-                      'No pending payments to review',
+                      'Payment reminders & overdue invoices',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white.withOpacity(0.9),
+                        color: isDark ? Colors.white70 : AppTheme.textSecondaryLight,
                       ),
                     ),
                   ],
@@ -829,23 +650,184 @@ class _HomeDashboardState extends State<HomeDashboard> {
             ],
           ),
         ),
+        
+        SizedBox(height: 2.h),
+        
+        // Tab selector for Customer Dues vs Your Dues - moved outside the card
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 5.w),
+          child: Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                // Customer Dues Tab
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedFollowUpTab = 0;
+                      });
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(vertical: 2.h),
+                      decoration: BoxDecoration(
+                        color: _selectedFollowUpTab == 0 
+                            ? (isDark ? AppTheme.primaryDark : AppTheme.primaryLight) 
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'Customer Dues',
+                          style: TextStyle(
+                            color: _selectedFollowUpTab == 0 
+                                ? Colors.white 
+                                : (isDark ? Colors.white70 : Colors.black54),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                
+                // Your Dues Tab
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedFollowUpTab = 1;
+                      });
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(vertical: 2.h),
+                      decoration: BoxDecoration(
+                        color: _selectedFollowUpTab == 1 
+                            ? const Color(0xFFE3F0FF) 
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'Your Dues',
+                          style: TextStyle(
+                            color: _selectedFollowUpTab == 1 
+                                ? const Color(0xFF263238) 
+                                : (isDark ? Colors.white70 : Colors.black54),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        SizedBox(height: 1.5.h),
+        
+        // Card containing only the dynamic content
+        Container(
+          margin: EdgeInsets.symmetric(horizontal: 4.w),
+          decoration: AppTheme.createSophisticatedContainer(
+            isLight: !isDark,
+            borderRadius: 24.0,
+            includeElevation: true,
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(4.w),
+            child: _selectedFollowUpTab == 0 
+              // Customer Dues Tab Content
+              ? (pendingCustomerInvoices.isEmpty
+                  ? _buildAllCaughtUpCard('No unpaid customer invoices. All clear!')
+                  : _buildPendingPaymentsCard(pendingCustomerInvoices, isCustomerDues: true))
+              // Your Dues Tab Content
+              : (pendingPurchaseInvoices.isEmpty
+                  ? _buildAllCaughtUpCard('No unpaid purchase invoices. All clear!')
+                  : _buildPendingPaymentsCard(pendingPurchaseInvoices, isCustomerDues: false)),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildAllCaughtUpCard([String? customMessage]) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [Colors.green.shade300, Colors.green.shade500],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(4.w),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle_outline, color: Colors.white, size: 7.w),
+            SizedBox(width: 4.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'All Caught Up! ✨',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 0.5.h),
+                  Text(
+                    customMessage ?? 'No pending payments to review',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
   
-  Widget _buildPendingPaymentsCard(List<InvoiceModel> pendingInvoices) {
+  Widget _buildPendingPaymentsCard(List<InvoiceModel> pendingInvoices, {bool isCustomerDues = true}) {
     final totalPending = pendingInvoices.fold<double>(
       0.0, (sum, invoice) => sum + invoice.remainingAmount);
     
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 2.h),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         gradient: LinearGradient(
-          colors: [AppTheme.primaryAccentLight, AppTheme.primaryLight],
+          colors: isCustomerDues 
+              ? [AppTheme.primaryAccentLight, AppTheme.primaryLight]
+              : [const Color(0xFFE3F0FF), const Color(0xFFF8FBFF)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
+        border: Border.all(
+          color: isCustomerDues 
+              ? AppTheme.primaryAccentLight.withOpacity(0.3)
+              : const Color(0xFF263238).withOpacity(0.1),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isCustomerDues 
+                ? AppTheme.primaryAccentLight.withOpacity(0.15)
+                : const Color(0xFF263238).withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -857,12 +839,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 Container(
                   padding: EdgeInsets.all(3.w),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
+                    color: isCustomerDues 
+                        ? Colors.white.withOpacity(0.25)
+                        : const Color(0xFF263238).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Icon(
-                    Icons.access_time_rounded,
-                    color: Colors.white,
+                    isCustomerDues ? Icons.access_time_rounded : Icons.shopping_bag_outlined,
+                    color: isCustomerDues ? Colors.white : const Color(0xFF263238),
                     size: 8.w,
                   ),
                 ),
@@ -872,9 +856,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${pendingInvoices.length} Invoice${pendingInvoices.length > 1 ? 's' : ''} Need Action',
+                        isCustomerDues 
+                            ? '${pendingInvoices.length} Customer Invoice${pendingInvoices.length > 1 ? 's' : ''} Need Action'
+                            : '${pendingInvoices.length} Purchase Invoice${pendingInvoices.length > 1 ? 's' : ''} Need Payment',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.white,
+                          color: isCustomerDues ? Colors.white : const Color(0xFF263238),
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -882,7 +868,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       Text(
                         'Total: ₹${_formatCurrency(totalPending)}',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Colors.white.withOpacity(0.9),
+                          color: isCustomerDues ? Colors.white.withOpacity(0.9) : const Color(0xFF263238).withOpacity(0.8),
                         ),
                       ),
                     ],
@@ -905,11 +891,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     tween: Tween(begin: 0.0, end: 1.0),
                     curve: Curves.easeOutBack,
                     builder: (context, value, child) {
+                      // Ensure opacity is within valid range (0.0 to 1.0)
+                      final safeOpacity = value.clamp(0.0, 1.0);
                       return Transform.translate(
-                        offset: Offset(0, 20 * (1 - value)),
+                        offset: Offset(0, 20 * (1 - safeOpacity)),
                         child: Opacity(
-                          opacity: value,
-                          child: _buildEnhancedPendingItem(invoice),
+                          opacity: safeOpacity,
+                          child: _buildEnhancedPendingItem(invoice, isCustomerDues: isCustomerDues),
                         ),
                       );
                     },
@@ -945,7 +933,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
   
-  Widget _buildEnhancedPendingItem(InvoiceModel invoice) {
+  Widget _buildEnhancedPendingItem(InvoiceModel invoice, {bool isCustomerDues = true}) {
     final isOverdue = invoice.followUpDate != null && 
         invoice.followUpDate!.isBefore(DateTime.now().subtract(Duration(days: 1)));
     
@@ -953,19 +941,26 @@ class _HomeDashboardState extends State<HomeDashboard> {
       contentPadding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
       leading: CircleAvatar(
         radius: 28,
-        backgroundColor: isOverdue ? AppTheme.errorLight.withOpacity(0.1) : AppTheme.primaryAccentLight.withOpacity(0.1),
+        backgroundColor: isCustomerDues
+            ? (isOverdue ? AppTheme.errorLight.withOpacity(0.1) : AppTheme.primaryAccentLight.withOpacity(0.1))
+            : const Color(0xFF263238).withOpacity(0.1),
         child: Icon(
-          isOverdue ? Icons.schedule_outlined : Icons.access_time_rounded,
-          color: isOverdue ? AppTheme.errorLight : AppTheme.primaryAccentLight,
+          isCustomerDues
+              ? (isOverdue ? Icons.schedule_outlined : Icons.access_time_rounded)
+              : Icons.shopping_bag_outlined,
+          color: isCustomerDues
+              ? (isOverdue ? AppTheme.errorLight : AppTheme.primaryAccentLight)
+              : const Color(0xFF263238),
           size: 6.w,
         ),
       ),
       title: Text(
-        invoice.clientName,
+        isCustomerDues ? invoice.clientName : (invoice.invoiceType == 'purchase' ? 'Supplier' : invoice.clientName),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.w600,
+          color: isCustomerDues ? null : const Color(0xFF263238),
         ),
       ),
       subtitle: Text(
@@ -973,14 +968,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: AppTheme.textSecondaryLight,
+          color: isCustomerDues ? AppTheme.textSecondaryLight : const Color(0xFF263238).withOpacity(0.7),
         ),
       ),
       trailing: Text(
         '₹${_formatCurrency(invoice.remainingAmount)}',
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.bold,
-          color: isOverdue ? AppTheme.errorLight : AppTheme.accentGoldLight,
+          color: isCustomerDues
+              ? (isOverdue ? AppTheme.errorLight : AppTheme.accentGoldLight)
+              : const Color(0xFF263238),
         ),
       ),
       onTap: () => Navigator.pushNamed(
@@ -1088,37 +1085,70 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     ),
                   ),
                   SizedBox(height: 1.h),
-                  InkWell(
-                    onTap: () => _showSnoozeDialog(invoice),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: EdgeInsets.all(1.5.w),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.shade200),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CustomIconWidget(
-                            iconName: 'schedule',
-                            color: Colors.orange.shade600,
-                            size: 4.w,
-                          ),
-                          SizedBox(width: 1.w),
-                          Text(
-                            'Snooze',
-                            style: TextStyle(
-                              color: Colors.orange.shade700,
-                              fontSize: 10.sp,
-                              fontWeight: FontWeight.w500,
+                  if (invoice.invoiceType == 'purchase')
+                    InkWell(
+                      onTap: () => _markAsPaid(invoice),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: EdgeInsets.all(1.5.w),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CustomIconWidget(
+                              iconName: 'check_circle',
+                              color: Colors.green.shade600,
+                              size: 4.w,
                             ),
-                          ),
-                        ],
+                            SizedBox(width: 1.w),
+                            Text(
+                              'Mark Paid',
+                              style: TextStyle(
+                                color: Colors.green.shade700,
+                                fontSize: 10.sp,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    InkWell(
+                      onTap: () => _showSnoozeDialog(invoice),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: EdgeInsets.all(1.5.w),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CustomIconWidget(
+                              iconName: 'schedule',
+                              color: Colors.orange.shade600,
+                              size: 4.w,
+                            ),
+                            SizedBox(width: 1.w),
+                            Text(
+                              'Snooze',
+                              style: TextStyle(
+                                color: Colors.orange.shade700,
+                                fontSize: 10.sp,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ],
@@ -1196,7 +1226,28 @@ class _HomeDashboardState extends State<HomeDashboard> {
         );
   }
 
-  void _showSnoozeDialog(InvoiceModel invoice) {
+  void _markAsPaid(InvoiceModel invoice) {
+    // Update invoice status to paid
+    setState(() {
+      final index = allInvoices.indexWhere((inv) => inv.id == invoice.id);
+      if (index != -1) {
+        allInvoices[index] = invoice.copyWith(
+          status: 'paid',
+          amountPaid: invoice.total,
+        );
+      }
+    });
+    
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Invoice #${invoice.invoiceNumber} marked as paid'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+void _showSnoozeDialog(InvoiceModel invoice) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1270,15 +1321,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   Widget _buildRecentRecipientsSection() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 4.w),
       decoration: AppTheme.createSophisticatedContainer(
         isLight: !isDark,
         borderRadius: 24.0,
+        includeElevation: true,
       ),
       child: Padding(
-        padding: EdgeInsets.all(6.w),
+        padding: EdgeInsets.all(5.w),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1287,8 +1339,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 Container(
                   padding: EdgeInsets.all(2.5.w),
                   decoration: BoxDecoration(
-                    gradient: AppTheme.getSuccessGradient(!isDark),
+                    gradient: AppTheme.getPrimaryGradient(!isDark),
                     borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primaryLight.withOpacity(0.3),
+                        offset: const Offset(0, 4),
+                        blurRadius: 8,
+                        spreadRadius: 0,
+                      ),
+                    ],
                   ),
                   child: Icon(
                     Icons.people_outline,
@@ -1305,17 +1365,40 @@ class _HomeDashboardState extends State<HomeDashboard> {
                         'Recent Recipients',
                         style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimaryLight,
+                          color: isDark ? Colors.white : AppTheme.textPrimaryLight,
                         ),
                       ),
                       SizedBox(height: 0.5.h),
                       Text(
                         'Quick access to frequent customers',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppTheme.textSecondaryLight,
+                          color: isDark ? Colors.white70 : AppTheme.textSecondaryLight,
                         ),
                       ),
                     ],
+                  ),
+                ),
+                // Add quick-add button
+                InkWell(
+                  onTap: () {
+                    Navigator.pushNamed(context, '/customers-screen');
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: EdgeInsets.all(2.w),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryLight.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.primaryLight.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.add,
+                      color: AppTheme.primaryLight,
+                      size: 5.w,
+                    ),
                   ),
                 ),
               ],
@@ -1337,79 +1420,498 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   List<Widget> _buildRecentCustomers() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final uniqueCustomers = <String, InvoiceModel>{};
     final colors = [
       AppTheme.primaryLight,
-      AppTheme.secondaryLight,
-      AppTheme.accentGoldLight,
-      AppTheme.primaryAccentLight,
-      AppTheme.secondaryVariantLight,
       AppTheme.primaryVariantLight,
+      AppTheme.primaryAccentLight,
+      AppTheme.secondaryLight,
+      AppTheme.secondaryVariantLight,
+      AppTheme.accentGoldLight,
     ];
-    
+
     // Get unique customers from recent invoices, prioritizing most recent
     for (final invoice in allInvoices.reversed) {
       if (!uniqueCustomers.containsKey(invoice.clientName) && uniqueCustomers.length < 6) {
         uniqueCustomers[invoice.clientName] = invoice;
       }
     }
-    
+
+    if (uniqueCustomers.isEmpty) {
+      return [
+        Container(
+          width: 20.w,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.people_outline,
+                color: isDark ? Colors.white54 : AppTheme.textSecondaryLight,
+                size: 8.w,
+              ),
+              SizedBox(height: 1.h),
+              Text(
+                'No recent customers',
+                style: TextStyle(
+                  color: isDark ? Colors.white54 : AppTheme.textSecondaryLight,
+                  fontSize: 10.sp,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+
     return uniqueCustomers.entries.map((entry) {
       final index = uniqueCustomers.keys.toList().indexOf(entry.key);
       final customer = entry.value;
       final initials = customer.clientName.split(' ').map((name) => name.isNotEmpty ? name[0] : '').take(2).join();
-      
+      final chipColor = colors[index % colors.length];
+
       return Container(
-        margin: EdgeInsets.only(right: 4.w),
-        child: Column(
-          children: [
-            Container(
-              width: 16.w,
-              height: 16.w,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    colors[index % colors.length],
-                    colors[index % colors.length].withOpacity(0.7),
+        margin: EdgeInsets.only(right: 3.w),
+        child: InkWell(
+          onTap: () => _onCustomerTap(customer),
+          borderRadius: BorderRadius.circular(16),
+          child: Column(
+            children: [
+              Container(
+                width: 15.w,
+                height: 15.w,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      chipColor,
+                      chipColor.withOpacity(0.8),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: chipColor.withOpacity(0.3),
+                      offset: const Offset(0, 3),
+                      blurRadius: 6,
+                      spreadRadius: 0,
+                    ),
                   ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: colors[index % colors.length].withOpacity(0.3),
-                    offset: const Offset(0, 4),
-                    blurRadius: 8,
-                    spreadRadius: 0,
+                  border: Border.all(
+                    color: chipColor.withOpacity(0.2),
+                    width: 1,
                   ),
-                ],
+                ),
+                child: Center(
+                  child: Text(
+                    initials.toUpperCase(),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ),
-              child: Center(
-                child: Text(
-                  initials.toUpperCase(),
-                  style: TextStyle(
+              SizedBox(height: 1.h),
+              Text(
+                customer.clientName.length > 10 ? '${customer.clientName.substring(0, 10)}...' : customer.clientName,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 10.sp,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white70 : AppTheme.textSecondaryLight,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  Widget _buildRecentInvoicesSection(List<InvoiceModel> recentInvoices) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 4.w),
+      decoration: AppTheme.createSophisticatedContainer(
+        isLight: !isDark,
+        borderRadius: 24.0,
+        includeElevation: true,
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(5.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with icon and action button
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(2.5.w),
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.getPrimaryGradient(!isDark),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primaryLight.withOpacity(0.3),
+                        offset: const Offset(0, 4),
+                        blurRadius: 8,
+                        spreadRadius: 0,
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.receipt_long,
                     color: Colors.white,
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.bold,
+                    size: 5.w,
                   ),
                 ),
+                SizedBox(width: 4.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Recent Invoices',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : AppTheme.textPrimaryLight,
+                        ),
+                      ),
+                      SizedBox(height: 0.5.h),
+                      Text(
+                        'Latest ${recentInvoices.length} invoices',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: isDark ? Colors.white70 : AppTheme.textSecondaryLight,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                InkWell(
+                  onTap: () => Navigator.pushNamed(context, '/invoices-list-screen'),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryLight.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.primaryLight.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'View All',
+                          style: TextStyle(
+                            color: AppTheme.primaryLight,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 10.sp,
+                          ),
+                        ),
+                        SizedBox(width: 1.w),
+                        Icon(
+                          Icons.arrow_forward_ios,
+                          color: AppTheme.primaryLight,
+                          size: 3.w,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 3.h),
+
+            // Invoice cards
+            recentInvoices.isEmpty
+                ? _buildEmptyInvoiceState(isDark)
+                : Container(
+                    height: 20.h,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: recentInvoices.length,
+                      key: PageStorageKey('recent_invoices'),
+                      itemBuilder: (context, index) {
+                        final invoice = recentInvoices[index];
+                        return _buildInvoiceCard(invoice, isDark, index == recentInvoices.length - 1);
+                      },
+                    ),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInvoiceCard(InvoiceModel invoice, bool isDark, bool isLast) {
+    final isSales = invoice.invoiceType.toLowerCase() == 'sales';
+    final Color primaryColor = isSales ? AppTheme.primaryLight : AppTheme.secondaryLight;
+    final Color accentColor = isSales ? AppTheme.primaryVariantLight : AppTheme.secondaryVariantLight;
+
+    return Container(
+      width: 75.w,
+      margin: EdgeInsets.only(right: isLast ? 0 : 3.w),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => Navigator.pushNamed(
+          context,
+          '/invoice-detail-screen',
+          arguments: invoice,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                primaryColor.withOpacity(0.08),
+                accentColor.withOpacity(0.05),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: primaryColor.withOpacity(0.2),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: primaryColor.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+                spreadRadius: 0,
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(4.w),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header with type and status badges
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildTypeBadge(invoice.invoiceType.toUpperCase(), primaryColor),
+                    _buildStatusBadge(invoice.status),
+                  ],
+                ),
+                SizedBox(height: 1.5.h),
+
+                // Invoice number
+                Text(
+                  invoice.invoiceNumber,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : AppTheme.textPrimaryLight,
+                  ),
+                ),
+                SizedBox(height: 0.5.h),
+
+                // Client name
+                Text(
+                  invoice.clientName,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: isDark ? Colors.white70 : AppTheme.textSecondaryLight,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+
+                const Spacer(),
+
+                // Amount and navigation
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Total',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: isDark ? Colors.white54 : AppTheme.textSecondaryLight,
+                            fontSize: 9.sp,
+                          ),
+                        ),
+                        Text(
+                          '₹${invoice.total.toStringAsFixed(2)}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: primaryColor,
+                            fontSize: 16.sp,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: EdgeInsets.all(2.w),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.arrow_forward_ios,
+                        size: 4.w,
+                        color: primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyInvoiceState(bool isDark) {
+    return Container(
+      height: 20.h,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.receipt_long_outlined,
+              color: isDark ? Colors.white54 : AppTheme.textSecondaryLight,
+              size: 12.w,
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              'No recent invoices',
+              style: TextStyle(
+                color: isDark ? Colors.white54 : AppTheme.textSecondaryLight,
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w500,
               ),
             ),
             SizedBox(height: 1.h),
-            Text(
-              customer.clientName.length > 10 ? '${customer.clientName.substring(0, 10)}...' : customer.clientName,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11.sp,
-                fontWeight: FontWeight.w500,
-                color: AppTheme.textSecondaryLight,
+            InkWell(
+              onTap: () => Navigator.pushNamed(context, '/invoice-type-selection'),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryLight.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppTheme.primaryLight.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  'Create First Invoice',
+                  style: TextStyle(
+                    color: AppTheme.primaryLight,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11.sp,
+                  ),
+                ),
               ),
             ),
           ],
         ),
-      );
-    }).toList();
+      ),
+    );
+  }
+
+  Widget _buildTypeBadge(String type, Color color) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: color.withOpacity(0.4),
+          width: 1,
+        ),
+      ),
+      child: Text(
+        type,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w600,
+          fontSize: 8.sp,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    Color badgeColor;
+    IconData badgeIcon;
+
+    switch (status.toLowerCase()) {
+      case 'paid':
+        badgeColor = Colors.green;
+        badgeIcon = Icons.check_circle;
+        break;
+      case 'posted':
+        badgeColor = Colors.blue;
+        badgeIcon = Icons.schedule;
+        break;
+      case 'overdue':
+        badgeColor = Colors.red;
+        badgeIcon = Icons.warning;
+        break;
+      case 'draft':
+        badgeColor = Colors.grey;
+        badgeIcon = Icons.edit;
+        break;
+      default:
+        badgeColor = Colors.orange;
+        badgeIcon = Icons.pending;
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+      decoration: BoxDecoration(
+        color: badgeColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: badgeColor.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            badgeIcon,
+            color: badgeColor,
+            size: 3.w,
+          ),
+          SizedBox(width: 1.w),
+          Text(
+            status.toUpperCase(),
+            style: TextStyle(
+              color: badgeColor,
+              fontWeight: FontWeight.w600,
+              fontSize: 8.sp,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _onCustomerTap(InvoiceModel customer) {
+    // Navigate to customer detail screen or create new invoice with this customer
+    Navigator.pushNamed(
+      context,
+      '/customer-detail',
+      arguments: customer.customerId,
+    );
   }
 
   Future<Map<String, dynamic>> _getInventoryMetrics() async {
@@ -1433,27 +1935,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
   // Builds the inventory summary card with key metrics
   Widget _buildInventorySummaryCard() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 4.w),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primaryAccentLight.withOpacity(0.12),
-            AppTheme.primaryVariantLight.withOpacity(0.08),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24.0),
-        border: Border.all(color: AppTheme.primaryAccentLight.withOpacity(0.22), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryAccentLight.withOpacity(0.12),
-            blurRadius: 14,
-            offset: const Offset(0, 8),
-          ),
-        ],
+      decoration: AppTheme.createSophisticatedContainer(
+        isLight: !isDark,
+        borderRadius: 24.0,
+        includeElevation: true,
       ),
       child: InkWell(
         onTap: () {
@@ -1470,8 +1958,16 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   Container(
                     padding: EdgeInsets.all(2.5.w),
                     decoration: BoxDecoration(
-                      gradient: AppTheme.getGoldGradient(!isDark),
+                      gradient: AppTheme.getSuccessGradient(!isDark),
                       borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.secondaryLight.withOpacity(0.3),
+                          offset: const Offset(0, 4),
+                          blurRadius: 8,
+                          spreadRadius: 0,
+                        ),
+                      ],
                     ),
                     child: Icon(
                       Icons.inventory_2_outlined,
@@ -1488,14 +1984,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
                           'Inventory Summary',
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimaryLight,
+                            color: isDark ? Colors.white : AppTheme.textPrimaryLight,
                           ),
                         ),
                         SizedBox(height: 0.5.h),
                         Text(
                           'Stock levels & inventory value',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppTheme.textSecondaryLight,
+                            color: isDark ? Colors.white70 : AppTheme.textSecondaryLight,
                           ),
                         ),
                       ],
@@ -1505,25 +2001,36 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     Container(
                       padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [AppTheme.warningLight, AppTheme.warningLight.withOpacity(0.8)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.4),
+                          width: 1,
                         ),
-                        borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text(
-                        '$lowStockCount Low',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 11.sp,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.warning_rounded,
+                            color: Colors.orange,
+                            size: 4.w,
+                          ),
+                          SizedBox(width: 1.w),
+                          Text(
+                            '$lowStockCount Low',
+                            style: TextStyle(
+                              color: Colors.orange,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 10.sp,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                 ],
               ),
-              SizedBox(height: 2.8.h),
+              SizedBox(height: 3.h),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -1531,19 +2038,22 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     value: inStockSKUs.toString(),
                     label: 'In Stock',
                     icon: Icons.inventory_2_outlined,
-                    color: AppTheme.primaryAccentLight,
+                    color: AppTheme.primaryLight,
+                    isDark: isDark,
                   ),
                   _buildInventoryMetric(
                     value: totalUnits.toString(),
                     label: 'Total Units',
                     icon: Icons.layers_outlined,
                     color: AppTheme.secondaryLight,
+                    isDark: isDark,
                   ),
                   _buildInventoryMetric(
                     value: '₹${_formatCurrency(inventoryValue)}',
                     label: 'Total Value',
                     icon: Icons.attach_money_outlined,
                     color: AppTheme.accentGoldLight,
+                    isDark: isDark,
                   ),
                 ],
               ),
@@ -1559,42 +2069,43 @@ class _HomeDashboardState extends State<HomeDashboard> {
     required String label,
     required IconData icon,
     required Color color,
+    required bool isDark,
   }) {
     return Column(
       children: [
         Container(
-          width: 15.w,
-          height: 15.w,
+          width: 14.w,
+          height: 14.w,
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [color.withOpacity(0.2), color.withOpacity(0.1)],
+              colors: [color.withOpacity(0.15), color.withOpacity(0.25)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: color.withOpacity(0.3),
-              width: 1,
+              color: color.withOpacity(0.4),
+              width: 1.5,
             ),
           ),
-          child: Icon(icon, size: 6.w, color: color),
+          child: Icon(icon, size: 5.w, color: color),
         ),
-        SizedBox(height: 1.5.h),
+        SizedBox(height: 1.h),
         Text(
           value,
           style: TextStyle(
-            fontSize: 16.sp,
+            fontSize: 14.sp,
             fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimaryLight,
+            color: isDark ? Colors.white : AppTheme.textPrimaryLight,
           ),
         ),
-        SizedBox(height: 0.5.h),
+        SizedBox(height: 0.3.h),
         Text(
           label,
           style: TextStyle(
-            fontSize: 11.sp,
+            fontSize: 10.sp,
             fontWeight: FontWeight.w500,
-            color: AppTheme.textSecondaryLight,
+            color: isDark ? Colors.white70 : AppTheme.textSecondaryLight,
           ),
         ),
       ],

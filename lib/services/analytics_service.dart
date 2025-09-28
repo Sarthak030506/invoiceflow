@@ -66,12 +66,8 @@ class AnalyticsService {
           final quantity = item.quantity;
           final price = item.price;
           
-          // Debug: Print all items, even those with 0 quantity
-          print('Found item: ${item.name}, Qty: $quantity, Price: $price');
-          
           // Skip items with zero or negative quantity
           if (quantity <= 0) {
-            print('Skipping item ${item.name} wth quantity $quantity');
             continue;
           }
            
@@ -212,11 +208,6 @@ class AnalyticsService {
         ..take(5)
         ..toList();
       
-      // Debug: Print top selling items
-      print('Top selling items from getChartAnalytics:');
-      for (final item in topSellingItems) {
-        print('Item: ${item['itemName']}, Revenue: ${item['revenue']}');
-      }
       
       return {
         'salesVsPurchases': {

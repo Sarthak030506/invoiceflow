@@ -308,6 +308,17 @@ class _AnalyticsMainScreenState extends State<AnalyticsMainScreen> {
           ),
         ),
       );
+    } else if (section == 'table') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AnalyticsRedesignScaffold(
+            initialSection: section,
+            selectedDateRange: selectedDateRange,
+            customDateRange: customDateRange,
+          ),
+        ),
+      );
     } else {
       showModalBottomSheet(
         context: context,

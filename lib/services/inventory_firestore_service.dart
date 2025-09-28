@@ -62,6 +62,14 @@ class InventoryFirestoreService {
     return _itemFromFirestore(d.data()..['id'] = d.id);
   }
 
+  Future<InventoryItem?> getItemByName(String name) async {
+    final uid = _requireUid();
+    final q = await _itemsCol(uid).where('name', isEqualTo: name).limit(1).get();
+    if (q.docs.isEmpty) return null;
+    final d = q.docs.first;
+    return _itemFromFirestore(d.data()..['id'] = d.id);
+  }
+
   Future<List<InventoryItem>> getLowStockItems() async {
     final items = await getAllItems();
     return items.where((i) => i.currentStock <= i.reorderPoint).toList();

@@ -7,7 +7,8 @@ import '../models/catalog_item.dart';
 import '../services/invoice_service.dart';
 import '../services/customer_service.dart';
 import '../services/stock_map_service.dart';
-import '../widgets/payment_details_widget.dart';
+import '../utils/app_logger.dart';
+import '../widgets/enhanced_payment_details_widget.dart';
 import './create_invoice/widgets/customer_input_widget.dart';
 import 'dart:async';
 
@@ -83,7 +84,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
         });
       }
     } catch (e) {
-      print('Error loading stock map: $e');
+      AppLogger.error('Error loading stock map', 'ChooseItemsInvoice', e);
     }
   }
   
@@ -789,7 +790,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                                                             );
                                                             _customerId = customer.id;
                                                           } catch (e) {
-                                                            print('Error saving customer: $e');
+                                                            AppLogger.error('Error saving customer', 'ChooseItemsInvoice', e);
                                                           }
                                                         }
                                                         
@@ -884,10 +885,10 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                 ),
               ),
               SizedBox(height: 2.h),
-              PaymentDetailsWidget(
+              EnhancedPaymentDetailsWidget(
                 totalAmount: totalAmount,
                 invoiceType: widget.invoiceType,
-                onPaymentDetailsSubmitted: (amountPaid, paymentMethod) async {
+                onPaymentDetailsSubmitted: (amountPaid, paymentMethod, invoiceNumber, invoiceDate) async {
                   // Show a blocking loader while we save and process inventory to avoid perceived freeze
                   showDialog(
                     context: parentContext,
@@ -916,14 +917,14 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                     
                     // Create invoice with payment details and customer ID
                     final now = DateTime.now();
-                    final ts = now.millisecondsSinceEpoch;
+                    final invoiceId = invoiceNumber.replaceAll(RegExp(r'[^A-Za-z0-9-_]'), '_');
                     final newInvoice = InvoiceModel(
-                      id: 'INV-$ts',
-                      invoiceNumber: 'INV-$ts',
+                      id: invoiceId,
+                      invoiceNumber: invoiceNumber,
                       clientName: _customerName,
                       customerPhone: widget.invoiceType == 'sales' ? _customerPhone : null,
                       customerId: widget.invoiceType == 'sales' ? _customerId : null,
-                      date: now,
+                      date: invoiceDate,
                       revenue: totalAmount,
                       status: 'posted', // Always post invoices to process inventory
                       items: invoiceItems,

@@ -4,6 +4,7 @@ import '../models/inventory_item_model.dart';
 import './csv_invoice_service.dart';
 import './inventory_service.dart';
 import './firestore_service.dart';
+import '../utils/app_logger.dart';
 
 class InvoiceService {
   // --- Start of Singleton Implementation ---
@@ -29,7 +30,7 @@ class InvoiceService {
     try {
       await _instance!._migrateCsvToDbIfNeeded();
     } catch (e) {
-      print('Warning: CSV migration failed but continuing: $e');
+      AppLogger.warning('CSV migration failed but continuing', 'InvoiceService');
       // Continue even if migration fails - this allows web version to work
     }
   }
@@ -64,15 +65,15 @@ class InvoiceService {
 
     // If the migration has already run successfully, do nothing.
     if (isMigrated) {
-      print('CSV migration already completed. Skipping.');
+      AppLogger.info('CSV migration already completed. Skipping.', 'Migration');
       return;
     }
 
     // If the flag is not set, perform the one-time migration.
-    print('Starting one-time CSV migration...');
+    AppLogger.info('Starting one-time CSV migration...', 'Migration');
     try {
       final csvInvoices = await _csvInvoiceService.loadInvoicesFromCsv();
-      print('Migrating ${csvInvoices.length} invoices from CSV...');
+      AppLogger.info('Migrating ${csvInvoices.length} invoices from CSV...', 'Migration');
 
       int success = 0;
       int failed = 0;
@@ -86,7 +87,7 @@ class InvoiceService {
           success++;
         } catch (e) {
           failed++;
-          print('CSV migrate failed for id="${original.id}": $e');
+          AppLogger.error('CSV migrate failed for invoice', 'Migration', e);
           // continue with next invoice
         }
       }
@@ -94,13 +95,13 @@ class InvoiceService {
       if (failed == 0) {
         // Set the flag to true ONLY after successful migration of all records.
         await prefs.setBool('csv_migrated', true);
-        print('CSV migration completed successfully. migrated=$success failed=$failed');
+        AppLogger.info('CSV migration completed successfully', 'Migration');
       } else {
-        print('CSV migration partially completed. migrated=$success failed=$failed');
+        AppLogger.warning('CSV migration partially completed', 'Migration');
         // Leave flag false to retry or handle later
       }
     } catch (e) {
-      print('CSV migration failed: $e');
+      AppLogger.error('CSV migration failed', 'Migration', e);
       // Do NOT set the flag if it fails, so it can try again on the next launch.
     }
   }
@@ -164,6 +165,16 @@ class InvoiceService {
   /// Gets invoice by ID
   Future<InvoiceModel?> getInvoiceById(String invoiceId) async {
     return await _fsService.getInvoice(invoiceId);
+  }
+
+  /// Check if an invoice number already exists
+  Future<bool> isInvoiceNumberExists(String invoiceNumber) async {
+    return await _fsService.isInvoiceNumberExists(invoiceNumber);
+  }
+
+  /// Generate next sequential invoice number
+  Future<String> generateNextInvoiceNumber() async {
+    return await _fsService.generateNextInvoiceNumber();
   }
 
   /// Validates if an invoice can be cancelled safely
@@ -314,7 +325,7 @@ class InvoiceService {
           await inventoryService.issueStock(finalItemId, item.quantity.toDouble(), 'invoice:${invoice.id}');
         }
       } catch (e) {
-        print('Inventory processing error for ${item.name}: $e');
+        AppLogger.error('Inventory processing error', 'Invoice', e);
         rethrow;
       }
     }
@@ -353,7 +364,7 @@ class InvoiceService {
           await inventoryService.issueStock(itemId, item.quantity.toDouble(), 'return:$returnId');
         }
       } catch (e) {
-        print('Return inventory processing error for ${item.name}: $e');
+        AppLogger.error('Return inventory processing error', 'Invoice', e);
         rethrow;
       }
     }
@@ -375,7 +386,7 @@ class InvoiceService {
       try {
         await inventoryService.adjustStock(itemId, deltaQty, 'adjustment:$adjustmentId - $reason');
       } catch (e) {
-        print('Adjustment inventory processing error for item $itemId: $e');
+        AppLogger.error('Adjustment inventory processing error', 'Invoice', e);
         rethrow;
       }
     }

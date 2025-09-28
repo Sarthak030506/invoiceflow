@@ -79,17 +79,17 @@ class _PrimaryButtonState extends State<PrimaryButton>
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final isEnabled = widget.onPressed != null && !widget.isLoading;
-    
+
     return AnimatedBuilder(
       animation: _scaleAnimation,
       builder: (context, child) {
-        return Transform.scale(
-          scale: _scaleAnimation.value,
-          child: GestureDetector(
-            onTap: isEnabled ? widget.onPressed : null,
-            onTapDown: _onTapDown,
-            onTapUp: _onTapUp,
-            onTapCancel: _onTapCancel,
+        return GestureDetector(
+          onTap: isEnabled ? widget.onPressed : null,
+          onTapDown: _onTapDown,
+          onTapUp: _onTapUp,
+          onTapCancel: _onTapCancel,
+          child: Transform.scale(
+            scale: _scaleAnimation.value,
             child: Container(
               width: widget.width,
               height: widget.height,
@@ -165,12 +165,17 @@ class _PrimaryButtonState extends State<PrimaryButton>
                           widget.icon!,
                           SizedBox(width: 2.w),
                         ],
-                        Text(
-                          widget.text,
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16.sp,
+                        Flexible(
+                          child: Text(
+                            widget.text,
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16.sp,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
                           ),
                         ),
                       ],

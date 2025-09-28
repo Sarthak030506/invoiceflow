@@ -4,6 +4,7 @@ import '../../models/inventory_item_model.dart';
 import '../../services/inventory_service.dart';
 import '../../services/inventory_notification_service.dart';
 import 'inventory_detail_screen.dart';
+import 'add_items_directly_screen.dart';
 import 'dart:async';
 
 class InventoryScreen extends StatefulWidget {
@@ -82,6 +83,18 @@ class _InventoryScreenState extends State<InventoryScreen> {
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: Icon(Icons.add_box),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AddItemsDirectlyScreen(),
+                ),
+              ).then((_) => _loadInventory()); // Refresh inventory when returning
+            },
+            tooltip: 'Add Items Directly',
+          ),
           IconButton(
             icon: Icon(Icons.refresh),
             onPressed: _loadInventory,
@@ -162,6 +175,20 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 ),
               ],
             ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddItemsDirectlyScreen(),
+            ),
+          ).then((_) => _loadInventory()); // Refresh inventory when returning
+        },
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+        icon: Icon(Icons.add_box),
+        label: Text('Add Items'),
+      ),
     );
   }
 }

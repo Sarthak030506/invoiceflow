@@ -1,0 +1,291 @@
+rules_version = '2';
+
+// InvoiceFlow Firestore Security Rules
+// Multi-tenant architecture: users/{uid}/collections/
+// Last updated: December 2024
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===========================================
+    // GLOBAL FUNCTIONS FOR VALIDATION
+    // ===========================================
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user owns this document path
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Validate that required fields exist and are not empty
+    function hasRequiredFields(data, fields) {
+      return fields.toSet().difference(data.keys().toSet()).size() == 0;
+    }
+
+    // Check if a string field is valid (not empty after trimming)
+    function isValidString(field) {
+      return field is string && field.size() > 0 && field.trim().size() > 0;
+    }
+
+    // Validate phone number format (basic validation)
+    function isValidPhone(phone) {
+      return phone is string && phone.matches('^[0-9+\\-\\s()]+$') && phone.size() >= 10;
+    }
+
+    // Validate invoice number format
+    function isValidInvoiceNumber(invoiceNumber) {
+      return isValidString(invoiceNumber) && invoiceNumber.size() <= 50;
+    }
+
+    // Validate invoice type
+    function isValidInvoiceType(type) {
+      return type in ['sales', 'purchase'];
+    }
+
+    // Validate invoice status
+    function isValidInvoiceStatus(status) {
+      return status in ['draft', 'posted', 'cancelled'];
+    }
+
+    // Validate payment method
+    function isValidPaymentMethod(method) {
+      return method in ['Cash', 'Online', 'Cheque', 'Bank Transfer', 'UPI', 'Card'];
+    }
+
+    // Validate that numeric fields are non-negative
+    function isValidAmount(amount) {
+      return amount is number && amount >= 0;
+    }
+
+    // Validate timestamp format
+    function isValidTimestamp(timestamp) {
+      return timestamp is timestamp;
+    }
+
+    // ===========================================
+    // USER DOCUMENT RULES
+    // ===========================================
+
+    // Allow users to read/write their own user profile
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      // ===========================================
+      // CUSTOMER COLLECTION RULES
+      // ===========================================
+
+      match /customers/{customerId} {
+        // Only allow access to the document owner
+        allow read, write: if isOwner(uid);
+
+        // Validation rules for customer creation/updates
+        allow create: if isOwner(uid) &&
+          validateCustomerData(resource.data);
+
+        allow update: if isOwner(uid) &&
+          validateCustomerData(resource.data) &&
+          // Ensure ID cannot be changed
+          resource.data.id == request.resource.data.id;
+
+        allow delete: if isOwner(uid);
+
+        function validateCustomerData(data) {
+          return hasRequiredFields(data, ['id', 'name', 'phoneNumber', 'createdAt', 'updatedAt']) &&
+                 isValidString(data.id) &&
+                 isValidString(data.name) &&
+                 data.name.size() <= 100 &&
+                 isValidPhone(data.phoneNumber) &&
+                 data.phoneNumber.size() <= 20 &&
+                 isValidTimestamp(data.createdAt) &&
+                 isValidTimestamp(data.updatedAt) &&
+                 // Ensure updatedAt is not in the future
+                 data.updatedAt <= request.time;
+        }
+      }
+
+      // ===========================================
+      // INVOICE COLLECTION RULES
+      // ===========================================
+
+      match /invoices/{invoiceId} {
+        // Only allow access to the document owner
+        allow read, write: if isOwner(uid);
+
+        // Validation rules for invoice creation/updates
+        allow create: if isOwner(uid) &&
+          validateInvoiceData(resource.data);
+
+        allow update: if isOwner(uid) &&
+          validateInvoiceData(resource.data) &&
+          // Ensure critical fields cannot be changed after creation
+          resource.data.id == request.resource.data.id &&
+          resource.data.invoiceNumber == request.resource.data.invoiceNumber &&
+          resource.data.invoiceType == request.resource.data.invoiceType;
+
+        allow delete: if isOwner(uid);
+
+        function validateInvoiceData(data) {
+          return hasRequiredFields(data, [
+            'id', 'invoiceNumber', 'clientName', 'date', 'revenue',
+            'status', 'createdAt', 'updatedAt', 'invoiceType'
+          ]) &&
+          // Basic field validations
+          isValidString(data.id) &&
+          isValidInvoiceNumber(data.invoiceNumber) &&
+          isValidString(data.clientName) &&
+          data.clientName.size() <= 100 &&
+          isValidTimestamp(data.date) &&
+          isValidAmount(data.revenue) &&
+          data.revenue <= 10000000 && // Max invoice amount: 1 crore
+          isValidInvoiceStatus(data.status) &&
+          isValidInvoiceType(data.invoiceType) &&
+          isValidTimestamp(data.createdAt) &&
+          isValidTimestamp(data.updatedAt) &&
+          // Validate optional fields if present
+          ((!('customerPhone' in data)) || isValidPhone(data.customerPhone)) &&
+          ((!('customerId' in data)) || isValidString(data.customerId)) &&
+          ((!('amountPaid' in data)) || isValidAmount(data.amountPaid)) &&
+          ((!('paymentMethod' in data)) || isValidPaymentMethod(data.paymentMethod)) &&
+          ((!('notes' in data)) || (data.notes is string && data.notes.size() <= 500)) &&
+          // Ensure timestamps are logical
+          data.updatedAt <= request.time &&
+          data.createdAt <= data.updatedAt &&
+          // Validate amount paid doesn't exceed revenue by too much (allow small overpayment)
+          ((!('amountPaid' in data)) || data.amountPaid <= (data.revenue * 1.1)) &&
+          // Validate items array if present
+          ((!('items' in data)) || validateInvoiceItems(data.items));
+        }
+
+        function validateInvoiceItems(items) {
+          return items is list &&
+                 items.size() <= 100 && // Max 100 items per invoice
+                 items.hasAll(items.map(item => validateInvoiceItem(item)));
+        }
+
+        function validateInvoiceItem(item) {
+          return item is map &&
+                 hasRequiredFields(item, ['name', 'quantity', 'rate', 'amount']) &&
+                 isValidString(item.name) &&
+                 item.name.size() <= 100 &&
+                 item.quantity is number &&
+                 item.quantity > 0 &&
+                 item.quantity <= 10000 &&
+                 isValidAmount(item.rate) &&
+                 item.rate <= 1000000 && // Max rate per item: 10 lakh
+                 isValidAmount(item.amount) &&
+                 // Validate amount calculation (with small tolerance for floating point)
+                 math.abs(item.amount - (item.quantity * item.rate)) <= 0.01;
+        }
+      }
+
+      // ===========================================
+      // INVENTORY ITEMS COLLECTION RULES
+      // ===========================================
+
+      match /inventory_items/{itemId} {
+        // Only allow access to the document owner
+        allow read, write: if isOwner(uid);
+
+        // Validation rules for inventory item creation/updates
+        allow create: if isOwner(uid) &&
+          validateInventoryItemData(resource.data);
+
+        allow update: if isOwner(uid) &&
+          validateInventoryItemData(resource.data) &&
+          // Ensure ID and SKU cannot be changed
+          resource.data.id == request.resource.data.id &&
+          resource.data.sku == request.resource.data.sku;
+
+        allow delete: if isOwner(uid);
+
+        function validateInventoryItemData(data) {
+          return hasRequiredFields(data, [
+            'id', 'sku', 'name', 'unit', 'openingStock', 'currentStock',
+            'reorderPoint', 'avgCost', 'category', 'lastUpdated'
+          ]) &&
+          // Basic field validations
+          isValidString(data.id) &&
+          isValidString(data.sku) &&
+          data.sku.size() <= 50 &&
+          isValidString(data.name) &&
+          data.name.size() <= 100 &&
+          isValidString(data.unit) &&
+          data.unit.size() <= 20 &&
+          isValidAmount(data.openingStock) &&
+          isValidAmount(data.currentStock) &&
+          isValidAmount(data.reorderPoint) &&
+          isValidAmount(data.avgCost) &&
+          data.avgCost <= 1000000 && // Max cost per unit: 10 lakh
+          isValidString(data.category) &&
+          data.category.size() <= 50 &&
+          isValidTimestamp(data.lastUpdated) &&
+          data.lastUpdated <= request.time &&
+          // Validate optional barcode field
+          ((!('barcode' in data)) || (data.barcode is string && data.barcode.size() <= 50));
+        }
+      }
+
+      // ===========================================
+      // STOCK MOVEMENTS COLLECTION RULES
+      // ===========================================
+
+      match /stock_movements/{movementId} {
+        // Only allow access to the document owner
+        allow read, write: if isOwner(uid);
+
+        // Stock movements are typically created by the system, so stricter rules
+        allow create: if isOwner(uid) &&
+          validateStockMovementData(resource.data);
+
+        // Generally, stock movements should not be updated once created (audit trail)
+        // Allow only specific fields to be updated
+        allow update: if isOwner(uid) &&
+          validateStockMovementData(resource.data) &&
+          // Ensure critical audit fields cannot be changed
+          resource.data.id == request.resource.data.id &&
+          resource.data.itemId == request.resource.data.itemId &&
+          resource.data.movementType == request.resource.data.movementType &&
+          resource.data.quantity == request.resource.data.quantity &&
+          resource.data.createdAt == request.resource.data.createdAt;
+
+        allow delete: if isOwner(uid);
+
+        function validateStockMovementData(data) {
+          return hasRequiredFields(data, [
+            'id', 'itemId', 'movementType', 'quantity', 'createdAt'
+          ]) &&
+          // Basic field validations
+          isValidString(data.id) &&
+          isValidString(data.itemId) &&
+          isValidStockMovementType(data.movementType) &&
+          data.quantity is number &&
+          data.quantity != 0 && // Quantity cannot be zero
+          math.abs(data.quantity) <= 10000 && // Max movement quantity
+          isValidTimestamp(data.createdAt) &&
+          data.createdAt <= request.time &&
+          // Validate optional fields
+          ((!('reason' in data)) || (data.reason is string && data.reason.size() <= 200)) &&
+          ((!('invoiceId' in data)) || isValidString(data.invoiceId)) &&
+          ((!('notes' in data)) || (data.notes is string && data.notes.size() <= 200));
+        }
+
+        function isValidStockMovementType(type) {
+          return type in ['IN', 'OUT', 'ADJUSTMENT', 'RETURN_IN', 'RETURN_OUT', 'REVERSAL_OUT'];
+        }
+      }
+    }
+
+    // ===========================================
+    // DENY ALL OTHER ACCESS
+    // ===========================================
+
+    // Explicitly deny access to any documents not covered by the above rules
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

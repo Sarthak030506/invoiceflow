@@ -58,7 +58,9 @@ Thank you for your business!
 Regards,
 $shopName
 $shopContact
-''';
+
+📱 Download InvoiceFlow app:
+https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
     } else {
       message = '''
 Hello ${invoice.clientName},
@@ -77,7 +79,9 @@ Thank you for your business!
 Regards,
 $shopName
 $shopContact
-''';
+
+📱 Download InvoiceFlow app:
+https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
     }
 
     // Format the phone number correctly

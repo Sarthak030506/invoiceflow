@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- InvoiceFlow Network Security Configuration -->
+<!-- Only allows HTTPS connections for production security -->
+<network-security-config>
+    <!-- Production configuration - HTTPS only -->
+    <domain-config cleartextTrafficPermitted="false">
+        <!-- Firebase and Google Services -->
+        <domain includeSubdomains="true">firebaseapp.com</domain>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">firebase.com</domain>
+        <domain includeSubdomains="true">firestore.googleapis.com</domain>
+        <domain includeSubdomains="true">fcm.googleapis.com</domain>
+        <domain includeSubdomains="true">accounts.google.com</domain>
+
+        <!-- WhatsApp API domains (if using official API) -->
+        <domain includeSubdomains="true">graph.facebook.com</domain>
+        <domain includeSubdomains="true">api.whatsapp.com</domain>
+
+        <!-- Your custom API domains (add if you have any) -->
+        <!-- <domain includeSubdomains="true">your-api-domain.com</domain> -->
+    </domain-config>
+
+    <!-- Development configuration (only enable for debug builds) -->
+    <!-- Remove this section in production builds -->
+    <debug-overrides>
+        <!-- Allow cleartext traffic to localhost for development/testing -->
+        <domain-config cleartextTrafficPermitted="true">
+            <domain includeSubdomains="false">localhost</domain>
+            <domain includeSubdomains="false">127.0.0.1</domain>
+            <domain includeSubdomains="false">10.0.2.2</domain> <!-- Android Emulator -->
+        </domain-config>
+    </debug-overrides>
+
+    <!-- Base configuration - deny all cleartext traffic by default -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Trust system certificate authorities -->
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>

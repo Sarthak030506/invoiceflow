@@ -10,6 +10,7 @@ import '../presentation/invoice_type_selection_screen.dart';
 import '../presentation/customers_screen/customers_screen.dart';
 import '../presentation/customers_screen/customer_detail_screen.dart';
 import '../presentation/inventory_screen/inventory_screen.dart';
+import '../presentation/inventory_screen/add_items_directly_screen.dart';
 import '../presentation/auth/login_screen.dart';
 import '../presentation/auth/forgot_password_screen.dart';
 
@@ -24,6 +25,7 @@ class AppRoutes {
   static const String customersScreen = '/customers-screen';
   static const String customerDetailScreen = '/customer-detail-screen';
   static const String inventoryScreen = '/inventory-screen';
+  static const String addItemsDirectlyScreen = '/add-items-directly';
   static const String inventoryDetailScreen = '/inventory/item';
   static const String loginScreen = '/login';
   static const String forgotPasswordScreen = '/forgot-password';
@@ -43,6 +45,7 @@ class AppRoutes {
       return CustomerDetailScreen(customerId: customerId);
     },
     inventoryScreen: (context) => InventoryScreen(),
+    addItemsDirectlyScreen: (context) => AddItemsDirectlyScreen(),
     loginScreen: (context) => const LoginScreen(),
     forgotPasswordScreen: (context) => const ForgotPasswordScreen(),
   };

@@ -7,6 +7,7 @@ import '../../models/invoice_model.dart';
 import '../../services/customer_service.dart';
 import '../../services/analytics_service.dart';
 import './widgets/customer_invoice_item.dart';
+import './widgets/whatsapp_due_reminder_button.dart';
 
 class CustomerDetailScreen extends StatefulWidget {
   final String customerId;
@@ -237,6 +238,13 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                         'Total Invoices',
                         _invoices.length.toString(),
                       ),
+                      if (_totalOutstanding > 0) ...[  
+                        SizedBox(height: 2.h),
+                        WhatsAppDueReminderButton(
+                          customer: _customer!,
+                          totalDue: _totalOutstanding,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -321,17 +329,24 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-            color: Colors.grey[600],
+        Expanded(
+          flex: 2,
+          child: Text(
+            label,
+            style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+              color: Colors.grey[600],
+            ),
           ),
         ),
-        Text(
-          value,
-          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: valueColor,
+        Expanded(
+          flex: 3,
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: valueColor,
+            ),
           ),
         ),
       ],
@@ -366,9 +381,12 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            item['name'] as String,
-            style: AppTheme.lightTheme.textTheme.bodySmall,
+          Expanded(
+            child: Text(
+              item['name'] as String,
+              style: AppTheme.lightTheme.textTheme.bodySmall,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           Container(
             padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.3.h),

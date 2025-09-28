@@ -14,6 +14,7 @@ import 'firebase_options.dart';
 import 'package:invoiceflow/services/invoice_service.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:invoiceflow/constants/app_scaling.dart';
+import 'package:invoiceflow/utils/app_logger.dart';
 
 import 'package:invoiceflow/routes/app_routes.dart';
 import 'package:invoiceflow/presentation/inventory_screen/inventory_detail_screen.dart';
@@ -30,9 +31,9 @@ void main() async {
     await GoogleSignIn().signInSilently();
 
     await InvoiceService.initialize(csvPath: 'assets/images/data/invoices.csv');
-    print('Firebase and Google Services initialized successfully');
+    AppLogger.info('Firebase and Google Services initialized successfully', 'App');
   } catch (e) {
-    print('Initialization error: $e');
+    AppLogger.error('Initialization error', 'App', e);
   }
 
   runApp(

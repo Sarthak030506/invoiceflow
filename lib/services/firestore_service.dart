@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/customer_model.dart';
 import '../models/invoice_model.dart';
+import '../utils/app_logger.dart';
 
 /// FirestoreService provides CRUD operations and a one-time migration from the
 /// existing local SQLite database (DatabaseService) to Cloud Firestore.
@@ -86,12 +87,10 @@ class FirestoreService {
     final uid = _requireUid();
     final doc = _invoicesCol(uid).doc(invoice.id);
     try {
-      // Debug logging for visibility issues
-      print('[Firestore] upsertInvoice -> uid=$uid path=users/$uid/invoices/${invoice.id} type=${invoice.invoiceType} status=${invoice.status} amountPaid=${invoice.amountPaid}');
       await doc.set(_invoiceToFirestore(invoice), SetOptions(merge: true));
-      print('[Firestore] upsertInvoice OK -> ${invoice.id}');
+      AppLogger.firebase('upsertInvoice', 'success', invoice.id);
     } catch (e) {
-      print('[Firestore] upsertInvoice ERROR uid=$uid id=${invoice.id}: $e');
+      AppLogger.error('Firestore upsertInvoice failed', 'Firestore', e);
       rethrow;
     }
   }
@@ -105,6 +104,43 @@ class FirestoreService {
 
   // Convenience alias to match existing call sites
   Future<InvoiceModel?> getInvoiceById(String invoiceId) => getInvoice(invoiceId);
+
+  /// Check if an invoice number already exists for the current user
+  Future<bool> isInvoiceNumberExists(String invoiceNumber) async {
+    final uid = _requireUid();
+    final q = await _invoicesCol(uid)
+        .where('invoiceNumber', isEqualTo: invoiceNumber)
+        .limit(1)
+        .get();
+    return q.docs.isNotEmpty;
+  }
+
+  /// Generate next sequential invoice number for the current user
+  Future<String> generateNextInvoiceNumber() async {
+    final uid = _requireUid();
+    final now = DateTime.now();
+    final datePrefix = '${now.year}${now.month.toString().padLeft(2, '0')}';
+
+    // Query for invoices with the current month prefix
+    final q = await _invoicesCol(uid)
+        .where('invoiceNumber', isGreaterThanOrEqualTo: 'INV-$datePrefix')
+        .where('invoiceNumber', isLessThan: 'INV-$datePrefix\uf8ff')
+        .orderBy('invoiceNumber', descending: true)
+        .limit(1)
+        .get();
+
+    int nextSequence = 1;
+    if (q.docs.isNotEmpty) {
+      final lastInvoiceNumber = q.docs.first.data()['invoiceNumber'] as String;
+      final sequencePart = lastInvoiceNumber.split('-').last;
+      if (sequencePart.length >= 6 && sequencePart.startsWith(datePrefix)) {
+        final currentSequence = int.tryParse(sequencePart.substring(6)) ?? 0;
+        nextSequence = currentSequence + 1;
+      }
+    }
+
+    return 'INV-$datePrefix${nextSequence.toString().padLeft(3, '0')}';
+  }
 
   Future<List<InvoiceModel>> getAllInvoices() async {
     final uid = _requireUid();
@@ -129,11 +165,13 @@ class FirestoreService {
     final uid = _requireUid();
     final q = await _invoicesCol(uid)
         .where('customerId', isEqualTo: customerId)
-        .orderBy('date', descending: true)
         .get();
-    return q.docs
+    final invoices = q.docs
         .map((d) => _invoiceFromFirestore(d.data()..['id'] = d.id))
         .toList();
+    // Sort in memory to avoid index requirement
+    invoices.sort((a, b) => b.date.compareTo(a.date));
+    return invoices;
   }
 
   Future<void> deleteInvoice(String invoiceId) async {
@@ -193,11 +231,10 @@ class FirestoreService {
       payload[f] = FieldValue.delete();
     }
     try {
-      print('[Firestore] clearInvoiceFields -> uid=$uid id=$invoiceId fields=${fieldNames.join(',')}');
       await ref.update(payload);
-      print('[Firestore] clearInvoiceFields OK -> $invoiceId');
+      AppLogger.firebase('clearInvoiceFields', 'success', invoiceId);
     } catch (e) {
-      print('[Firestore] clearInvoiceFields ERROR id=$invoiceId: $e');
+      AppLogger.error('Firestore clearInvoiceFields failed', 'Firestore', e);
       rethrow;
     }
   }

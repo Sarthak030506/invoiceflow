@@ -4,6 +4,7 @@ import '../models/reorder_item_model.dart';
 import 'inventory_firestore_service.dart';
 import './inventory_notification_service.dart';
 import './stock_map_service.dart';
+import '../utils/app_logger.dart';
 import 'dart:async';
 
 class InventoryService {
@@ -354,7 +355,7 @@ class InventoryService {
   /// Fires notifications for low stock items
   Future<void> _fireNotifications(List<InventoryItem> lowStockItems) async {
     for (final item in lowStockItems) {
-      print('LOW STOCK ALERT: ${item.name} - Current: ${item.currentStock}, Reorder: ${item.reorderPoint}');
+      AppLogger.warning('LOW STOCK ALERT: ${item.name} - Current: ${item.currentStock}, Reorder: ${item.reorderPoint}', 'Inventory');
     }
   }
 
@@ -430,5 +431,54 @@ class InventoryService {
         }
       }
     }
+  }
+
+  /// Adds an item directly to inventory without creating a purchase invoice
+  Future<void> addItemDirectlyToInventory(dynamic catalogItem, double quantity) async {
+    if (quantity <= 0) throw Exception('Quantity must be positive');
+    
+    // Check if item already exists in inventory
+    String itemId;
+    final existingItem = await _db.getItemByName(catalogItem.name);
+    
+    if (existingItem != null) {
+      itemId = existingItem.id;
+    } else {
+      // Create new inventory item from catalog item
+      final newItem = InventoryItem(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: catalogItem.name,
+        sku: 'SKU-${catalogItem.id}',
+        category: 'General',
+        unit: 'pcs',
+        avgCost: catalogItem.rate,
+        openingStock: 0.0,
+        currentStock: 0.0,
+        reorderPoint: 10.0,
+        barcode: '',
+        lastUpdated: DateTime.now(),
+      );
+      
+      await addItem(newItem);
+      itemId = newItem.id;
+    }
+    
+    // Add stock movement for direct addition
+    final movement = StockMovement(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      itemId: itemId,
+      type: StockMovementType.IN,
+      quantity: quantity,
+      unitCost: catalogItem.rate,
+      sourceRefType: 'direct_add',
+      sourceRefId: 'manual_${DateTime.now().millisecondsSinceEpoch}',
+      createdAt: DateTime.now(),
+    );
+    
+    await addMovement(movement);
+    await _updateItemCurrentStock(itemId);
+    await refreshMetricsAndNotify();
+    _inventoryUpdatesController.add(null);
+    StockMapService().notifyInventoryUpdated();
   }
 }

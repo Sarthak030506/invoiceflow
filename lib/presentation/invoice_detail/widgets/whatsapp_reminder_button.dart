@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 // Ensure url_launcher is version 6.2.4 or higher
 
 import '../../../models/invoice_model.dart';
+import '../../../utils/app_logger.dart';
 
 class WhatsAppReminderButton extends StatefulWidget {
   final InvoiceModel invoice;
@@ -49,18 +50,18 @@ class _WhatsAppReminderButtonState extends State<WhatsAppReminderButton> {
         phoneNumber = '91${phoneNumber.substring(1)}';
       }
       
-      // Debug print phone number
-      print('Formatted phone number: $phoneNumber');
-      print('Original phone number: ${widget.invoice.customerPhone}');
+      // Debug log phone number
+      AppLogger.debug('Formatted phone number: $phoneNumber', 'WhatsApp');
+      AppLogger.debug('Original phone number: ${widget.invoice.customerPhone}', 'WhatsApp');
       
       // Create a simple message
       final bool isPaid = widget.invoice.remainingAmount <= 0;
       String message;
       
       if (isPaid) {
-        message = 'Hello ${widget.invoice.clientName}, Thank you for your payment of ₹${widget.invoice.amountPaid} for invoice ${widget.invoice.invoiceNumber}. - ${widget.shopName}';
+        message = 'Hello ${widget.invoice.clientName}, Thank you for your payment of ₹${widget.invoice.amountPaid} for invoice ${widget.invoice.invoiceNumber}. - ${widget.shopName}\n\n📱 Download InvoiceFlow app:\nhttps://play.google.com/store/apps/details?id=com.invoiceflow.app';
       } else {
-        message = 'Hello ${widget.invoice.clientName}, This is a reminder for your pending payment of ₹${widget.invoice.remainingAmount} for invoice ${widget.invoice.invoiceNumber}. - ${widget.shopName}';
+        message = 'Hello ${widget.invoice.clientName}, This is a reminder for your pending payment of ₹${widget.invoice.remainingAmount} for invoice ${widget.invoice.invoiceNumber}. - ${widget.shopName}\n\n📱 Download InvoiceFlow app:\nhttps://play.google.com/store/apps/details?id=com.invoiceflow.app';
       }
       
       final String encodedMessage = Uri.encodeComponent(message);
@@ -70,7 +71,7 @@ class _WhatsAppReminderButtonState extends State<WhatsAppReminderButton> {
         final String whatsappSchemeUrl = "whatsapp://send?phone=$phoneNumber&text=$encodedMessage";
         final String waUrl = "https://wa.me/$phoneNumber?text=$encodedMessage";
         
-        print('Trying WhatsApp scheme URL: $whatsappSchemeUrl');
+        AppLogger.debug('Trying WhatsApp scheme URL: $whatsappSchemeUrl', 'WhatsApp');
         
         // APPROACH 1: Try whatsapp:// scheme first (most reliable on Android)
         final Uri whatsappUri = Uri.parse(whatsappSchemeUrl);
@@ -79,7 +80,7 @@ class _WhatsAppReminderButtonState extends State<WhatsAppReminderButton> {
           return;
         }
         
-        print('WhatsApp scheme failed, trying wa.me URL');
+        AppLogger.debug('WhatsApp scheme failed, trying wa.me URL', 'WhatsApp');
         
         // APPROACH 2: Try wa.me URL as fallback
         final Uri webUri = Uri.parse(waUrl);
@@ -88,17 +89,17 @@ class _WhatsAppReminderButtonState extends State<WhatsAppReminderButton> {
           return;
         }
         
-        print('Both URL approaches failed, using share fallback');
+        AppLogger.debug('Both URL approaches failed, using share fallback', 'WhatsApp');
         
         // FALLBACK: Use system share dialog
         final String shareText = "$message\n\nOr open this link in your browser: $waUrl";
         await Share.share(shareText);
       } catch (e) {
-        print('All WhatsApp launch attempts failed: $e');
+        AppLogger.error('All WhatsApp launch attempts failed', 'WhatsApp', e);
         _showError('Could not open WhatsApp. Tap "Copy URL" to open manually.');
       }
     } catch (e) {
-      print('Share error: $e');
+      AppLogger.error('Share error', 'WhatsApp', e);
       _showError('Error sharing message: ${e.toString()}');
     } finally {
       if (mounted) {
