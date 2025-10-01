@@ -295,13 +295,16 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
                                             child: Icon(Icons.remove, size: AppScaling.iconSize),
                                           ),
                                         ),
-                                        Container(
-                                          width: 60,
-                                          alignment: Alignment.center,
-                                          padding: EdgeInsets.symmetric(horizontal: AppScaling.spacing),
-                                          child: Text(
-                                            '${selectedItem?.quantity ?? 1}',
-                                            style: TextStyle(fontWeight: FontWeight.bold),
+                                        InkWell(
+                                          onTap: () => _showQuantityDialog(selectedItem!),
+                                          child: Container(
+                                            width: 60,
+                                            alignment: Alignment.center,
+                                            padding: EdgeInsets.symmetric(horizontal: AppScaling.spacing),
+                                            child: Text(
+                                              '${selectedItem?.quantity ?? 1}',
+                                              style: TextStyle(fontWeight: FontWeight.bold),
+                                            ),
                                           ),
                                         ),
                                         InkWell(
@@ -398,6 +401,85 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  void _showQuantityDialog(_SelectedItem selectedItem) {
+    final TextEditingController controller = TextEditingController(
+      text: selectedItem.quantity.toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Enter Quantity'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: 'Quantity',
+            hintText: 'Enter quantity',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.green, width: 2),
+            ),
+            errorText: null,
+          ),
+          onSubmitted: (value) {
+            final quantity = int.tryParse(value);
+            if (quantity != null && quantity > 0 && quantity <= 10000) {
+              setState(() {
+                selectedItem.quantity = quantity;
+              });
+              Navigator.of(context).pop();
+            }
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              final value = controller.text.trim();
+              final quantity = int.tryParse(value);
+
+              if (quantity == null || quantity <= 0) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Please enter a valid positive number'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              if (quantity > 10000) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Quantity cannot exceed 10,000'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              setState(() {
+                selectedItem.quantity = quantity;
+              });
+              Navigator.of(context).pop();
+            },
+            child: Text('OK'),
+          ),
+        ],
+      ),
     );
   }
 
