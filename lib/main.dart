@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
+import 'package:responsive_framework/responsive_framework.dart';
 import 'package:invoiceflow/providers/auth_provider.dart';
 import 'package:invoiceflow/providers/inventory_provider.dart';
 
@@ -55,10 +56,21 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'InvoiceFlow',
         builder: (context, child) {
+          // Wrap with ResponsiveFramework for desktop support
+          child = ResponsiveBreakpoints.builder(
+            child: child!,
+            breakpoints: [
+              const Breakpoint(start: 0, end: 599, name: MOBILE),
+              const Breakpoint(start: 600, end: 1023, name: TABLET),
+              const Breakpoint(start: 1024, end: 1920, name: DESKTOP),
+              const Breakpoint(start: 1921, end: double.infinity, name: '4K'),
+            ],
+          );
+
           // Force textScaleFactor to 1.0
           return MediaQuery(
             data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
-            child: child!,
+            child: child,
           );
         },
         // Apply the modern blue/green application theme

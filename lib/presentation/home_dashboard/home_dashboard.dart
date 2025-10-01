@@ -19,6 +19,7 @@ import '../../utils/app_logger.dart';
 import './widgets/metric_card_widget.dart';
 import './widgets/recent_invoice_item_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
+import '../../widgets/adaptive_scaffold.dart';
 import '../../widgets/primary_button.dart';
 import '../../animations/fluid_animations.dart';
 import 'dart:async';
@@ -293,7 +294,36 @@ class _HomeDashboardState extends State<HomeDashboard> {
     // Get the height after the widget is built
     final height = SizerUtil.height;
 
-    return Scaffold(
+    return AdaptiveScaffold(
+      currentIndex: _selectedIndex,
+      onNavigationChanged: _onBottomNavTap,
+      items: const [
+        NavigationItem(
+          icon: Icon(Icons.home_outlined),
+          activeIcon: Icon(Icons.home),
+          label: 'Home',
+        ),
+        NavigationItem(
+          icon: Icon(Icons.receipt_long_outlined),
+          activeIcon: Icon(Icons.receipt),
+          label: 'Invoices',
+        ),
+        NavigationItem(
+          icon: Icon(Icons.bar_chart_outlined),
+          activeIcon: Icon(Icons.bar_chart),
+          label: 'Analytics',
+        ),
+        NavigationItem(
+          icon: Icon(Icons.people_outline),
+          activeIcon: Icon(Icons.people),
+          label: 'Customers',
+        ),
+        NavigationItem(
+          icon: Icon(Icons.person_outline),
+          activeIcon: Icon(Icons.person),
+          label: 'Profile',
+        ),
+      ],
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       drawer: Drawer(
         child: ListView(
@@ -589,7 +619,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
             scale: value,
             child: Transform.translate(
               offset: Offset(0, 50 * (1 - value)),
-              child: FloatingActionButton(
+              child: FloatingActionButton.extended(
                 onPressed: () {
                   showModalBottomSheet(
                     context: context,
@@ -610,7 +640,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                 borderRadius: BorderRadius.circular(10),
                               ),
                             ),
-                                                        ListTile(
+                            ListTile(
                               leading: Icon(Icons.add_circle_outline, color: Theme.of(context).colorScheme.primary),
                               title: Text('Create Invoice'),
                               subtitle: Text('Add new sales or purchase invoice'),
@@ -641,22 +671,35 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     },
                   );
                 },
-                child: Icon(
-                  Icons.add_rounded,
-                  size: 8.w,
-                  color: Colors.white,
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Create Invoice',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    SizedBox(width: 2.w),
+                    Icon(
+                      Icons.add_rounded,
+                      size: 6.w,
+                      color: Colors.white,
+                    ),
+                  ],
                 ),
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 elevation: 8,
-                shape: CircleBorder(),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
             ),
           );
         },
-      ),
-      bottomNavigationBar: EnhancedBottomNav(
-        currentIndex: 0,
-        onTap: _onBottomNavTap,
       ),
     );
   }
