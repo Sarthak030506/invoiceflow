@@ -4,6 +4,16 @@ import '../models/invoice_model.dart';
 import './firestore_service.dart';
 
 class CustomerService {
+  // Singleton implementation
+  static CustomerService? _instance;
+
+  CustomerService._internal();
+
+  static CustomerService get instance {
+    _instance ??= CustomerService._internal();
+    return _instance!;
+  }
+
   final FirestoreService _fs = FirestoreService.instance;
   
   Future<List<CustomerModel>> getAllCustomers() async => _fs.getAllCustomers();
@@ -105,5 +115,42 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
     
     // WhatsApp API URL
     return 'https://wa.me/$phoneNumber?text=$encodedMessage';
+  }
+
+  // Add pending return amount to customer
+  Future<void> addPendingReturn(String customerId, double amount) async {
+    final customer = await getCustomerById(customerId);
+    if (customer != null) {
+      final updatedCustomer = customer.copyWith(
+        pendingReturnAmount: customer.pendingReturnAmount + amount,
+        updatedAt: DateTime.now(),
+      );
+      await _fs.upsertCustomer(updatedCustomer);
+    }
+  }
+
+  // Remove pending return amount from customer
+  Future<void> removePendingReturn(String customerId, double amount) async {
+    final customer = await getCustomerById(customerId);
+    if (customer != null) {
+      final newAmount = (customer.pendingReturnAmount - amount).clamp(0.0, double.infinity);
+      final updatedCustomer = customer.copyWith(
+        pendingReturnAmount: newAmount,
+        updatedAt: DateTime.now(),
+      );
+      await _fs.upsertCustomer(updatedCustomer);
+    }
+  }
+
+  // Clear all pending returns for a customer
+  Future<void> clearPendingReturns(String customerId) async {
+    final customer = await getCustomerById(customerId);
+    if (customer != null) {
+      final updatedCustomer = customer.copyWith(
+        pendingReturnAmount: 0.0,
+        updatedAt: DateTime.now(),
+      );
+      await _fs.upsertCustomer(updatedCustomer);
+    }
   }
 }

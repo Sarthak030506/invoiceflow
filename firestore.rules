@@ -103,7 +103,9 @@ service cloud.firestore {
                  isValidTimestamp(data.createdAt) &&
                  isValidTimestamp(data.updatedAt) &&
                  // Ensure updatedAt is not in the future
-                 data.updatedAt <= request.time;
+                 data.updatedAt <= request.time &&
+                 // Validate optional pending return amount
+                 ((!('pendingReturnAmount' in data)) || isValidAmount(data.pendingReturnAmount));
         }
       }
 
@@ -226,6 +228,85 @@ service cloud.firestore {
           data.lastUpdated <= request.time &&
           // Validate optional barcode field
           ((!('barcode' in data)) || (data.barcode is string && data.barcode.size() <= 50));
+        }
+      }
+
+      // ===========================================
+      // RETURNS COLLECTION RULES
+      // ===========================================
+
+      match /returns/{returnId} {
+        // Only allow access to the document owner
+        allow read, write: if isOwner(uid);
+
+        // Validation rules for return creation/updates
+        allow create: if isOwner(uid) &&
+          validateReturnData(resource.data);
+
+        allow update: if isOwner(uid) &&
+          validateReturnData(resource.data) &&
+          // Ensure critical fields cannot be changed
+          resource.data.id == request.resource.data.id &&
+          resource.data.returnNumber == request.resource.data.returnNumber &&
+          resource.data.invoiceId == request.resource.data.invoiceId;
+
+        allow delete: if isOwner(uid);
+
+        function validateReturnData(data) {
+          return hasRequiredFields(data, [
+            'id', 'returnNumber', 'invoiceId', 'invoiceNumber', 'customerName',
+            'invoiceDate', 'returnDate', 'returnType', 'returnReason',
+            'totalReturnValue', 'refundAmount', 'createdAt', 'updatedAt'
+          ]) &&
+          // Basic field validations
+          isValidString(data.id) &&
+          isValidString(data.returnNumber) &&
+          data.returnNumber.size() <= 50 &&
+          isValidString(data.invoiceId) &&
+          isValidString(data.invoiceNumber) &&
+          isValidString(data.customerName) &&
+          data.customerName.size() <= 100 &&
+          isValidTimestamp(data.invoiceDate) &&
+          isValidTimestamp(data.returnDate) &&
+          isValidInvoiceType(data.returnType) &&
+          isValidString(data.returnReason) &&
+          data.returnReason.size() <= 200 &&
+          isValidAmount(data.totalReturnValue) &&
+          isValidAmount(data.refundAmount) &&
+          data.totalReturnValue <= 10000000 &&
+          data.refundAmount <= 10000000 &&
+          isValidTimestamp(data.createdAt) &&
+          isValidTimestamp(data.updatedAt) &&
+          data.updatedAt <= request.time &&
+          data.createdAt <= data.updatedAt &&
+          // Validate optional fields
+          ((!('customerId' in data)) || isValidString(data.customerId)) &&
+          ((!('customerPhone' in data)) || isValidPhone(data.customerPhone)) &&
+          ((!('notes' in data)) || (data.notes is string && data.notes.size() <= 500)) &&
+          ((!('isApplied' in data)) || (data.isApplied is bool)) &&
+          // Validate items array if present
+          ((!('items' in data)) || validateReturnItems(data.items));
+        }
+
+        function validateReturnItems(items) {
+          return items is list &&
+                 items.size() <= 100 &&
+                 items.hasAll(items.map(item => validateReturnItem(item)));
+        }
+
+        function validateReturnItem(item) {
+          return item is map &&
+                 hasRequiredFields(item, ['name', 'quantity', 'price', 'totalValue']) &&
+                 isValidString(item.name) &&
+                 item.name.size() <= 100 &&
+                 item.quantity is number &&
+                 item.quantity > 0 &&
+                 item.quantity <= 10000 &&
+                 isValidAmount(item.price) &&
+                 item.price <= 1000000 &&
+                 isValidAmount(item.totalValue) &&
+                 // Validate amount calculation (with small tolerance)
+                 math.abs(item.totalValue - (item.quantity * item.price)) <= 0.01;
         }
       }
 

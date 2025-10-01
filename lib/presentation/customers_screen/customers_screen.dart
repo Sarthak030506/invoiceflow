@@ -16,7 +16,7 @@ class CustomersScreen extends StatefulWidget {
 }
 
 class _CustomersScreenState extends State<CustomersScreen> {
-  final CustomerService _customerService = CustomerService();
+  final CustomerService _customerService = CustomerService.instance;
   final TextEditingController _searchController = TextEditingController();
   
   List<CustomerModel> _allCustomers = [];

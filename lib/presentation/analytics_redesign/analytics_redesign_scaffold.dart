@@ -3675,7 +3675,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   
   Future<Map<String, dynamic>> _getOutstandingPaymentsData() async {
     try {
-      final customerService = CustomerService();
+      final customerService = CustomerService.instance;
       final fs = FirestoreService.instance;
       
       // Get all invoices with outstanding amounts

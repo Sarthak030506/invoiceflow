@@ -26,7 +26,7 @@ class CustomerInputWidget extends StatefulWidget {
 class _CustomerInputWidgetState extends State<CustomerInputWidget> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
-  final CustomerService _customerService = CustomerService();
+  final CustomerService _customerService = CustomerService.instance;
   
   List<CustomerModel> _existingCustomers = [];
   List<CustomerModel> _filteredCustomers = [];

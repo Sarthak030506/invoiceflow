@@ -295,6 +295,82 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                gradient: AppTheme.getPrimaryGradient(isDark),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Icon(
+                    Icons.receipt_long,
+                    size: 48,
+                    color: Colors.white,
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    'InvoiceFlow',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.assignment_return, color: Colors.orange.shade600),
+              title: Text(
+                'Returns',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              subtitle: Text('Manage sales & purchase returns'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/returns-screen');
+              },
+            ),
+            Divider(),
+            ListTile(
+              leading: Icon(Icons.inventory_2, color: Colors.blue.shade600),
+              title: Text(
+                'Inventory',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/inventory-screen');
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.settings, color: Colors.grey.shade600),
+              title: Text(
+                'Settings',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, AppRoutes.profileScreen);
+              },
+            ),
+          ],
+        ),
+      ),
       body: RefreshIndicator(
         onRefresh: _refreshData,
         child: CustomScrollView(
@@ -306,6 +382,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
               pinned: true,
               backgroundColor: Colors.transparent,
               elevation: 0,
+              leading: Builder(
+                builder: (context) => IconButton(
+                  icon: Icon(Icons.menu, color: Colors.white),
+                  onPressed: () {
+                    Scaffold.of(context).openDrawer();
+                  },
+                ),
+              ),
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
                   decoration: BoxDecoration(

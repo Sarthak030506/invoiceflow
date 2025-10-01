@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:uuid/uuid.dart';
 import '../../models/invoice_model.dart';
-import '../../services/invoice_service.dart';
+import '../../models/return_model.dart';
+import '../../services/return_service.dart';
 
 class ReturnSummaryScreen extends StatefulWidget {
   final InvoiceModel invoice;
@@ -49,63 +51,66 @@ class _ReturnSummaryScreenState extends State<ReturnSummaryScreen> {
     });
 
     try {
-      // Create updated items list with reduced quantities
-      List<InvoiceItem> updatedItems = [];
-      
-      for (final item in widget.invoice.items) {
-        final returnQty = widget.returnQuantities[item.name] ?? 0;
-        final newQuantity = item.quantity - returnQty;
-        
-        // Only add items that still have quantity > 0
-        if (newQuantity > 0) {
-          updatedItems.add(InvoiceItem(
+      // Generate return number
+      final returnNumber = await ReturnService.instance.generateReturnNumber(widget.invoice.invoiceType);
+
+      // Create return items list
+      final returnItems = <ReturnItem>[];
+      for (final entry in widget.returnQuantities.entries) {
+        if (entry.value > 0) {
+          final item = widget.invoice.items.firstWhere((i) => i.name == entry.key);
+          returnItems.add(ReturnItem(
             name: item.name,
-            quantity: newQuantity,
+            quantity: entry.value,
             price: item.price,
+            totalValue: item.price * entry.value,
           ));
         }
       }
 
-      // Calculate new revenue based on updated items
-      final newRevenue = updatedItems.fold(
-        0.0, 
-        (sum, item) => sum + (item.price * item.quantity)
-      );
-
-      // Create updated invoice
-      final updatedInvoice = widget.invoice.copyWith(
-        items: updatedItems,
-        revenue: newRevenue,
+      // Create return model
+      final returnModel = ReturnModel(
+        id: const Uuid().v4(),
+        returnNumber: returnNumber,
+        invoiceId: widget.invoice.id,
+        invoiceNumber: widget.invoice.invoiceNumber,
+        customerName: widget.invoice.clientName,
+        customerId: widget.invoice.customerId,
+        customerPhone: widget.invoice.customerPhone,
+        invoiceDate: widget.invoice.date,
+        returnDate: DateTime.now(),
+        returnType: widget.invoice.invoiceType,
+        items: returnItems,
+        returnReason: widget.returnReason,
+        notes: widget.notes,
+        totalReturnValue: widget.totalReturnValue,
+        refundAmount: refundAmount,
+        isApplied: false,
+        createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
-        notes: widget.notes != null 
-          ? '${widget.invoice.notes ?? ''}\n\nReturn processed: ${widget.returnReason}${widget.notes!.isNotEmpty ? ' - ${widget.notes}' : ''}'
-          : '${widget.invoice.notes ?? ''}\n\nReturn processed: ${widget.returnReason}',
       );
 
-      // Update the invoice in the database
-      await InvoiceService.instance.updateInvoice(updatedInvoice);
+      // Save return to database
+      await ReturnService.instance.createReturn(returnModel);
 
       if (!mounted) return;
 
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Return processed successfully!'),
+          content: Text('Return created successfully!'),
           backgroundColor: Colors.green,
         ),
       );
 
-      // Navigate back to invoice detail with updated invoice
+      // Navigate back to invoice detail
       Navigator.of(context).popUntil((route) {
         return route.settings.name == '/invoice-detail-screen' || route.isFirst;
       });
-      
-      // If we're back at the invoice detail screen, we need to refresh it
-      // This will be handled by the invoice detail screen checking for updates
-      
+
     } catch (e) {
       if (!mounted) return;
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error processing return: ${e.toString()}'),

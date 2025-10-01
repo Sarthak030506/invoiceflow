@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/customer_model.dart';
 import '../models/invoice_model.dart';
+import '../models/return_model.dart';
 import '../utils/app_logger.dart';
 
 /// FirestoreService provides CRUD operations and a one-time migration from the
@@ -35,6 +36,9 @@ class FirestoreService {
 
   CollectionReference<Map<String, dynamic>> _invoicesCol(String uid) =>
       _fs.collection('users').doc(uid).collection('invoices');
+
+  CollectionReference<Map<String, dynamic>> _returnsCol(String uid) =>
+      _fs.collection('users').doc(uid).collection('returns');
 
   // ----------------------
   // Customer operations
@@ -239,6 +243,75 @@ class FirestoreService {
     }
   }
 
+  // ----------------------
+  // Return operations
+  // ----------------------
+  Future<void> createReturn(ReturnModel returnModel) async {
+    final uid = _requireUid();
+    final doc = _returnsCol(uid).doc(returnModel.id);
+    await doc.set(_returnToFirestore(returnModel));
+    AppLogger.firebase('createReturn', 'success', returnModel.id);
+  }
+
+  Future<ReturnModel?> getReturnById(String returnId) async {
+    final uid = _requireUid();
+    final snap = await _returnsCol(uid).doc(returnId).get();
+    if (!snap.exists) return null;
+    return _returnFromFirestore(snap.data()!..['id'] = snap.id);
+  }
+
+  Future<List<ReturnModel>> getReturns() async {
+    final uid = _requireUid();
+    final q = await _returnsCol(uid).orderBy('returnDate', descending: true).get();
+    return q.docs
+        .map((d) => _returnFromFirestore(d.data()..['id'] = d.id))
+        .toList();
+  }
+
+  Future<List<ReturnModel>> getReturnsByType(String returnType) async {
+    final uid = _requireUid();
+    final q = await _returnsCol(uid)
+        .where('returnType', isEqualTo: returnType)
+        .orderBy('returnDate', descending: true)
+        .get();
+    return q.docs
+        .map((d) => _returnFromFirestore(d.data()..['id'] = d.id))
+        .toList();
+  }
+
+  Future<List<ReturnModel>> getReturnsByCustomerId(String customerId) async {
+    final uid = _requireUid();
+    final q = await _returnsCol(uid)
+        .where('customerId', isEqualTo: customerId)
+        .orderBy('returnDate', descending: true)
+        .get();
+    return q.docs
+        .map((d) => _returnFromFirestore(d.data()..['id'] = d.id))
+        .toList();
+  }
+
+  Future<List<ReturnModel>> getReturnsByInvoiceId(String invoiceId) async {
+    final uid = _requireUid();
+    final q = await _returnsCol(uid)
+        .where('invoiceId', isEqualTo: invoiceId)
+        .orderBy('returnDate', descending: true)
+        .get();
+    return q.docs
+        .map((d) => _returnFromFirestore(d.data()..['id'] = d.id))
+        .toList();
+  }
+
+  Future<void> updateReturn(ReturnModel returnModel) async {
+    final uid = _requireUid();
+    final doc = _returnsCol(uid).doc(returnModel.id);
+    await doc.set(_returnToFirestore(returnModel), SetOptions(merge: true));
+    AppLogger.firebase('updateReturn', 'success', returnModel.id);
+  }
+
+  Future<void> deleteReturn(String returnId) async {
+    final uid = _requireUid();
+    await _returnsCol(uid).doc(returnId).delete();
+  }
 
   // ----------------------
   // Helpers
@@ -247,6 +320,7 @@ class FirestoreService {
     return {
       'name': c.name,
       'phoneNumber': c.phoneNumber,
+      'pendingReturnAmount': c.pendingReturnAmount,
       // Store as Firestore Timestamp
       'createdAt': Timestamp.fromDate(c.createdAt),
       'updatedAt': Timestamp.fromDate(c.updatedAt),
@@ -258,6 +332,7 @@ class FirestoreService {
       id: data['id'] as String,
       name: data['name'] as String? ?? '',
       phoneNumber: data['phoneNumber'] as String? ?? '',
+      pendingReturnAmount: (data['pendingReturnAmount'] as num?)?.toDouble() ?? 0.0,
       createdAt: _asDate(data['createdAt']),
       updatedAt: _asDate(data['updatedAt']),
     );
@@ -338,6 +413,69 @@ class FirestoreService {
     if (v is DateTime) return v;
     if (v is String) return DateTime.tryParse(v) ?? DateTime.now();
     return DateTime.now();
+  }
+
+  Map<String, dynamic> _returnToFirestore(ReturnModel ret) {
+    return {
+      'returnNumber': ret.returnNumber,
+      'invoiceId': ret.invoiceId,
+      'invoiceNumber': ret.invoiceNumber,
+      'customerName': ret.customerName,
+      'customerId': ret.customerId,
+      'customerPhone': ret.customerPhone,
+      'invoiceDate': Timestamp.fromDate(ret.invoiceDate),
+      'returnDate': Timestamp.fromDate(ret.returnDate),
+      'returnType': ret.returnType,
+      'returnReason': ret.returnReason,
+      'notes': ret.notes,
+      'totalReturnValue': ret.totalReturnValue,
+      'refundAmount': ret.refundAmount,
+      'isApplied': ret.isApplied,
+      'createdAt': Timestamp.fromDate(ret.createdAt),
+      'updatedAt': Timestamp.fromDate(ret.updatedAt),
+      'items': ret.items
+          .map((it) => {
+                'name': it.name,
+                'quantity': it.quantity,
+                'price': it.price,
+                'totalValue': it.totalValue,
+              })
+          .toList(),
+    }..removeWhere((key, value) => value == null);
+  }
+
+  ReturnModel _returnFromFirestore(Map<String, dynamic> data) {
+    final items = (data['items'] as List?)?.map((e) {
+          final m = Map<String, dynamic>.from(e as Map);
+          return ReturnItem(
+            name: m['name'] as String? ?? '',
+            quantity: (m['quantity'] as num?)?.toInt() ?? 1,
+            price: (m['price'] as num?)?.toDouble() ?? 0.0,
+            totalValue: (m['totalValue'] as num?)?.toDouble() ?? 0.0,
+          );
+        }).toList() ??
+        [];
+
+    return ReturnModel(
+      id: data['id'] as String,
+      returnNumber: data['returnNumber'] as String? ?? '',
+      invoiceId: data['invoiceId'] as String? ?? '',
+      invoiceNumber: data['invoiceNumber'] as String? ?? '',
+      customerName: data['customerName'] as String? ?? '',
+      customerId: data['customerId'] as String?,
+      customerPhone: data['customerPhone'] as String?,
+      invoiceDate: _asDate(data['invoiceDate']),
+      returnDate: _asDate(data['returnDate']),
+      returnType: data['returnType'] as String? ?? 'sales',
+      items: items,
+      returnReason: data['returnReason'] as String? ?? '',
+      notes: data['notes'] as String?,
+      totalReturnValue: (data['totalReturnValue'] as num?)?.toDouble() ?? 0.0,
+      refundAmount: (data['refundAmount'] as num?)?.toDouble() ?? 0.0,
+      isApplied: data['isApplied'] as bool? ?? false,
+      createdAt: _asDate(data['createdAt']),
+      updatedAt: _asDate(data['updatedAt']),
+    );
   }
 
   // Batch helper respecting 500 ops per batch limit

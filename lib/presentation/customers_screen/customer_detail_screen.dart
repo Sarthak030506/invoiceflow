@@ -22,7 +22,7 @@ class CustomerDetailScreen extends StatefulWidget {
 }
 
 class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
-  final CustomerService _customerService = CustomerService();
+  final CustomerService _customerService = CustomerService.instance;
   final AnalyticsService _analyticsService = AnalyticsService();
   
   CustomerModel? _customer;

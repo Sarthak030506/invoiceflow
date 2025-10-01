@@ -13,6 +13,7 @@ import '../presentation/inventory_screen/inventory_screen.dart';
 import '../presentation/inventory_screen/add_items_directly_screen.dart';
 import '../presentation/auth/login_screen.dart';
 import '../presentation/auth/forgot_password_screen.dart';
+import '../presentation/returns_screen/returns_screen.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -29,6 +30,7 @@ class AppRoutes {
   static const String inventoryDetailScreen = '/inventory/item';
   static const String loginScreen = '/login';
   static const String forgotPasswordScreen = '/forgot-password';
+  static const String returnsScreen = '/returns-screen';
 
   static final String csvPath = 'assets/images/data/invoices.csv';
   
@@ -48,5 +50,6 @@ class AppRoutes {
     addItemsDirectlyScreen: (context) => AddItemsDirectlyScreen(),
     loginScreen: (context) => const LoginScreen(),
     forgotPasswordScreen: (context) => const ForgotPasswordScreen(),
+    returnsScreen: (context) => const ReturnsScreen(),
   };
 }

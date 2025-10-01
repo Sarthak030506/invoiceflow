@@ -7,6 +7,7 @@ import '../models/catalog_item.dart';
 import '../services/invoice_service.dart';
 import '../services/customer_service.dart';
 import '../services/stock_map_service.dart';
+import '../services/return_service.dart';
 import '../utils/app_logger.dart';
 import '../widgets/enhanced_payment_details_widget.dart';
 import './create_invoice/widgets/customer_input_widget.dart';
@@ -31,6 +32,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
   late final InvoiceService _invoiceService;
   late final CustomerService _customerService;
   late final StockMapService _stockMapService;
+  late final ReturnService _returnService;
   StreamSubscription<void>? _inventorySubscription;
   
   // Static catalog and live stock
@@ -54,8 +56,9 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _invoiceService = InvoiceService.instance;
-    _customerService = CustomerService();
+    _customerService = CustomerService.instance;
     _stockMapService = StockMapService();
+    _returnService = ReturnService.instance;
     _loadStockMap();
     _inventorySubscription = _stockMapService.inventoryUpdates.listen((_) => _loadStockMap());
   }
@@ -914,7 +917,23 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                       );
                       _customerId = customer.id;
                     }
-                    
+
+                    // Apply pending returns for sales invoices
+                    double finalAmountPaid = amountPaid;
+                    String? returnNotes;
+                    if (widget.invoiceType == 'sales' && _customerId != null) {
+                      final customer = await _customerService.getCustomerById(_customerId!);
+                      if (customer != null && customer.pendingReturnAmount > 0) {
+                        // Apply the pending return amount to this invoice
+                        final appliedAmount = finalAmountPaid + customer.pendingReturnAmount;
+                        returnNotes = 'Return credit of ₹${customer.pendingReturnAmount.toStringAsFixed(2)} applied';
+                        finalAmountPaid = appliedAmount;
+
+                        // Mark pending returns as applied
+                        await _returnService.applyPendingReturnsToInvoice(_customerId!, totalAmount);
+                      }
+                    }
+
                     // Create invoice with payment details and customer ID
                     final now = DateTime.now();
                     final invoiceId = invoiceNumber.replaceAll(RegExp(r'[^A-Za-z0-9-_]'), '_');
@@ -928,11 +947,11 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                       revenue: totalAmount,
                       status: 'posted', // Always post invoices to process inventory
                       items: invoiceItems,
-                      notes: null,
+                      notes: returnNotes,
                       createdAt: now,
                       updatedAt: now,
                       invoiceType: widget.invoiceType,
-                      amountPaid: amountPaid,
+                      amountPaid: finalAmountPaid,
                       paymentMethod: paymentMethod,
                     );
                     

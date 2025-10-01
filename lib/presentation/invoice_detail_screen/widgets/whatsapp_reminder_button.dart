@@ -30,7 +30,7 @@ class WhatsAppReminderButton extends StatelessWidget {
       print('Customer phone: ${invoice.customerPhone}');
       
       // Use CustomerService to generate the WhatsApp link
-      final CustomerService customerService = CustomerService();
+      final CustomerService customerService = CustomerService.instance;
       final String whatsappUrl = customerService.generateWhatsAppReminderLink(
         invoice, 
         shopName, 
