@@ -8,6 +8,7 @@ import '../services/invoice_service.dart';
 import '../services/customer_service.dart';
 import '../services/stock_map_service.dart';
 import '../services/return_service.dart';
+import '../services/catalog_service.dart';
 import '../utils/app_logger.dart';
 import '../widgets/enhanced_payment_details_widget.dart';
 import './create_invoice/widgets/customer_input_widget.dart';
@@ -33,11 +34,13 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
   late final CustomerService _customerService;
   late final StockMapService _stockMapService;
   late final ReturnService _returnService;
+  late final CatalogService _catalogService;
   StreamSubscription<void>? _inventorySubscription;
-  
-  // Static catalog and live stock
-  static const List<CatalogItem> _itemCatalog = ItemCatalog.items;
+
+  // Dynamic catalog with custom rates and live stock
+  List<CatalogItem> _itemCatalog = [];
   Map<int, int> _stockMap = {};
+  bool _catalogLoading = true;
   
   // Performance optimizations
   Timer? _searchDebounce;
@@ -59,6 +62,8 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     _customerService = CustomerService.instance;
     _stockMapService = StockMapService();
     _returnService = ReturnService.instance;
+    _catalogService = CatalogService.instance;
+    _loadCatalog();
     _loadStockMap();
     _inventorySubscription = _stockMapService.inventoryUpdates.listen((_) => _loadStockMap());
   }
@@ -78,6 +83,27 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     }
   }
   
+  Future<void> _loadCatalog() async {
+    try {
+      final catalog = await _catalogService.getAllItems();
+      if (mounted) {
+        setState(() {
+          _itemCatalog = catalog;
+          _catalogLoading = false;
+        });
+      }
+    } catch (e) {
+      AppLogger.error('Error loading catalog', 'ChooseItemsInvoice', e);
+      // Fallback to static catalog
+      if (mounted) {
+        setState(() {
+          _itemCatalog = ItemCatalog.items;
+          _catalogLoading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _loadStockMap() async {
     try {
       final stockMap = await _stockMapService.getCurrentStockMap();
@@ -100,6 +126,151 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
         });
       }
     });
+  }
+
+  void _showQuantityInputDialog(BuildContext context, CatalogItem item, _SelectedItem selectedItem, int currentStock) {
+    final TextEditingController quantityController = TextEditingController(text: selectedItem.quantity.toString());
+    final Color itemColor = widget.invoiceType == 'sales' ? Colors.blue : Colors.green;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.shopping_cart, color: itemColor),
+              SizedBox(width: 2.w),
+              Expanded(
+                child: Text(
+                  'Enter Quantity',
+                  style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item.name,
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              SizedBox(height: 2.h),
+              if (widget.invoiceType == 'sales')
+                Padding(
+                  padding: EdgeInsets.only(bottom: 2.h),
+                  child: Row(
+                    children: [
+                      Icon(Icons.inventory_2, size: 4.w, color: Colors.grey.shade600),
+                      SizedBox(width: 2.w),
+                      Text(
+                        'Available: ${currentStock.toInt()} units',
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              TextField(
+                controller: quantityController,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Quantity',
+                  hintText: 'Enter quantity',
+                  prefixIcon: Icon(Icons.format_list_numbered, color: itemColor),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: itemColor, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                ),
+                onSubmitted: (value) {
+                  _updateQuantityFromDialog(dialogContext, item, selectedItem, quantityController.text, currentStock);
+                },
+              ),
+              SizedBox(height: 1.h),
+              Text(
+                'Price per unit: ₹${item.rate.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text('Cancel', style: TextStyle(color: Colors.grey.shade600)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                _updateQuantityFromDialog(dialogContext, item, selectedItem, quantityController.text, currentStock);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: itemColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Update', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _updateQuantityFromDialog(BuildContext dialogContext, CatalogItem item, _SelectedItem selectedItem, String inputText, int currentStock) {
+    final int? newQuantity = int.tryParse(inputText.trim());
+
+    // Validation
+    if (newQuantity == null || newQuantity < 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid positive number'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Stock validation for sales invoices
+    if (widget.invoiceType == 'sales' && !_allowNegativeStock && newQuantity > currentStock) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Only ${currentStock.toInt()} units available in stock'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Update quantity
+    setState(() {
+      selectedItem.quantity = newQuantity;
+    });
+
+    // Close dialog
+    Navigator.of(dialogContext).pop();
+
+    // Show success feedback
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Quantity updated to $newQuantity'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 1),
+      ),
+    );
   }
   
   int _getItemStock(int itemId) {
@@ -190,8 +361,30 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     );
   }
 
-  
+
   Widget _buildItemsList() {
+    // Show loading indicator while catalog is loading
+    if (_catalogLoading) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              'Loading items...',
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     List<CatalogItem> filteredItems = _itemCatalog;
     
     // Apply search filter
@@ -454,13 +647,21 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                                                   child: Icon(Icons.remove, size: 5.w),
                                                 ),
                                               ),
-                                              Container(
-                                                width: 10.w,
-                                                alignment: Alignment.center,
-                                                padding: EdgeInsets.symmetric(horizontal: 2.w),
-                                                child: Text(
-                                                  '${selectedItem?.quantity ?? 1}',
-                                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                              InkWell(
+                                                onTap: () {
+                                                  _showQuantityInputDialog(context, item, selectedItem!, currentStock);
+                                                },
+                                                child: Container(
+                                                  width: 10.w,
+                                                  alignment: Alignment.center,
+                                                  padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
+                                                  child: Text(
+                                                    '${selectedItem?.quantity ?? 1}',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      color: itemColor,
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
                                               InkWell(

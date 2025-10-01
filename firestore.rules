@@ -358,6 +358,38 @@ service cloud.firestore {
           return type in ['IN', 'OUT', 'ADJUSTMENT', 'RETURN_IN', 'RETURN_OUT', 'REVERSAL_OUT'];
         }
       }
+
+      // ===========================================
+      // CATALOG RATES COLLECTION RULES
+      // ===========================================
+
+      match /catalog_rates/{itemId} {
+        // Only allow access to the document owner
+        allow read, write: if isOwner(uid);
+
+        // Validation rules for catalog rate creation/updates
+        allow create: if isOwner(uid) &&
+          validateCatalogRateData(resource.data);
+
+        allow update: if isOwner(uid) &&
+          validateCatalogRateData(resource.data) &&
+          // Ensure ID cannot be changed
+          resource.data.id == request.resource.data.id;
+
+        allow delete: if isOwner(uid);
+
+        function validateCatalogRateData(data) {
+          return hasRequiredFields(data, ['id', 'name', 'rate', 'updatedAt']) &&
+                 data.id is int &&
+                 data.id > 0 &&
+                 isValidString(data.name) &&
+                 data.name.size() <= 200 &&
+                 isValidAmount(data.rate) &&
+                 data.rate <= 1000000 && // Max rate: 10 lakh
+                 isValidTimestamp(data.updatedAt) &&
+                 data.updatedAt <= request.time;
+        }
+      }
     }
 
     // ===========================================

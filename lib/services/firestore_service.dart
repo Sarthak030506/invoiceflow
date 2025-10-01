@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/customer_model.dart';
 import '../models/invoice_model.dart';
 import '../models/return_model.dart';
+import '../models/catalog_item.dart';
 import '../utils/app_logger.dart';
 
 /// FirestoreService provides CRUD operations and a one-time migration from the
@@ -39,6 +40,9 @@ class FirestoreService {
 
   CollectionReference<Map<String, dynamic>> _returnsCol(String uid) =>
       _fs.collection('users').doc(uid).collection('returns');
+
+  CollectionReference<Map<String, dynamic>> _catalogRatesCol(String uid) =>
+      _fs.collection('users').doc(uid).collection('catalog_rates');
 
   // ----------------------
   // Customer operations
@@ -311,6 +315,39 @@ class FirestoreService {
   Future<void> deleteReturn(String returnId) async {
     final uid = _requireUid();
     await _returnsCol(uid).doc(returnId).delete();
+  }
+
+  // ----------------------
+  // Catalog rate operations
+  // ----------------------
+  Future<void> updateCatalogItemRate(CatalogItem item) async {
+    final uid = _requireUid();
+    final doc = _catalogRatesCol(uid).doc(item.id.toString());
+    await doc.set({
+      'id': item.id,
+      'name': item.name,
+      'rate': item.rate,
+      'updatedAt': Timestamp.now(),
+    });
+    AppLogger.firebase('updateCatalogItemRate', 'success', item.id.toString());
+  }
+
+  Future<List<CatalogItem>> getAllCatalogRates() async {
+    final uid = _requireUid();
+    final q = await _catalogRatesCol(uid).get();
+    return q.docs.map((d) {
+      final data = d.data();
+      return CatalogItem(
+        id: data['id'] as int,
+        name: data['name'] as String? ?? '',
+        rate: (data['rate'] as num?)?.toDouble() ?? 0.0,
+      );
+    }).toList();
+  }
+
+  Future<void> deleteCatalogItemRate(int itemId) async {
+    final uid = _requireUid();
+    await _catalogRatesCol(uid).doc(itemId.toString()).delete();
   }
 
   // ----------------------

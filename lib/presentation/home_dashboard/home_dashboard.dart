@@ -355,6 +355,22 @@ class _HomeDashboardState extends State<HomeDashboard> {
               },
             ),
             ListTile(
+              leading: Icon(Icons.shopping_basket, color: Colors.purple.shade600),
+              title: Text(
+                'Manage Item Rates',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              subtitle: Text('Edit prices for all items'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/items-screen');
+              },
+            ),
+            Divider(),
+            ListTile(
               leading: Icon(Icons.settings, color: Colors.grey.shade600),
               title: Text(
                 'Settings',
