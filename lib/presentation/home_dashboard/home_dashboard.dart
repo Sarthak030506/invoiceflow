@@ -874,46 +874,52 @@ class _HomeDashboardState extends State<HomeDashboard> {
         
         SizedBox(height: 1.5.h),
         
-        // Card containing only the dynamic content
-        Container(
-          margin: EdgeInsets.symmetric(horizontal: 4.w),
-          decoration: AppTheme.createSophisticatedContainer(
-            isLight: !isDark,
-            borderRadius: 24.0,
-            includeElevation: true,
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(4.w),
-            child: _selectedFollowUpTab == 0 
-              // Customer Dues Tab Content
-              ? (pendingCustomerInvoices.isEmpty
-                  ? _buildAllCaughtUpCard('No unpaid customer invoices. All clear!')
-                  : _buildPendingPaymentsCard(pendingCustomerInvoices, isCustomerDues: true))
-              // Your Dues Tab Content
-              : (pendingPurchaseInvoices.isEmpty
-                  ? _buildAllCaughtUpCard('No unpaid purchase invoices. All clear!')
-                  : _buildPendingPaymentsCard(pendingPurchaseInvoices, isCustomerDues: false)),
-          ),
+        // All Caught Up Badge or Pending Payments Card (without outer card wrapper)
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 5.w),
+          child: _selectedFollowUpTab == 0
+            // Customer Dues Tab Content
+            ? (pendingCustomerInvoices.isEmpty
+                ? _buildAllCaughtUpBadge('No unpaid customer invoices. All clear!')
+                : _buildPendingPaymentsCard(pendingCustomerInvoices, isCustomerDues: true))
+            // Your Dues Tab Content
+            : (pendingPurchaseInvoices.isEmpty
+                ? _buildAllCaughtUpBadge('No unpaid purchase invoices. All clear!')
+                : _buildPendingPaymentsCard(pendingPurchaseInvoices, isCustomerDues: false)),
         ),
       ],
     );
   }
   
-  Widget _buildAllCaughtUpCard([String? customMessage]) {
+  Widget _buildAllCaughtUpBadge([String? customMessage]) {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         gradient: LinearGradient(
-          colors: [Colors.green.shade300, Colors.green.shade500],
+          colors: [Colors.green.shade400, Colors.green.shade600],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: EdgeInsets.all(4.w),
+        padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 2.5.h),
         child: Row(
           children: [
-            Icon(Icons.check_circle_outline, color: Colors.white, size: 7.w),
+            Container(
+              padding: EdgeInsets.all(2.5.w),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.check_circle, color: Colors.white, size: 6.w),
+            ),
             SizedBox(width: 4.w),
             Expanded(
               child: Column(
@@ -921,7 +927,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 children: [
                   Text(
                     'All Caught Up! ✨',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
@@ -930,7 +936,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   Text(
                     customMessage ?? 'No pending payments to review',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withOpacity(0.95),
                     ),
                   ),
                 ],
@@ -1679,108 +1685,119 @@ void _showSnoozeDialog(InvoiceModel invoice) {
   Widget _buildRecentInvoicesSection(List<InvoiceModel> recentInvoices) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 4.w),
-      decoration: AppTheme.createSophisticatedContainer(
-        isLight: !isDark,
-        borderRadius: 24.0,
-        includeElevation: true,
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(5.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header with icon and action button
-            Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(2.5.w),
-                  decoration: BoxDecoration(
-                    gradient: AppTheme.getPrimaryGradient(!isDark),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.primaryLight.withOpacity(0.3),
-                        offset: const Offset(0, 4),
-                        blurRadius: 8,
-                        spreadRadius: 0,
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.receipt_long,
-                    color: Colors.white,
-                    size: 5.w,
-                  ),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 5.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section header - outside card
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(2.5.w),
+                decoration: BoxDecoration(
+                  gradient: AppTheme.getPrimaryGradient(!isDark),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.primaryLight.withOpacity(0.3),
+                      offset: const Offset(0, 4),
+                      blurRadius: 8,
+                      spreadRadius: 0,
+                    ),
+                  ],
                 ),
-                SizedBox(width: 4.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                child: Icon(
+                  Icons.receipt_long,
+                  color: Colors.white,
+                  size: 5.w,
+                ),
+              ),
+              SizedBox(width: 4.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Recent Invoices',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : AppTheme.textPrimaryLight,
+                      ),
+                    ),
+                    SizedBox(height: 0.5.h),
+                    Text(
+                      'Latest ${recentInvoices.length} invoices',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: isDark ? Colors.white70 : AppTheme.textSecondaryLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              InkWell(
+                onTap: () => Navigator.pushNamed(context, '/invoices-list-screen'),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryLight.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppTheme.primaryLight.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Recent Invoices',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.white : AppTheme.textPrimaryLight,
+                        'View All',
+                        style: TextStyle(
+                          color: AppTheme.primaryLight,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 10.sp,
                         ),
                       ),
-                      SizedBox(height: 0.5.h),
-                      Text(
-                        'Latest ${recentInvoices.length} invoices',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: isDark ? Colors.white70 : AppTheme.textSecondaryLight,
-                        ),
+                      SizedBox(width: 1.w),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        color: AppTheme.primaryLight,
+                        size: 3.w,
                       ),
                     ],
                   ),
                 ),
-                InkWell(
-                  onTap: () => Navigator.pushNamed(context, '/invoices-list-screen'),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryLight.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppTheme.primaryLight.withOpacity(0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'View All',
-                          style: TextStyle(
-                            color: AppTheme.primaryLight,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 10.sp,
-                          ),
-                        ),
-                        SizedBox(width: 1.w),
-                        Icon(
-                          Icons.arrow_forward_ios,
-                          color: AppTheme.primaryLight,
-                          size: 3.w,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 3.h),
+              ),
+            ],
+          ),
+          SizedBox(height: 2.5.h),
 
-            // Invoice cards
-            recentInvoices.isEmpty
-                ? _buildEmptyInvoiceState(isDark)
+          // Invoice cards with subtle background
+          Container(
+            padding: EdgeInsets.symmetric(vertical: 2.h),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.grey.shade900.withOpacity(0.3)
+                  : Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isDark
+                    ? Colors.grey.shade800.withOpacity(0.5)
+                    : Colors.grey.shade200,
+                width: 1,
+              ),
+            ),
+            child: recentInvoices.isEmpty
+                ? Padding(
+                    padding: EdgeInsets.symmetric(vertical: 2.h),
+                    child: _buildEmptyInvoiceState(isDark),
+                  )
                 : Container(
                     height: 20.h,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
+                      padding: EdgeInsets.symmetric(horizontal: 3.w),
                       itemCount: recentInvoices.length,
                       key: PageStorageKey('recent_invoices'),
                       itemBuilder: (context, index) {
@@ -1789,8 +1806,8 @@ void _showSnoozeDialog(InvoiceModel invoice) {
                       },
                     ),
                   ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
