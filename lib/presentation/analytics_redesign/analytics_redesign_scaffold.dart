@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'widgets/sparkline_painter.dart';
 import '../analytics_screen/widgets/analytics_table_widget.dart';
 import '../../services/analytics_service.dart';
@@ -32,11 +33,15 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   bool _isLoading = false;
   String _errorMessage = '';
   List<Map<String, dynamic>> analyticsData = [];
+  List<Map<String, dynamic>> customerAnalyticsData = [];
   Map<String, dynamic> performanceInsights = {};
   Map<String, dynamic> chartData = {};
   Map<String, dynamic> inventoryAnalytics = {};
   Map<String, dynamic> outstandingPayments = {};
-  
+
+  // Revenue breakdown toggle state
+  bool _isCustomerWiseView = false;
+
   // Table modal state
   String _searchQuery = '';
   String _sortColumn = 'revenue';
@@ -621,6 +626,8 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            _buildDateChip('Today', 'chipToday', 'today'),
+            SizedBox(width: 8),
             _buildDateChip('Last 7 days', 'chip7d', 'last7'),
             SizedBox(width: 8),
             _buildDateChip('Last 30 days', 'chip30d', 'last30'),
@@ -737,6 +744,9 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
       // Map selectedDateRange to service format
       String serviceRange;
       switch (selectedDateRange) {
+        case 'today':
+          serviceRange = 'Today';
+          break;
         case 'last7':
           serviceRange = 'Last 7 days';
           break;
@@ -756,21 +766,23 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
       // Use actual service calls
       final analyticsService = AnalyticsService();
       final inventoryService = InventoryService();
-      
+
       final results = await Future.wait([
         analyticsService.getFilteredAnalytics(serviceRange),
+        analyticsService.getCustomerWiseRevenue(serviceRange),
         analyticsService.fetchPerformanceInsights(),
         analyticsService.getChartAnalytics(serviceRange),
         inventoryService.getInventoryAnalytics(),
         _getOutstandingPaymentsData(),
       ]);
-      
+
       setState(() {
         analyticsData = results[0] as List<Map<String, dynamic>>;
-        performanceInsights = results[1] as Map<String, dynamic>;
-        chartData = results[2] as Map<String, dynamic>;
-        inventoryAnalytics = results[3] as Map<String, dynamic>;
-        outstandingPayments = results[4] as Map<String, dynamic>;
+        customerAnalyticsData = results[1] as List<Map<String, dynamic>>;
+        performanceInsights = results[2] as Map<String, dynamic>;
+        chartData = results[3] as Map<String, dynamic>;
+        inventoryAnalytics = results[4] as Map<String, dynamic>;
+        outstandingPayments = results[5] as Map<String, dynamic>;
         _isLoading = false;
       });
       
@@ -1079,8 +1091,9 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   }
   
   Widget _buildItemRevenueCard() {
-    final topItems = _getTopSellingItems();
-    
+    final topItems = _isCustomerWiseView ? [] : _getTopSellingItems();
+    final topCustomers = _isCustomerWiseView ? _getTopCustomers() : [];
+
     return Container(
       key: const Key('itemRevenueCard'),
       padding: const EdgeInsets.all(20),
@@ -1100,19 +1113,30 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
         children: [
           Row(
             children: [
-              Icon(Icons.bar_chart, color: Colors.blue, size: 20),
+              Icon(
+                _isCustomerWiseView ? Icons.people : Icons.bar_chart,
+                color: _isCustomerWiseView ? Colors.green : Colors.blue,
+                size: 20,
+              ),
               const SizedBox(width: 8),
-              const Text(
-                'Item-wise Revenue Breakdown',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
+              Expanded(
+                child: Text(
+                  _isCustomerWiseView
+                      ? 'Customer-wise Revenue Breakdown'
+                      : 'Item-wise Revenue Breakdown',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               GestureDetector(
-                onTap: _showFullItemBreakdown,
+                onTap: _isCustomerWiseView
+                    ? _showFullCustomerBreakdown
+                    : _showFullItemBreakdown,
                 child: Icon(
                   Icons.open_in_new,
                   size: 16,
@@ -1121,8 +1145,83 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          // Toggle between Item Wise and Customer Wise
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _isCustomerWiseView = false;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: !_isCustomerWiseView
+                            ? Colors.blue
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Item Wise',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: !_isCustomerWiseView
+                              ? Colors.white
+                              : Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _isCustomerWiseView = true;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _isCustomerWiseView
+                            ? Colors.green
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Customer Wise',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: _isCustomerWiseView
+                              ? Colors.white
+                              : Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 16),
-          ...topItems.take(5).map((item) => _buildHorizontalBar(item)),
+          if (!_isCustomerWiseView)
+            ...topItems.take(5).map((item) => _buildHorizontalBar(item)),
+          if (_isCustomerWiseView)
+            ...topCustomers
+                .take(5)
+                .map((customer) => _buildCustomerHorizontalBar(customer)),
         ],
       ),
     );
@@ -1293,7 +1392,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
     final revenue = (item['revenue'] as double?) ?? 0.0;
     final maxRevenue = _getMaxItemRevenue();
     final barWidth = maxRevenue > 0 ? (revenue / maxRevenue) * 200 : 0.0;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -1346,7 +1445,79 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
       ),
     );
   }
-  
+
+  Widget _buildCustomerHorizontalBar(Map<String, dynamic> customer) {
+    final customerName = customer['customerName'] as String? ?? 'Unknown';
+    final revenue = (customer['totalRevenue'] as double?) ?? 0.0;
+    final invoiceCount = (customer['invoiceCount'] as int?) ?? 0;
+    final maxRevenue = _getMaxCustomerRevenue();
+    final barWidth = maxRevenue > 0 ? (revenue / maxRevenue) * 200 : 0.0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customerName,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '$invoiceCount invoice${invoiceCount != 1 ? 's' : ''}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                _formatCurrency(revenue),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.green,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Container(
+            height: 6,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                height: 6,
+                width: barWidth,
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHoldingBucket(String label, int count, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1416,11 +1587,22 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
     final topItems = chartData['topSellingItems'] as List<dynamic>? ?? [];
     return topItems.cast<Map<String, dynamic>>();
   }
-  
+
+  List<Map<String, dynamic>> _getTopCustomers() {
+    // This will be populated by refreshAnalytics
+    return customerAnalyticsData;
+  }
+
   double _getMaxItemRevenue() {
     final items = _getTopSellingItems();
     if (items.isEmpty) return 1000.0;
     return items.map((e) => (e['revenue'] as double?) ?? 0.0).reduce((a, b) => a > b ? a : b);
+  }
+
+  double _getMaxCustomerRevenue() {
+    final customers = _getTopCustomers();
+    if (customers.isEmpty) return 1000.0;
+    return customers.map((e) => (e['totalRevenue'] as double?) ?? 0.0).reduce((a, b) => a > b ? a : b);
   }
   
   List<double> _getLast7DaysData() {
@@ -1813,6 +1995,188 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showFullCustomerBreakdown() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.people, color: Colors.green, size: 24),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Customer-wise Revenue Breakdown',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(20),
+                itemCount: _getTopCustomers().length,
+                itemBuilder: (context, index) {
+                  final customer = _getTopCustomers()[index];
+                  final revenue = (customer['totalRevenue'] as double?) ?? 0.0;
+                  final invoiceCount = (customer['invoiceCount'] as int?) ?? 0;
+                  final totalQuantity = (customer['totalQuantity'] as int?) ?? 0;
+                  final outstanding = (customer['outstandingAmount'] as double?) ?? 0.0;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    customer['customerName'] ?? 'Unknown',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (customer['customerPhone'] != null &&
+                                      (customer['customerPhone'] as String).isNotEmpty)
+                                    Text(
+                                      customer['customerPhone'],
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              _formatCurrency(revenue),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildCustomerStat(
+                                  'Invoices', invoiceCount.toString(), Icons.receipt),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildCustomerStat(
+                                  'Items', totalQuantity.toString(), Icons.shopping_bag),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildCustomerStat(
+                                  outstanding >= 0 ? 'Outstanding' : 'Credit',
+                                  _formatCurrency(outstanding.abs()),
+                                  Icons.account_balance_wallet,
+                                  color: outstanding > 0 ? Colors.orange : (outstanding < 0 ? Colors.blue : Colors.green)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          height: 6,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              height: 6,
+                              width: _getMaxCustomerRevenue() > 0
+                                  ? (revenue / _getMaxCustomerRevenue() * double.infinity)
+                                  : 0,
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomerStat(String label, String value, IconData icon,
+      {Color color = Colors.blue}) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3356,16 +3720,110 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   }
   
   // Action methods
-  void _sendReminder(Map<String, dynamic> customer) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Reminder sent to ${customer['name']}')),
-    );
+  Future<void> _sendReminder(Map<String, dynamic> customer) async {
+    try {
+      // Get customer details including phone number
+      final customerService = CustomerService.instance;
+      final allCustomers = await customerService.getAllCustomers();
+      final customerData = allCustomers.firstWhere(
+        (c) => c.name == customer['name'],
+        orElse: () => throw Exception('Customer not found'),
+      );
+
+      if (customerData.phoneNumber.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No phone number found for ${customer['name']}')),
+        );
+        return;
+      }
+
+      // Get the total due amount
+      final totalDue = customer['amount'] as double? ?? 0.0;
+
+      // Create WhatsApp message
+      final message = '''Hello ${customer['name']},
+
+This is a friendly reminder regarding your outstanding balance.
+
+Total Due: ₹${totalDue.toStringAsFixed(2)}
+
+Please arrange for the payment at your earliest convenience.
+
+Thank you for your business!
+
+📱 Download InvoiceFlow app:
+https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
+
+      String phoneNumber = customerData.phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+
+      if (phoneNumber.startsWith('+')) {
+        phoneNumber = phoneNumber.substring(1);
+      }
+
+      // Add India country code if it's a 10-digit number starting with 6-9
+      if (phoneNumber.length == 10 && RegExp(r'^[6-9]\d{9}$').hasMatch(phoneNumber)) {
+        phoneNumber = '91$phoneNumber';
+      }
+
+      final encodedMessage = Uri.encodeComponent(message);
+      final whatsappUrl = 'https://wa.me/$phoneNumber?text=$encodedMessage';
+      final whatsappUri = Uri.parse(whatsappUrl);
+
+      if (await canLaunchUrl(whatsappUri)) {
+        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Opening WhatsApp for ${customer['name']}')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open WhatsApp. Please install WhatsApp.')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sending reminder: ${e.toString()}')),
+      );
+    }
   }
-  
-  void _callCustomer(Map<String, dynamic> customer) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Calling ${customer['name']}')),
-    );
+
+  Future<void> _callCustomer(Map<String, dynamic> customer) async {
+    try {
+      // Get customer details including phone number
+      final customerService = CustomerService.instance;
+      final allCustomers = await customerService.getAllCustomers();
+      final customerData = allCustomers.firstWhere(
+        (c) => c.name == customer['name'],
+        orElse: () => throw Exception('Customer not found'),
+      );
+
+      if (customerData.phoneNumber.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No phone number found for ${customer['name']}')),
+        );
+        return;
+      }
+
+      String phoneNumber = customerData.phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+
+      // Create tel: URL
+      final telUrl = 'tel:$phoneNumber';
+      final telUri = Uri.parse(telUrl);
+
+      if (await canLaunchUrl(telUri)) {
+        await launchUrl(telUri);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Calling ${customer['name']}')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not initiate call')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error calling customer: ${e.toString()}')),
+      );
+    }
   }
   
   void _viewLedger(Map<String, dynamic> customer) {
@@ -4255,18 +4713,112 @@ class _DueRemindersScreenState extends State<_DueRemindersScreen> with SingleTic
     );
   }
   
-  void _sendReminder(Map<String, dynamic> customer) {
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Reminder sent to ${customer['name']}')),
-    );
+  Future<void> _sendReminder(Map<String, dynamic> customer) async {
+    try {
+      // Get customer details including phone number
+      final customerService = CustomerService.instance;
+      final allCustomers = await customerService.getAllCustomers();
+      final customerData = allCustomers.firstWhere(
+        (c) => c.name == customer['name'],
+        orElse: () => throw Exception('Customer not found'),
+      );
+
+      if (customerData.phoneNumber.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No phone number found for ${customer['name']}')),
+        );
+        return;
+      }
+
+      // Get the total due amount
+      final totalDue = customer['amount'] as double? ?? 0.0;
+
+      // Create WhatsApp message
+      final message = '''Hello ${customer['name']},
+
+This is a friendly reminder regarding your outstanding balance.
+
+Total Due: ₹${totalDue.toStringAsFixed(2)}
+
+Please arrange for the payment at your earliest convenience.
+
+Thank you for your business!
+
+📱 Download InvoiceFlow app:
+https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
+
+      String phoneNumber = customerData.phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+
+      if (phoneNumber.startsWith('+')) {
+        phoneNumber = phoneNumber.substring(1);
+      }
+
+      // Add India country code if it's a 10-digit number starting with 6-9
+      if (phoneNumber.length == 10 && RegExp(r'^[6-9]\d{9}$').hasMatch(phoneNumber)) {
+        phoneNumber = '91$phoneNumber';
+      }
+
+      final encodedMessage = Uri.encodeComponent(message);
+      final whatsappUrl = 'https://wa.me/$phoneNumber?text=$encodedMessage';
+      final whatsappUri = Uri.parse(whatsappUrl);
+
+      if (await canLaunchUrl(whatsappUri)) {
+        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Opening WhatsApp for ${customer['name']}')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open WhatsApp. Please install WhatsApp.')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sending reminder: ${e.toString()}')),
+      );
+    }
   }
-  
-  void _callCustomer(Map<String, dynamic> customer) {
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Calling ${customer['name']}')),
-    );
+
+  Future<void> _callCustomer(Map<String, dynamic> customer) async {
+    try {
+      // Get customer details including phone number
+      final customerService = CustomerService.instance;
+      final allCustomers = await customerService.getAllCustomers();
+      final customerData = allCustomers.firstWhere(
+        (c) => c.name == customer['name'],
+        orElse: () => throw Exception('Customer not found'),
+      );
+
+      if (customerData.phoneNumber.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No phone number found for ${customer['name']}')),
+        );
+        return;
+      }
+
+      String phoneNumber = customerData.phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+
+      // Create tel: URL
+      final telUrl = 'tel:$phoneNumber';
+      final telUri = Uri.parse(telUrl);
+
+      if (await canLaunchUrl(telUri)) {
+        await launchUrl(telUri);
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Calling ${customer['name']}')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not initiate call')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error calling customer: ${e.toString()}')),
+      );
+    }
   }
   
   String _getOldestInvoiceDate(String itemName) {

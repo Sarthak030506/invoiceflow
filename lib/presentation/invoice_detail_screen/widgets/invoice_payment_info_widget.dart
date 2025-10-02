@@ -13,6 +13,11 @@ class InvoicePaymentInfoWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Debug: Check refund adjustment value
+    print('DEBUG: Invoice refundAdjustment = ${invoice.refundAdjustment}');
+    print('DEBUG: Invoice total = ${invoice.total}');
+    print('DEBUG: Invoice adjustedTotal = ${invoice.adjustedTotal}');
+
     return Container(
       padding: EdgeInsets.all(3.w),
       decoration: BoxDecoration(
@@ -38,11 +43,57 @@ class InvoicePaymentInfoWidget extends StatelessWidget {
             ),
           ),
           SizedBox(height: 2.h),
-          
-          // Payment details
-          _buildPaymentRow('Total Amount', '₹${invoice.total.toStringAsFixed(2)}'),
+
+          // Payment details with refund adjustment
+          if (invoice.refundAdjustment > 0) ...[
+            _buildPaymentRow('Invoice Total', '₹${invoice.total.toStringAsFixed(2)}'),
+            SizedBox(height: 0.5.h),
+            Container(
+              padding: EdgeInsets.symmetric(vertical: 1.h, horizontal: 2.w),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.blue.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.credit_card, color: Colors.blue, size: 4.w),
+                      SizedBox(width: 2.w),
+                      Text(
+                        'Refund Applied',
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          color: Colors.blue.shade800,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '-₹${invoice.refundAdjustment.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 0.5.h),
+            Divider(thickness: 1),
+            _buildPaymentRow('Total Amount', '₹${invoice.adjustedTotal.toStringAsFixed(2)}', isHighlighted: true),
+          ] else
+            _buildPaymentRow('Total Amount', '₹${invoice.total.toStringAsFixed(2)}'),
+
           _buildPaymentRow('Amount Paid', '₹${invoice.amountPaid.toStringAsFixed(2)}'),
-          
+
           // Payment status with proper handling of overpayments
           SizedBox(height: 1.h),
           Container(

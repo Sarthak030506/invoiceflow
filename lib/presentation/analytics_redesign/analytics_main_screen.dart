@@ -132,6 +132,8 @@ class _AnalyticsMainScreenState extends State<AnalyticsMainScreen> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            _buildDateChip('Today', 'today'),
+            SizedBox(width: 2.w),
             _buildDateChip('Last 7 days', 'last7'),
             SizedBox(width: 2.w),
             _buildDateChip('Last 30 days', 'last30'),

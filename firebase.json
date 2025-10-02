@@ -1,1 +1,26 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"invoiceflow-deafa","appId":"1:661974956527:android:84431273bb457867f05e1a","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"invoiceflow-deafa","configurations":{"android":"1:661974956527:android:84431273bb457867f05e1a","ios":"1:661974956527:ios:56156f8378b9ad24f05e1a","web":"1:661974956527:web:a5d09e25c9fb3694f05e1a"}}}}}}
+{
+  "firestore": {
+    "indexes": "firestore.indexes.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "invoiceflow-deafa",
+          "appId": "1:661974956527:android:84431273bb457867f05e1a",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "invoiceflow-deafa",
+          "configurations": {
+            "android": "1:661974956527:android:84431273bb457867f05e1a",
+            "ios": "1:661974956527:ios:56156f8378b9ad24f05e1a",
+            "web": "1:661974956527:web:a5d09e25c9fb3694f05e1a"
+          }
+        }
+      }
+    }
+  }
+}

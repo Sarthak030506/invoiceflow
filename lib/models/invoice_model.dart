@@ -36,6 +36,7 @@ class InvoiceModel {
       'modifiedFlag': modifiedFlag ? 1 : 0,
       'modifiedReason': modifiedReason,
       'modifiedAt': modifiedAt?.toIso8601String(),
+      'refundAdjustment': refundAdjustment,
     };
   }
 
@@ -63,6 +64,7 @@ class InvoiceModel {
       modifiedFlag: (map['modifiedFlag'] ?? 0) == 1,
       modifiedReason: map['modifiedReason'],
       modifiedAt: map['modifiedAt'] != null ? DateTime.parse(map['modifiedAt']) : null,
+      refundAdjustment: map['refundAdjustment'] ?? 0.0,
     );
   }
 
@@ -72,22 +74,28 @@ class InvoiceModel {
   double get taxRate => 0.0; // Default, update if your data includes tax info
   double get taxAmount => subtotal * taxRate / 100;
   double get total => subtotal + taxAmount;
+
+  // Adjusted total after refund deduction (this is the actual amount customer needs to pay)
+  double get adjustedTotal => total - refundAdjustment;
+
+  // For analytics: use adjusted total as the effective revenue
+  double get effectiveRevenue => adjustedTotal;
   
-  // Updated remaining amount calculation that handles overpayments
-  double get remainingAmount => total - amountPaid;
-  
+  // Updated remaining amount calculation that handles overpayments and refund adjustments
+  double get remainingAmount => adjustedTotal - amountPaid;
+
   // Get the absolute remaining amount (always positive)
-  double get absoluteRemainingAmount => (total - amountPaid).abs();
-  
+  double get absoluteRemainingAmount => (adjustedTotal - amountPaid).abs();
+
   // Check if customer has overpaid
-  bool get isOverpaid => amountPaid > total;
-  
+  bool get isOverpaid => amountPaid > adjustedTotal;
+
   // Check if invoice is fully paid
-  bool get isFullyPaid => (total - amountPaid).abs() < 0.01; // Using small epsilon for floating point comparison
-  
+  bool get isFullyPaid => (adjustedTotal - amountPaid).abs() < 0.01; // Using small epsilon for floating point comparison
+
   // Get payment status display text
   String get paymentStatusDisplay {
-    final remaining = total - amountPaid;
+    final remaining = adjustedTotal - amountPaid;
     if (remaining.abs() < 0.01) {
       return "Paid in Full";
     } else if (remaining > 0) {
@@ -99,7 +107,7 @@ class InvoiceModel {
   
   // Get payment status for UI styling
   PaymentStatus get paymentStatus {
-    final remaining = total - amountPaid;
+    final remaining = adjustedTotal - amountPaid;
     if (remaining.abs() < 0.01) {
       return PaymentStatus.paidInFull;
     } else if (remaining > 0) {
@@ -131,6 +139,7 @@ class InvoiceModel {
   final bool modifiedFlag; // Whether invoice has been modified by returns
   final String? modifiedReason; // Reason for modification
   final DateTime? modifiedAt; // When invoice was modified
+  final double refundAdjustment; // Pending refund amount applied to this invoice
 
   InvoiceModel({
     required this.id,
@@ -155,6 +164,7 @@ class InvoiceModel {
     this.modifiedFlag = false, // Default not modified
     this.modifiedReason,
     this.modifiedAt,
+    this.refundAdjustment = 0.0, // Default to 0
   });
 
   factory InvoiceModel.fromJson(Map<String, dynamic> json) {
@@ -181,6 +191,7 @@ class InvoiceModel {
       invoiceType: json['invoiceType'] ?? json['invoice_type'] ?? 'sales',
       amountPaid: (json['amountPaid'] ?? json['amount_paid'] ?? 0.0).toDouble(),
       paymentMethod: json['paymentMethod'] ?? json['payment_method'] ?? 'Cash',
+      refundAdjustment: (json['refundAdjustment'] ?? 0.0).toDouble(),
     );
   }
 
@@ -308,6 +319,7 @@ class InvoiceModel {
     bool? modifiedFlag,
     String? modifiedReason,
     DateTime? modifiedAt,
+    double? refundAdjustment,
   }) {
     return InvoiceModel(
       id: id ?? this.id,
@@ -331,6 +343,7 @@ class InvoiceModel {
       modifiedFlag: modifiedFlag ?? this.modifiedFlag,
       modifiedReason: modifiedReason ?? this.modifiedReason,
       modifiedAt: modifiedAt ?? this.modifiedAt,
+      refundAdjustment: refundAdjustment ?? this.refundAdjustment,
     );
   }
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
-enum DateRange { last7Days, last30Days, last3Months, customDays, customRange }
+enum DateRange { today, last7Days, last30Days, last3Months, customDays, customRange }
 
 class DateRangeSelector extends StatelessWidget {
   final DateRange selectedRange;
@@ -27,6 +27,8 @@ class DateRangeSelector extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            _buildChip('Today', DateRange.today),
+            SizedBox(width: 2.w),
             _buildChip('Last 7 Days', DateRange.last7Days),
             SizedBox(width: 2.w),
             _buildChip('Last 30 Days', DateRange.last30Days),

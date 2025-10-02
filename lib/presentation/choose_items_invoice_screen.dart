@@ -53,6 +53,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
   String _customerName = '';
   String _customerPhone = '';
   String? _customerId;
+  double _pendingRefundAmount = 0.0;
   
   @override
   void initState() {
@@ -277,12 +278,27 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     return _stockMap[itemId] ?? 0;
   }
   
-  void _onCustomerSelected(String name, String phone, String? customerId) {
+  void _onCustomerSelected(String name, String phone, String? customerId) async {
     setState(() {
       _customerName = name;
       _customerPhone = phone;
       _customerId = customerId;
+      _pendingRefundAmount = 0.0; // Reset initially
     });
+
+    // For sales invoices, check if customer has pending refund
+    if (widget.invoiceType == 'sales' && customerId != null) {
+      try {
+        final customer = await _customerService.getCustomerById(customerId);
+        if (customer != null && customer.pendingReturnAmount > 0) {
+          setState(() {
+            _pendingRefundAmount = customer.pendingReturnAmount;
+          });
+        }
+      } catch (e) {
+        AppLogger.error('Error fetching customer refund', 'ChooseItemsInvoice', e);
+      }
+    }
   }
 
   Widget _buildFilterChip(String label, int count) {
@@ -1092,6 +1108,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
               EnhancedPaymentDetailsWidget(
                 totalAmount: totalAmount,
                 invoiceType: widget.invoiceType,
+                pendingRefundAmount: _pendingRefundAmount,
                 onPaymentDetailsSubmitted: (amountPaid, paymentMethod, invoiceNumber, invoiceDate) async {
                   // Show a blocking loader while we save and process inventory to avoid perceived freeze
                   showDialog(
@@ -1120,24 +1137,22 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                     }
 
                     // Apply pending returns for sales invoices
-                    double finalAmountPaid = amountPaid;
                     String? returnNotes;
-                    if (widget.invoiceType == 'sales' && _customerId != null) {
-                      final customer = await _customerService.getCustomerById(_customerId!);
-                      if (customer != null && customer.pendingReturnAmount > 0) {
-                        // Apply the pending return amount to this invoice
-                        final appliedAmount = finalAmountPaid + customer.pendingReturnAmount;
-                        returnNotes = 'Return credit of ₹${customer.pendingReturnAmount.toStringAsFixed(2)} applied';
-                        finalAmountPaid = appliedAmount;
+                    if (widget.invoiceType == 'sales' && _customerId != null && _pendingRefundAmount > 0) {
+                      // The refund adjustment is already tracked separately in refundAdjustment field
+                      // amountPaid should be exactly what the customer paid (the adjusted amount)
+                      returnNotes = 'Return credit of ₹${_pendingRefundAmount.toStringAsFixed(2)} applied';
 
-                        // Mark pending returns as applied
-                        await _returnService.applyPendingReturnsToInvoice(_customerId!, totalAmount);
-                      }
+                      // Mark pending returns as applied/settled
+                      await _returnService.applyPendingReturnsToInvoice(_customerId!, _pendingRefundAmount);
                     }
 
                     // Create invoice with payment details and customer ID
                     final now = DateTime.now();
                     final invoiceId = invoiceNumber.replaceAll(RegExp(r'[^A-Za-z0-9-_]'), '_');
+
+                    AppLogger.debug('Creating invoice with refund adjustment: $_pendingRefundAmount', 'ChooseItemsInvoice');
+
                     final newInvoice = InvoiceModel(
                       id: invoiceId,
                       invoiceNumber: invoiceNumber,
@@ -1145,6 +1160,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                       customerPhone: widget.invoiceType == 'sales' ? _customerPhone : null,
                       customerId: widget.invoiceType == 'sales' ? _customerId : null,
                       date: invoiceDate,
+                      refundAdjustment: _pendingRefundAmount,
                       revenue: totalAmount,
                       status: 'posted', // Always post invoices to process inventory
                       items: invoiceItems,
@@ -1152,7 +1168,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                       createdAt: now,
                       updatedAt: now,
                       invoiceType: widget.invoiceType,
-                      amountPaid: finalAmountPaid,
+                      amountPaid: amountPaid,
                       paymentMethod: paymentMethod,
                     );
                     

@@ -60,12 +60,76 @@ class InvoiceSummaryWidget extends StatelessWidget {
 
             SizedBox(height: 1.h),
 
-            // Total
+            // Total (before adjustment)
             _buildSummaryRow(
-              "Total",
+              invoice.refundAdjustment > 0 ? "Invoice Total" : "Total",
               "₹${_calculateTotal().toStringAsFixed(2)}",
-              isTotal: true,
+              isTotal: invoice.refundAdjustment == 0,
             ),
+
+            // Refund Adjustment (if applicable)
+            if (invoice.refundAdjustment > 0) ...[
+              SizedBox(height: 1.h),
+              Container(
+                padding: EdgeInsets.symmetric(vertical: 1.h, horizontal: 2.w),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.blue.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.credit_card, color: Colors.blue, size: 4.w),
+                        SizedBox(width: 2.w),
+                        Text(
+                          "Refund Adjustment",
+                          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.blue.shade800,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      "-₹${invoice.refundAdjustment.toStringAsFixed(2)}",
+                      style: AppTheme.financialDataStyle(isLight: true, fontSize: 16).copyWith(
+                        color: Colors.blue.shade800,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 0.5.h),
+              Padding(
+                padding: EdgeInsets.only(left: 2.w),
+                child: Text(
+                  "Previous return credit applied",
+                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                    color: Colors.blue.shade600,
+                    fontStyle: FontStyle.italic,
+                    fontSize: 10.sp,
+                  ),
+                ),
+              ),
+              SizedBox(height: 1.h),
+              Divider(
+                color: AppTheme.lightTheme.dividerColor,
+                thickness: 1,
+              ),
+              SizedBox(height: 1.h),
+              _buildSummaryRow(
+                "Amount Payable",
+                "₹${(_calculateTotal() - invoice.refundAdjustment).toStringAsFixed(2)}",
+                isTotal: true,
+              ),
+            ],
 
             if (isEditMode) ...[
               SizedBox(height: 2.h),

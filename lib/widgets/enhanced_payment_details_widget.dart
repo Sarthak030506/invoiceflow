@@ -7,12 +7,14 @@ import '../services/firestore_service.dart';
 class EnhancedPaymentDetailsWidget extends StatefulWidget {
   final double totalAmount;
   final String invoiceType;
+  final double pendingRefundAmount;
   final Function(double amountPaid, String paymentMethod, String invoiceNumber, DateTime invoiceDate) onPaymentDetailsSubmitted;
 
   const EnhancedPaymentDetailsWidget({
     Key? key,
     required this.totalAmount,
     required this.invoiceType,
+    this.pendingRefundAmount = 0.0,
     required this.onPaymentDetailsSubmitted,
   }) : super(key: key);
 
@@ -36,7 +38,9 @@ class _EnhancedPaymentDetailsWidgetState extends State<EnhancedPaymentDetailsWid
   @override
   void initState() {
     super.initState();
-    _amountPaidController = TextEditingController(text: widget.totalAmount.toString());
+    // Set default amount paid as adjusted total (after refund deduction)
+    final adjustedTotal = widget.totalAmount - widget.pendingRefundAmount;
+    _amountPaidController = TextEditingController(text: adjustedTotal.toStringAsFixed(2));
     _invoiceNumberController = TextEditingController();
     _calculateRemainingAmount();
     _generateInitialInvoiceNumber();
@@ -104,8 +108,10 @@ class _EnhancedPaymentDetailsWidgetState extends State<EnhancedPaymentDetailsWid
 
   void _calculateRemainingAmount() {
     final amountPaid = double.tryParse(_amountPaidController.text) ?? 0;
+    // Adjust total amount by pending refund for calculations
+    final adjustedTotal = widget.totalAmount - widget.pendingRefundAmount;
     setState(() {
-      _remainingAmount = widget.totalAmount - amountPaid;
+      _remainingAmount = adjustedTotal - amountPaid;
     });
   }
 
@@ -250,12 +256,12 @@ class _EnhancedPaymentDetailsWidgetState extends State<EnhancedPaymentDetailsWid
           ),
           SizedBox(height: 2.h),
 
-          // Total Amount Display
+          // Original Total Amount Display
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Total Amount:',
+                'Invoice Total:',
                 style: TextStyle(
                   fontSize: 14.sp,
                   fontWeight: FontWeight.w500,
@@ -270,6 +276,85 @@ class _EnhancedPaymentDetailsWidgetState extends State<EnhancedPaymentDetailsWid
               ),
             ],
           ),
+
+          // Pending Refund Adjustment (if applicable)
+          if (widget.pendingRefundAmount > 0) ...[
+            SizedBox(height: 1.h),
+            Container(
+              padding: EdgeInsets.all(2.w),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.blue.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.blue, size: 4.w),
+                          SizedBox(width: 2.w),
+                          Text(
+                            'Pending Refund:',
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.blue.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        '-₹${widget.pendingRefundAmount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 1.h),
+                  Text(
+                    'Previous return credit will be adjusted',
+                    style: TextStyle(
+                      fontSize: 10.sp,
+                      color: Colors.blue.shade600,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 1.h),
+            Divider(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Amount Payable:',
+                  style: TextStyle(
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade800,
+                  ),
+                ),
+                Text(
+                  '₹${(widget.totalAmount - widget.pendingRefundAmount).toStringAsFixed(2)}',
+                  style: TextStyle(
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade800,
+                  ),
+                ),
+              ],
+            ),
+          ],
           SizedBox(height: 2.h),
 
           // Amount Paid Input

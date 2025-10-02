@@ -151,7 +151,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     try {
       final updatedInvoice = _invoice!.copyWith(
         status: 'paid',
-        amountPaid: _invoice!.total,
+        amountPaid: _invoice!.adjustedTotal,
         updatedAt: DateTime.now(),
       );
       await _invoiceService.updateInvoice(updatedInvoice);

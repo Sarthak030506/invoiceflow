@@ -225,9 +225,16 @@ class _ItemwiseRevenueModalState extends State<ItemwiseRevenueModal> {
   }
 
   Widget _buildTableRow(Map<String, dynamic> item, bool isEven) {
-    final quantity = item['quantity'] as int? ?? 0;
+    print('DEBUG _buildTableRow - item keys: ${item.keys}');
+    print('DEBUG _buildTableRow - item data: $item');
+    print('DEBUG _buildTableRow - quantitySold value: ${item['quantitySold']}');
+    print('DEBUG _buildTableRow - quantity value: ${item['quantity']}');
+
+    final quantity = item['quantitySold'] as int? ?? item['quantity'] as int? ?? 0;
     final rate = (item['rate'] as num?)?.toDouble() ?? 0.0;
     final revenue = (item['revenue'] as num?)?.toDouble() ?? 0.0;
+
+    print('DEBUG _buildTableRow - final quantity: $quantity');
 
     return Container(
       padding: EdgeInsets.all(3.w),
@@ -261,13 +268,16 @@ class _ItemwiseRevenueModalState extends State<ItemwiseRevenueModal> {
   }
 
   Future<List<Map<String, dynamic>>> _getFilteredAnalytics() async {
+    print('====== MODAL _getFilteredAnalytics CALLED ======');
     final analyticsService = AnalyticsService();
 
     // Enhanced date range handling
     String dateRange = 'All time';
     print('Selected range: ${widget.selectedRange}');
-    
-    if (widget.selectedRange == DateRange.last7Days) {
+
+    if (widget.selectedRange == DateRange.today) {
+      dateRange = 'Today';
+    } else if (widget.selectedRange == DateRange.last7Days) {
       dateRange = 'Last 7 days';
     } else if (widget.selectedRange == DateRange.last30Days) {
       dateRange = 'Last 30 days';
@@ -308,6 +318,8 @@ class _ItemwiseRevenueModalState extends State<ItemwiseRevenueModal> {
 
       List<Map<String, dynamic>> items = [];
       for (var item in analytics) {
+        print('DEBUG MODAL - Raw item from analytics: $item');
+
         final revenue = (item['revenue'] as num?)?.toDouble() ?? 0.0;
         final rate = (item['averagePrice'] as num?)?.toDouble() ?? 0.0;
         final quantity = item['quantitySold'] as int? ?? 0;
@@ -318,18 +330,24 @@ class _ItemwiseRevenueModalState extends State<ItemwiseRevenueModal> {
 
         // Add all items with valid revenue, even if quantity is 0 (for debugging)
         if (revenue > 0) {
-          items.add({
+          final itemMap = {
             'name': name,
             'quantity': quantity, // Keep original quantity, even if 0
             'quantitySold': quantity, // Add quantitySold field for consistency
             'rate': rate,
             'revenue': revenue,
             'category': _getCategoryForItem(name),
-          });
-          print('Added item: $name with Qty: $quantity');
+          };
+          items.add(itemMap);
+          print('Added item to list: $itemMap');
         } else {
           print('Skipping item $name - Revenue: $revenue');
         }
+      }
+
+      print('DEBUG MODAL - Total items in list: ${items.length}');
+      if (items.isNotEmpty) {
+        print('DEBUG MODAL - First item in list: ${items[0]}');
       }
 
       print('Total items after processing: ${items.length}');

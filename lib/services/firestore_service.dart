@@ -397,6 +397,7 @@ class FirestoreService {
       'modifiedFlag': inv.modifiedFlag,
       'modifiedReason': inv.modifiedReason,
       'modifiedAt': inv.modifiedAt != null ? Timestamp.fromDate(inv.modifiedAt!) : null,
+      'refundAdjustment': inv.refundAdjustment,
       // Store items inline as array
       'items': inv.items
           .map((it) => {
@@ -442,6 +443,7 @@ class FirestoreService {
       modifiedFlag: data['modifiedFlag'] as bool? ?? false,
       modifiedReason: data['modifiedReason'] as String?,
       modifiedAt: data['modifiedAt'] != null ? _asDate(data['modifiedAt']) : null,
+      refundAdjustment: (data['refundAdjustment'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
