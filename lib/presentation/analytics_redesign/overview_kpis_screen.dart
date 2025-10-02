@@ -37,10 +37,10 @@ class _OverviewKpisScreenState extends State<OverviewKpisScreen> {
       final fs = FirestoreService.instance;
       
       String serviceRange = _mapDateRangeToService(widget.selectedDateRange);
-      
+
       final results = await Future.wait([
         analyticsService.getChartAnalytics(serviceRange),
-        analyticsService.fetchPerformanceInsights(),
+        analyticsService.fetchPerformanceInsights(serviceRange),
         inventoryService.getInventoryAnalytics(),
         fs.getAllInvoices(),
         fs.getAllCustomers(),

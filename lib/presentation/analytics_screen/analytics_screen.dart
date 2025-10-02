@@ -64,7 +64,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       final inventoryService = InventoryService();
       final results = await Future.wait([
         _analyticsService.getFilteredAnalytics(_selectedDateRange),
-        _analyticsService.fetchPerformanceInsights(),
+        _analyticsService.fetchPerformanceInsights(_selectedDateRange),
         _analyticsService.getChartAnalytics(_selectedDateRange),
         inventoryService.getInventoryAnalytics(),
       ]);

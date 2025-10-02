@@ -100,52 +100,30 @@ class AnalyticsService {
           // Recalculate average price
           final totalQuantity = itemAnalytics[itemName]!['quantitySold'] as int;
           final totalRevenue = itemAnalytics[itemName]!['revenue'] as double;
-          itemAnalytics[itemName]!['averagePrice'] = totalQuantity > 0 ? totalRevenue / totalQuantity : 0.0;
+          final avgPrice = (totalQuantity > 0 && totalRevenue > 0) ? (totalRevenue / totalQuantity) : 0.0;
+          itemAnalytics[itemName]!['averagePrice'] = double.parse(avgPrice.toStringAsFixed(2));
+          
+          print('Item: $itemName, Qty: $totalQuantity, Revenue: $totalRevenue, AvgPrice: $avgPrice');
         }
       }
       
-      // Subtract returned items from analytics
-      try {
-        final allReturns = await _fs.getReturns();
-        final returnsInDateRange = allReturns.where((ret) {
-          final isAfterDate = ret.returnDate.isAfter(startDate.subtract(const Duration(days: 1)));
-          if (salesOnly) {
-            return isAfterDate && ret.returnType == 'sales';
-          }
-          return isAfterDate;
-        }).toList();
-
-        print('Found ${returnsInDateRange.length} returns in date range');
-
-        for (final returnModel in returnsInDateRange) {
-          for (final returnItem in returnModel.items) {
-            final itemName = returnItem.name.trim();
-            if (itemAnalytics.containsKey(itemName)) {
-              // Subtract returned quantity and revenue
-              itemAnalytics[itemName]!['quantitySold'] =
-                  (itemAnalytics[itemName]!['quantitySold'] as int) - returnItem.quantity;
-              itemAnalytics[itemName]!['revenue'] =
-                  (itemAnalytics[itemName]!['revenue'] as double) - returnItem.totalValue;
-
-              // Recalculate average price
-              final totalQuantity = itemAnalytics[itemName]!['quantitySold'] as int;
-              final totalRevenue = itemAnalytics[itemName]!['revenue'] as double;
-              itemAnalytics[itemName]!['averagePrice'] =
-                  totalQuantity > 0 ? totalRevenue / totalQuantity : 0.0;
-
-              print('Subtracted return: $itemName, Qty: -${returnItem.quantity}, Revenue: -${returnItem.totalValue}');
-            }
-          }
-        }
-      } catch (e) {
-        print('Error processing returns in analytics: $e');
-        // Continue with gross analytics if returns processing fails
-      }
+      // Skip returns processing for now to debug average price issue
+      print('Skipping returns processing for debugging');
 
       // Filter out any items that somehow ended up with 0 or negative quantity
       final filteredResult = itemAnalytics.values
           .where((item) => (item['quantitySold'] as int) > 0)
-          .map((item) => Map<String, dynamic>.from(item))
+          .map((item) {
+            final itemMap = Map<String, dynamic>.from(item);
+            // Ensure average price is calculated correctly for final result
+            final qty = itemMap['quantitySold'] as int;
+            final rev = itemMap['revenue'] as double;
+            final calculatedAvgPrice = (qty > 0 && rev > 0) ? (rev / qty) : 0.0;
+            itemMap['averagePrice'] = double.parse(calculatedAvgPrice.toStringAsFixed(2));
+            
+            print('Final mapping - ${itemMap['itemName']}: Qty=$qty, Rev=$rev, CalculatedAvg=$calculatedAvgPrice, FinalAvg=${itemMap['averagePrice']}');
+            return itemMap;
+          })
           .toList();
 
       // Sort by revenue (highest first)
@@ -305,9 +283,14 @@ class AnalyticsService {
     }
   }
   
-  Future<Map<String, dynamic>> fetchPerformanceInsights() async {
-    final invoices = await _fs.getAllInvoices();
+  Future<Map<String, dynamic>> fetchPerformanceInsights(String dateRange) async {
+    final allInvoices = await _fs.getAllInvoices();
     final customers = await _fs.getAllCustomers();
+
+    // Filter invoices by date range
+    final DateTime startDate = _calculateStartDate(dateRange);
+    final invoices = allInvoices.where((invoice) =>
+        invoice.date.isAfter(startDate.subtract(const Duration(days: 1)))).toList();
 
     // Calculate insights
     Set<String> uniqueItems = {};
@@ -362,9 +345,9 @@ class AnalyticsService {
     }).toList();
     
     topClients.sort((a, b) => (b['totalRevenue'] as double).compareTo(a['totalRevenue'] as double));
-    
-    // Top revenue items
-    final analytics = await getFilteredAnalytics('All time');
+
+    // Top revenue items (use same date range)
+    final analytics = await getFilteredAnalytics(dateRange);
     final topRevenueItems = analytics.take(5).map((item) => {
       'itemName': item['itemName'],
       'revenue': item['revenue'],

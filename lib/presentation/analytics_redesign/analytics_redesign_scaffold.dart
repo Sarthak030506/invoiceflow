@@ -7,6 +7,8 @@ import '../../services/analytics_service.dart';
 import '../../services/inventory_service.dart';
 import '../../services/customer_service.dart';
 import '../../services/firestore_service.dart';
+import 'item_wise_revenue_screen.dart';
+import 'customer_wise_revenue_screen.dart';
  
 
 class AnalyticsRedesignScaffold extends StatefulWidget {
@@ -770,10 +772,10 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
       final results = await Future.wait([
         analyticsService.getFilteredAnalytics(serviceRange),
         analyticsService.getCustomerWiseRevenue(serviceRange),
-        analyticsService.fetchPerformanceInsights(),
+        analyticsService.fetchPerformanceInsights(serviceRange),
         analyticsService.getChartAnalytics(serviceRange),
         inventoryService.getInventoryAnalytics(),
-        _getOutstandingPaymentsData(),
+        _getOutstandingPaymentsData(serviceRange),
       ]);
 
       setState(() {
@@ -1026,9 +1028,10 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   }
   
   Widget _buildTodaysRevenueCard() {
-    final todayRevenue = _getTodaysRevenue();
-    final yesterdayDelta = _getYesterdayDelta();
-    
+    final periodRevenue = _getPeriodRevenue();
+    final periodLabel = _getRevenueCardLabel();
+    final comparisonLabel = _getComparisonLabel();
+
     return Container(
       key: const Key('revenueTodayCard'),
       padding: const EdgeInsets.all(20),
@@ -1048,23 +1051,25 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
         children: [
           Row(
             children: [
-              Icon(Icons.today, color: Colors.green, size: 20),
+              Icon(Icons.attach_money, color: Colors.green, size: 20),
               const SizedBox(width: 8),
-              const Text(
-                "Today's Revenue",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
+              Expanded(
+                child: Text(
+                  periodLabel,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const Spacer(),
               _buildMiniSparkline(),
             ],
           ),
           const SizedBox(height: 16),
           Text(
-            _formatCurrency(todayRevenue),
+            _formatCurrency(periodRevenue),
             style: const TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.w800,
@@ -1072,18 +1077,12 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Text(
-                'vs yesterday',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (yesterdayDelta != null) _buildDeltaBadge(yesterdayDelta),
-            ],
+          Text(
+            comparisonLabel,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade600,
+            ),
           ),
         ],
       ),
@@ -1551,36 +1550,51 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   }
   
   // Revenue data methods
-  double _getTodaysRevenue() {
-    final revenueTrend = chartData['revenueTrend'] as List<dynamic>? ?? [];
-    final today = DateTime.now();
-    final todayStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-    
-    // First check actual data
-    for (final item in revenueTrend) {
-      if (item['date'] == todayStr) {
-        return (item['revenue'] as double?) ?? 0.0;
-      }
-    }
-    
-    // Fallback: aggregate from latest trend data if available
-    if (revenueTrend.isNotEmpty) {
-      final latest = revenueTrend.first;
-      return (latest['revenue'] as double?) ?? 0.0;
-    }
-    
-    return 8450.0; // Sample data
+  double _getPeriodRevenue() {
+    // Get total revenue for the selected date range
+    final salesVsPurchases = chartData['salesVsPurchases'] as Map<String, dynamic>? ?? {};
+    final salesRevenue = (salesVsPurchases['sales'] as double?) ?? 0.0;
+    return salesRevenue;
   }
-  
-  double? _getYesterdayDelta() {
+
+  String _getRevenueCardLabel() {
+    switch (selectedDateRange) {
+      case 'today':
+        return "Today's Revenue";
+      case 'last7':
+        return 'Last 7 Days Revenue';
+      case 'last30':
+        return 'Last 30 Days Revenue';
+      case 'last90':
+        return 'Last 3 Months Revenue';
+      case 'custom':
+        return 'Custom Period Revenue';
+      default:
+        return 'Total Revenue';
+    }
+  }
+
+  String _getComparisonLabel() {
     final revenueTrend = chartData['revenueTrend'] as List<dynamic>? ?? [];
-    if (revenueTrend.length < 2) return null;
-    
-    final today = revenueTrend.first['revenue'] as double? ?? 0.0;
-    final yesterday = revenueTrend[1]['revenue'] as double? ?? 0.0;
-    
-    if (yesterday == 0) return null;
-    return ((today - yesterday) / yesterday) * 100;
+    final invoiceTypeBreakdown = chartData['invoiceTypeBreakdown'] as Map<String, dynamic>?;
+
+    if (invoiceTypeBreakdown != null) {
+      final salesCount = invoiceTypeBreakdown['salesCount'] as int? ?? 0;
+      final purchaseCount = invoiceTypeBreakdown['purchaseCount'] as int? ?? 0;
+      return '$salesCount sales, $purchaseCount purchases';
+    }
+
+    return '${revenueTrend.length} transaction days';
+  }
+
+  double _getTodaysRevenue() {
+    // Legacy method - now just returns period revenue
+    return _getPeriodRevenue();
+  }
+
+  double? _getYesterdayDelta() {
+    // Legacy method - deprecated
+    return null;
   }
   
   List<Map<String, dynamic>> _getTopSellingItems() {
@@ -1624,13 +1638,35 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   
   double _getAvgHoldingDays() {
     final inventoryValue = (inventoryAnalytics['totalValue'] as double?) ?? 124500.0;
-    final dailySales = _getTodaysRevenue();
-    
+    final periodRevenue = _getPeriodRevenue();
+
+    // Calculate number of days in the selected period
+    int daysInPeriod;
+    switch (selectedDateRange) {
+      case 'today':
+        daysInPeriod = 1;
+        break;
+      case 'last7':
+        daysInPeriod = 7;
+        break;
+      case 'last30':
+        daysInPeriod = 30;
+        break;
+      case 'last90':
+        daysInPeriod = 90;
+        break;
+      default:
+        daysInPeriod = 30; // Default to 30 days
+    }
+
+    // Calculate average daily sales
+    final dailySales = daysInPeriod > 0 ? periodRevenue / daysInPeriod : 0.0;
+
     // Zero division protection
     if (dailySales <= 0 || inventoryValue <= 0) {
       return 28.0; // Default estimate
     }
-    
+
     // Estimate with 70% COGS, clamped to reasonable range
     return (inventoryValue / (dailySales * 0.7)).clamp(1.0, 365.0);
   }
@@ -1893,292 +1929,46 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   }
   
   void _showFullItemBreakdown() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.8,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.bar_chart, color: Colors.blue, size: 24),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Item-wise Revenue Breakdown',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: _getTopSellingItems().length,
-                itemBuilder: (context, index) {
-                  final item = _getTopSellingItems()[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                item['itemName'] ?? 'Unknown',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              _formatCurrency((item['revenue'] as double?) ?? 0.0),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.blue,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Qty: ${item['quantitySold'] ?? 0} units',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          height: 6,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              height: 6,
-                              width: _getMaxItemRevenue() > 0 ? ((item['revenue'] as double?) ?? 0.0) / _getMaxItemRevenue() * double.infinity : 0,
-                              decoration: BoxDecoration(
-                                color: Colors.blue,
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
+    String dateRangeLabel = _getDateRangeLabel();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ItemWiseRevenueScreen(
+          items: _getTopSellingItems(),
+          dateRange: dateRangeLabel,
         ),
       ),
     );
   }
 
   void _showFullCustomerBreakdown() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.8,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.people, color: Colors.green, size: 24),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Customer-wise Revenue Breakdown',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: _getTopCustomers().length,
-                itemBuilder: (context, index) {
-                  final customer = _getTopCustomers()[index];
-                  final revenue = (customer['totalRevenue'] as double?) ?? 0.0;
-                  final invoiceCount = (customer['invoiceCount'] as int?) ?? 0;
-                  final totalQuantity = (customer['totalQuantity'] as int?) ?? 0;
-                  final outstanding = (customer['outstandingAmount'] as double?) ?? 0.0;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    customer['customerName'] ?? 'Unknown',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  if (customer['customerPhone'] != null &&
-                                      (customer['customerPhone'] as String).isNotEmpty)
-                                    Text(
-                                      customer['customerPhone'],
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            Text(
-                              _formatCurrency(revenue),
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildCustomerStat(
-                                  'Invoices', invoiceCount.toString(), Icons.receipt),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildCustomerStat(
-                                  'Items', totalQuantity.toString(), Icons.shopping_bag),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildCustomerStat(
-                                  outstanding >= 0 ? 'Outstanding' : 'Credit',
-                                  _formatCurrency(outstanding.abs()),
-                                  Icons.account_balance_wallet,
-                                  color: outstanding > 0 ? Colors.orange : (outstanding < 0 ? Colors.blue : Colors.green)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          height: 6,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              height: 6,
-                              width: _getMaxCustomerRevenue() > 0
-                                  ? (revenue / _getMaxCustomerRevenue() * double.infinity)
-                                  : 0,
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
+    String dateRangeLabel = _getDateRangeLabel();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CustomerWiseRevenueScreen(
+          customers: _getTopCustomers(),
+          dateRange: dateRangeLabel,
         ),
       ),
     );
   }
 
-  Widget _buildCustomerStat(String label, String value, IconData icon,
-      {Color color = Colors.blue}) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: Colors.grey.shade600,
-            ),
-          ),
-        ],
-      ),
-    );
+  String _getDateRangeLabel() {
+    switch (selectedDateRange) {
+      case 'today':
+        return 'Today';
+      case 'last7':
+        return 'Last 7 Days';
+      case 'last30':
+        return 'Last 30 Days';
+      case 'last90':
+        return 'Last 90 Days';
+      case 'custom':
+        return 'Custom Range';
+      default:
+        return 'All Time';
+    }
   }
 
   Widget _buildItemsInsightsSection() {
@@ -4131,15 +3921,41 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
     return analyticsData;
   }
   
-  Future<Map<String, dynamic>> _getOutstandingPaymentsData() async {
+  Future<Map<String, dynamic>> _getOutstandingPaymentsData(String dateRange) async {
     try {
       final customerService = CustomerService.instance;
       final fs = FirestoreService.instance;
-      
-      // Get all invoices with outstanding amounts
+
+      // Calculate start date from date range
+      DateTime startDate;
+      switch (dateRange) {
+        case 'Today':
+          final now = DateTime.now();
+          startDate = DateTime(now.year, now.month, now.day);
+          break;
+        case 'Last 7 days':
+          startDate = DateTime.now().subtract(const Duration(days: 7));
+          break;
+        case 'Last 30 days':
+          startDate = DateTime.now().subtract(const Duration(days: 30));
+          break;
+        case 'Last 90 days':
+          startDate = DateTime.now().subtract(const Duration(days: 90));
+          break;
+        case 'This year':
+          final now = DateTime.now();
+          startDate = DateTime(now.year, 1, 1);
+          break;
+        default:
+          startDate = DateTime(2000, 1, 1); // All time
+      }
+
+      // Get all invoices with outstanding amounts, filtered by date range
       final allInvoices = await fs.getAllInvoices();
-      final outstandingInvoices = allInvoices.where((inv) => 
-        inv.invoiceType == 'sales' && inv.remainingAmount > 0
+      final outstandingInvoices = allInvoices.where((inv) =>
+        inv.invoiceType == 'sales' &&
+        inv.remainingAmount > 0 &&
+        inv.date.isAfter(startDate.subtract(const Duration(days: 1)))
       ).toList();
       
       // Group customers by overdue buckets
