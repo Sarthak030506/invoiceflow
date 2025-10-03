@@ -6,6 +6,8 @@ import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
 import '../../services/invoice_service.dart';
+import '../../services/edit_invoice_service.dart';
+import '../../services/pdf_service.dart';
 import './widgets/invoice_action_buttons_widget.dart';
 import './widgets/invoice_header_card_widget.dart';
 import './widgets/invoice_items_table_widget.dart';
@@ -13,6 +15,7 @@ import './widgets/invoice_payment_info_widget.dart';
 import './widgets/invoice_revenue_widget.dart';
 import './widgets/invoice_summary_widget.dart';
 import './widgets/whatsapp_reminder_button.dart';
+import './widgets/edit_invoice_dialog.dart';
 import '../return_goods_screen/return_goods_screen.dart';
 
 class InvoiceDetailScreen extends StatefulWidget {
@@ -24,20 +27,17 @@ class InvoiceDetailScreen extends StatefulWidget {
 
 class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   bool _isLoading = false;
-  bool _isEditMode = false;
   bool _isOffline = false;
 
   InvoiceModel? _invoice;
   late InvoiceService _invoiceService;
-  
-  // Controllers for editable fields
-  final TextEditingController _clientNameController = TextEditingController();
-  final TextEditingController _invoiceDateController = TextEditingController();
-  final TextEditingController _notesController = TextEditingController();
-  final TextEditingController _taxRateController = TextEditingController();
-  
-  // List to track edited items
-  List<Map<String, dynamic>> _editedItems = [];
+  final PdfService _pdfService = PdfService.instance;
+
+  // Dummy controllers for read-only mode
+  final TextEditingController _dummyController1 = TextEditingController();
+  final TextEditingController _dummyController2 = TextEditingController();
+  final TextEditingController _dummyController3 = TextEditingController();
+  final TextEditingController _dummyController4 = TextEditingController();
 
 
   @override
@@ -51,8 +51,6 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       if (args is InvoiceModel) {
         setState(() {
           _invoice = args;
-          _initControllers();
-          _editedItems = _invoice!.items.map((item) => item.toJson()).toList();
         });
       }
     });
@@ -81,8 +79,6 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       if (updatedInvoice.updatedAt.isAfter(_invoice!.updatedAt)) {
         setState(() {
           _invoice = updatedInvoice;
-          _initControllers();
-          _editedItems = _invoice!.items.map((item) => item.toJson()).toList();
         });
       }
     } catch (e) {
@@ -91,78 +87,137 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     }
   }
   
-  void _initControllers() {
-    if (_invoice == null) return;
-    _clientNameController.text = _invoice!.clientName;
-    _invoiceDateController.text = _invoice!.getFormattedDate();
-    _notesController.text = _invoice!.notes ?? '';
-    _taxRateController.text = _invoice!.taxRate.toStringAsFixed(1);
-  }
-  
   @override
   void dispose() {
-    _clientNameController.dispose();
-    _invoiceDateController.dispose();
-    _notesController.dispose();
-    _taxRateController.dispose();
+    _dummyController1.dispose();
+    _dummyController2.dispose();
+    _dummyController3.dispose();
+    _dummyController4.dispose();
     super.dispose();
   }
 
-  void _toggleEditMode() {
-    setState(() {
-      _isEditMode = !_isEditMode;
-      
-      if (_isEditMode) {
-        // Reset controllers to current invoice values when entering edit mode
-        _initControllers();
-        _editedItems = _invoice!.items.map((item) => item.toJson()).toList();
-      }
-    });
+  Future<void> _shareInvoice() async {
+    if (_invoice == null) return;
 
-    HapticFeedback.lightImpact();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_isEditMode ? "Edit mode enabled" : "Edit mode disabled")),
-    );
-  }
-
-  void _shareInvoice() {
     HapticFeedback.mediumImpact();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Generating PDF and opening share sheet...")),
-    );
+    try {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(4.w),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 2.h),
+                  Text('Generating PDF...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 
-    // Simulate PDF generation and sharing
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Invoice shared successfully")),
-        );
-      }
-    });
+      // Generate and share PDF
+      await _pdfService.shareInvoicePdf(_invoice!);
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading
+
+      FeedbackAnimations.showSuccess(
+        context,
+        message: 'PDF shared successfully',
+      );
+      HapticFeedbackUtil.success();
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading
+
+      FeedbackAnimations.showError(
+        context,
+        message: 'Failed to share PDF: ${e.toString()}',
+      );
+      HapticFeedbackUtil.error();
+    }
   }
 
-  void _markAsPaid() async {
+  Future<void> _markAsPaid() async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green.shade600),
+            SizedBox(width: 2.w),
+            Text('Mark as Paid?'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('This will update the invoice to:'),
+            SizedBox(height: 1.h),
+            Text('• Status: Paid in Full'),
+            Text('• Amount Paid: ₹${_invoice!.adjustedTotal.toStringAsFixed(2)}'),
+            SizedBox(height: 1.h),
+            Text('Are you sure?'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade600,
+              foregroundColor: Colors.white,
+            ),
+            child: Text('Mark as Paid'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     HapticFeedback.mediumImpact();
     setState(() {
       _isLoading = true;
     });
+
     try {
       final updatedInvoice = _invoice!.copyWith(
         status: 'paid',
         amountPaid: _invoice!.adjustedTotal,
         updatedAt: DateTime.now(),
       );
+
       await _invoiceService.updateInvoice(updatedInvoice);
+
+      if (!mounted) return;
+
       setState(() {
         _invoice = updatedInvoice;
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Invoice marked as paid")),
+
+      FeedbackAnimations.showSuccess(
+        context,
+        message: 'Invoice marked as paid successfully',
       );
+      HapticFeedbackUtil.success();
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         _isLoading = false;
       });
@@ -175,17 +230,69 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     }
   }
 
-  void _downloadPdf() async {
-    HapticFeedback.mediumImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Generating and downloading PDF...")),
+  Future<void> _downloadPdf() async {
+    if (_invoice == null) return;
+
+    HapticFeedbackUtil.trigger();
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        child: Padding(
+          padding: EdgeInsets.all(4.w),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 2.h),
+              Text('Downloading PDF...'),
+            ],
+          ),
+        ),
+      ),
     );
-    // Simulate PDF generation and download
-    await Future.delayed(const Duration(milliseconds: 1500));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("PDF downloaded successfully")),
+
+    try {
+      // Generate and download PDF
+      final filePath = await _pdfService.downloadInvoicePdf(_invoice!);
+
+      if (!mounted) return;
+
+      // Close loading dialog
+      Navigator.pop(context);
+
+      // Show success feedback with file path
+      FeedbackAnimations.showSuccess(
+        context,
+        message: 'PDF downloaded successfully',
       );
+      HapticFeedbackUtil.success();
+
+      // Optionally show a snackbar with the file location
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saved to: $filePath'),
+          duration: Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'OK',
+            onPressed: () {},
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      // Close loading dialog
+      Navigator.pop(context);
+
+      // Show error feedback
+      FeedbackAnimations.showError(
+        context,
+        message: 'Failed to download PDF: ${e.toString()}',
+      );
+      HapticFeedbackUtil.error();
     }
   }
 
@@ -271,72 +378,20 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     );
   }
 
-  void _saveChanges() async {
-    if (!mounted) return;
-    
-    setState(() {
-      _isLoading = true;
-    });
+  void _showEditInvoiceDialog() {
+    if (_invoice == null) return;
 
-    try {
-      // Parse tax rate once
-      final double taxRate = double.tryParse(_taxRateController.text) ?? 0.0;
-      
-      // Prepare data outside of setState for better performance
-      final List<InvoiceItem> updatedItems = _editedItems.map((itemMap) {
-        return InvoiceItem(
-          name: itemMap['name'] ?? '',
-          quantity: itemMap['quantity'] ?? 1,
-          price: (itemMap['price'] ?? 0.0).toDouble(),
-        );
-      }).toList();
-      
-      // Calculate new revenue based on items
-      final double newRevenue = updatedItems.fold(
-        0.0, 
-        (sum, item) => sum + (item.price * item.quantity)
-      );
-      
-      // Create updated invoice
-      final updatedInvoice = _invoice!.copyWith(
-        clientName: _clientNameController.text,
-        notes: _notesController.text,
-        items: updatedItems,
-        revenue: newRevenue,
-        updatedAt: DateTime.now(),
-      );
-      
-      // Save to database in a separate isolate or compute if possible
-      await _invoiceService.updateInvoice(updatedInvoice);
-      
-      // Check if widget is still mounted before updating state
-      if (!mounted) return;
-      
-      // Update the state
-      setState(() {
-        _invoice = updatedInvoice;
-        _isLoading = false;
-        _isEditMode = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Invoice updated successfully")),
-      );
-    } catch (e) {
-      // Check if widget is still mounted before updating state
-      if (!mounted) return;
-      
-      setState(() {
-        _isLoading = false;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error updating invoice: ${e.toString()}"),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    showDialog(
+      context: context,
+      builder: (context) => EditInvoiceDialog(
+        invoice: _invoice!,
+        onInvoiceUpdated: (updatedInvoice) {
+          setState(() {
+            _invoice = updatedInvoice;
+          });
+        },
+      ),
+    );
   }
 
   @override
@@ -375,45 +430,21 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ],
         ),
         actions: [
+          // Edit Invoice Button
+          if (_invoice!.status.toLowerCase() != 'cancelled')
+            IconButton(
+              onPressed: _showEditInvoiceDialog,
+              icon: const Icon(Icons.edit, color: Colors.white),
+              tooltip: 'Edit Invoice',
+            ),
           if (_isOffline)
             Padding(
               padding: EdgeInsets.only(right: 2.w),
               child: Icon(Icons.cloud_off, color: Colors.white70, size: 20),
             ),
-          if (_isEditMode)
-            Container(
-              margin: EdgeInsets.only(right: 2.w),
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _saveChanges,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: _invoice!.invoiceType == 'sales' ? Colors.blue.shade700 : Colors.green.shade700,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                ),
-                child: Text("Save", style: TextStyle(fontWeight: FontWeight.w600)),
-              ),
-            ),
         ],
       ),
       body: _isLoading ? _buildLoadingState() : _buildContent(),
-      floatingActionButton: !_isEditMode
-          ? TweenAnimationBuilder<double>(
-              duration: Duration(milliseconds: 600),
-              tween: Tween(begin: 0.0, end: 1.0),
-              curve: Curves.elasticOut,
-              builder: (context, value, child) {
-                return Transform.scale(
-                  scale: value,
-                  child: FloatingActionButton(
-                    onPressed: _toggleEditMode,
-                    backgroundColor: _invoice!.invoiceType == 'sales' ? Colors.blue.shade600 : Colors.green.shade600,
-                    child: Icon(Icons.edit, color: Colors.white, size: 24),
-                  ),
-                );
-              },
-            )
-          : null,
     );
   }
 
@@ -425,31 +456,31 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           // Header skeleton
           Container(
             width: double.infinity,
-            height: 20.h,
+            constraints: BoxConstraints(minHeight: 15.h, maxHeight: 22.h),
             decoration: BoxDecoration(
               color: AppTheme.lightTheme.colorScheme.surface
                   .withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-          SizedBox(height: 3.h),
+          SizedBox(height: 2.h),
 
           // Table skeleton
           Container(
             width: double.infinity,
-            height: 25.h,
+            constraints: BoxConstraints(minHeight: 20.h, maxHeight: 28.h),
             decoration: BoxDecoration(
               color: AppTheme.lightTheme.colorScheme.surface
                   .withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-          SizedBox(height: 3.h),
+          SizedBox(height: 2.h),
 
           // Summary skeleton
           Container(
             width: double.infinity,
-            height: 15.h,
+            constraints: BoxConstraints(minHeight: 12.h, maxHeight: 18.h),
             decoration: BoxDecoration(
               color: AppTheme.lightTheme.colorScheme.surface
                   .withValues(alpha: 0.3),
@@ -573,9 +604,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             child: RepaintBoundary(
               child: InvoiceHeaderCardWidget(
                 invoice: _invoice!,
-                isEditMode: _isEditMode,
-                clientNameController: _clientNameController,
-                invoiceDateController: _invoiceDateController,
+                isEditMode: false,
+                clientNameController: _dummyController1,
+                invoiceDateController: _dummyController2,
               ),
             ),
           ),
@@ -587,13 +618,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             index: 1,
             child: RepaintBoundary(
               child: InvoiceItemsTableWidget(
-                items: _isEditMode ? _editedItems : _invoice!.items.map((item) => item.toJson()).toList(),
-                isEditMode: _isEditMode,
-                onItemsChanged: (updatedItems) {
-                  setState(() {
-                    _editedItems = updatedItems;
-                  });
-                },
+                items: _invoice!.items.map((item) => item.toJson()).toList(),
+                isEditMode: false,
+                onItemsChanged: (items) {}, // Dummy callback
               ),
             ),
           ),
@@ -605,10 +632,10 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             index: 2,
             child: InvoiceSummaryWidget(
               invoice: _invoice!,
-              isEditMode: _isEditMode,
-              notesController: _notesController,
-              taxRateController: _taxRateController,
-              editedItems: _editedItems,
+              isEditMode: false,
+              notesController: _dummyController3,
+              taxRateController: _dummyController4,
+              editedItems: [],
             ),
           ),
 
@@ -623,56 +650,52 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           SizedBox(height: 4.h),
 
           // WhatsApp Reminder Button (only for sales invoices with customer phone)
-          if (!_isEditMode && _invoice!.invoiceType == 'sales' && 
+          if (_invoice!.invoiceType == 'sales' &&
               _invoice!.customerPhone != null && _invoice!.customerPhone!.isNotEmpty)
             WhatsAppReminderButton(
               invoice: _invoice!,
               shopName: 'Your Shop Name', // Replace with actual shop name from settings
               shopContact: '+91 9876543210', // Replace with actual shop contact from settings
             ),
-            
+
           SizedBox(height: 2.h),
-            
+
           // Return Goods Button
-          if (!_isEditMode)
-            Container(
-              width: double.infinity,
-              margin: EdgeInsets.only(bottom: 2.h),
-              child: OutlinedButton.icon(
-                onPressed: () => _processReturn(),
-                icon: Icon(
-                  Icons.keyboard_return_rounded,
+          Container(
+            width: double.infinity,
+            margin: EdgeInsets.only(bottom: 2.h),
+            child: OutlinedButton.icon(
+              onPressed: () => _processReturn(),
+              icon: Icon(
+                Icons.keyboard_return_rounded,
+                color: Colors.orange.shade600,
+                size: 5.w,
+              ),
+              label: Text(
+                'Return Goods',
+                style: TextStyle(
                   color: Colors.orange.shade600,
-                  size: 5.w,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14.sp,
                 ),
-                label: Text(
-                  'Return Goods',
-                  style: TextStyle(
-                    color: Colors.orange.shade600,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14.sp,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.orange.shade300, width: 1.5),
-                  padding: EdgeInsets.symmetric(vertical: 2.h, horizontal: 4.w),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: Colors.orange.shade300, width: 1.5),
+                padding: EdgeInsets.symmetric(vertical: 2.h, horizontal: 4.w),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
-            
+          ),
+
           // Action Buttons
-          if (!_isEditMode)
-            InvoiceActionButtonsWidget(
-              onEdit: _toggleEditMode,
-              onShare: _shareInvoice,
-              onDuplicate: _duplicateInvoice,
-              onMarkAsPaid: _markAsPaid,
-              onDownloadPdf: _downloadPdf,
-              onDelete: _deleteInvoice,
-            ),
+          InvoiceActionButtonsWidget(
+            onShare: _shareInvoice,
+            onMarkAsPaid: _markAsPaid,
+            onDownloadPdf: _downloadPdf,
+            onDelete: _deleteInvoice,
+          ),
 
           SizedBox(height: 10.h), // Bottom padding for FAB
         ],

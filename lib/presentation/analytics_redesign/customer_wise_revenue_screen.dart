@@ -266,7 +266,12 @@ class _CustomerWiseRevenueScreenState extends State<CustomerWiseRevenueScreen> {
                     itemCount: sortedCustomers.length,
                     itemBuilder: (context, index) {
                       final customer = sortedCustomers[index];
-                      return _buildCustomerCard(customer, index + 1);
+                      return CustomerCard(
+                        customer: customer,
+                        rank: index + 1,
+                        formatCurrency: _formatCurrency,
+                        buildStatColumn: _buildStatColumn,
+                      );
                     },
                   ),
           ),
@@ -310,161 +315,6 @@ class _CustomerWiseRevenueScreenState extends State<CustomerWiseRevenueScreen> {
     );
   }
 
-  Widget _buildCustomerCard(Map<String, dynamic> customer, int rank) {
-    final customerName = customer['customerName'] as String? ?? 'Unknown';
-    final customerPhone = customer['customerPhone'] as String? ?? '';
-    final revenue = (customer['totalRevenue'] as double?) ?? 0.0;
-    final invoiceCount = (customer['invoiceCount'] as int?) ?? 0;
-    final totalQuantity = (customer['totalQuantity'] as int?) ?? 0;
-    final outstanding = (customer['outstandingAmount'] as double?) ?? 0.0;
-    final paid = (customer['totalPaid'] as double?) ?? 0.0;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: rank <= 3 ? Colors.amber.withOpacity(0.2) : Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '#$rank',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: rank <= 3 ? Colors.amber.shade800 : Colors.green.shade700,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        customerName,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      if (customerPhone.isNotEmpty)
-                        Text(
-                          customerPhone,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                Text(
-                  _formatCurrency(revenue),
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.green,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatColumn(
-                          'Invoices',
-                          invoiceCount.toString(),
-                          Icons.receipt,
-                          Colors.blue,
-                        ),
-                      ),
-                      Container(
-                        width: 1,
-                        height: 40,
-                        color: Colors.grey.shade300,
-                      ),
-                      Expanded(
-                        child: _buildStatColumn(
-                          'Items Purchased',
-                          totalQuantity.toString(),
-                          Icons.shopping_bag,
-                          Colors.purple,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    height: 1,
-                    color: Colors.grey.shade300,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatColumn(
-                          'Paid',
-                          _formatCurrency(paid),
-                          Icons.check_circle,
-                          Colors.green,
-                        ),
-                      ),
-                      Container(
-                        width: 1,
-                        height: 40,
-                        color: Colors.grey.shade300,
-                      ),
-                      Expanded(
-                        child: _buildStatColumn(
-                          outstanding >= 0 ? 'Outstanding' : 'Credit',
-                          _formatCurrency(outstanding.abs()),
-                          outstanding >= 0 ? Icons.schedule : Icons.credit_score,
-                          outstanding > 0 ? Colors.orange : (outstanding < 0 ? Colors.blue : Colors.green),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildStatColumn(String label, String value, IconData icon, Color color) {
     return Column(
       children: [
@@ -488,6 +338,327 @@ class _CustomerWiseRevenueScreenState extends State<CustomerWiseRevenueScreen> {
           textAlign: TextAlign.center,
         ),
       ],
+    );
+  }
+}
+
+class CustomerCard extends StatefulWidget {
+  final Map<String, dynamic> customer;
+  final int rank;
+  final String Function(double) formatCurrency;
+  final Widget Function(String, String, IconData, Color) buildStatColumn;
+
+  const CustomerCard({
+    Key? key,
+    required this.customer,
+    required this.rank,
+    required this.formatCurrency,
+    required this.buildStatColumn,
+  }) : super(key: key);
+
+  @override
+  _CustomerCardState createState() => _CustomerCardState();
+}
+
+class _CustomerCardState extends State<CustomerCard> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final customerName = widget.customer['customerName'] as String? ?? 'Unknown';
+    final items = widget.customer['items'] as List<Map<String, dynamic>>? ?? [];
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 2,
+      shadowColor: Colors.black.withOpacity(0.05),
+      child: ExpansionTile(
+        key: PageStorageKey(customerName),
+        title: _buildCustomerCardTitle(),
+        initiallyExpanded: _isExpanded,
+        onExpansionChanged: (expanded) {
+          setState(() {
+            _isExpanded = expanded;
+          });
+        },
+        children: [
+          _buildPurchasedItemsList(items),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerCardTitle() {
+    final customerName = widget.customer['customerName'] as String? ?? 'Unknown';
+    final customerPhone = widget.customer['customerPhone'] as String? ?? '';
+    final revenue = (widget.customer['totalRevenue'] as double?) ?? 0.0;
+    final invoiceCount = (widget.customer['invoiceCount'] as int?) ?? 0;
+    final totalQuantity = (widget.customer['totalQuantity'] as int?) ?? 0;
+    final outstanding = (widget.customer['outstandingAmount'] as double?) ?? 0.0;
+    final paid = (widget.customer['totalPaid'] as double?) ?? 0.0;
+    final pendingRefunds = (widget.customer['pendingRefunds'] as double?) ?? 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: widget.rank <= 3 ? Colors.amber.withOpacity(0.2) : Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    '#${widget.rank}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: widget.rank <= 3 ? Colors.amber.shade800 : Colors.green.shade700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      customerName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    if (customerPhone.isNotEmpty)
+                      Text(
+                        customerPhone,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Text(
+                widget.formatCurrency(revenue),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.green,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: widget.buildStatColumn(
+                        'Invoices',
+                        invoiceCount.toString(),
+                        Icons.receipt,
+                        Colors.blue,
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 40,
+                      color: Colors.grey.shade300,
+                    ),
+                    Expanded(
+                      child: widget.buildStatColumn(
+                        'Items Purchased',
+                        totalQuantity.toString(),
+                        Icons.shopping_bag,
+                        Colors.purple,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  height: 1,
+                  color: Colors.grey.shade300,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: widget.buildStatColumn(
+                        'Paid',
+                        widget.formatCurrency(paid),
+                        Icons.check_circle,
+                        Colors.green,
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 40,
+                      color: Colors.grey.shade300,
+                    ),
+                    Expanded(
+                      child: widget.buildStatColumn(
+                        'Outstanding (This Period)',
+                        widget.formatCurrency(outstanding.abs()),
+                        Icons.schedule,
+                        outstanding > 0 ? Colors.orange : Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+                // Show pending refunds if any (awaiting application to future invoices)
+                if (pendingRefunds > 0) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    height: 1,
+                    color: Colors.grey.shade300,
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.pending_actions, size: 18, color: Colors.orange.shade700),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Pending Refunds (to apply)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange.shade700,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          widget.formatCurrency(pendingRefunds),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRefundDetailRow(String label, double amount, Color color, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey.shade700,
+            ),
+          ),
+        ),
+        Text(
+          widget.formatCurrency(amount),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPurchasedItemsList(List<Map<String, dynamic>> items) {
+    if (items.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(20.0),
+        child: Center(child: Text('No items purchased in this period.')),
+      );
+    }
+
+    // Group items by invoice ID
+    final Map<String, List<Map<String, dynamic>>> itemsByInvoice = {};
+    for (var item in items) {
+      final invoiceId = item['invoiceId'] as String? ?? 'N/A';
+      if (!itemsByInvoice.containsKey(invoiceId)) {
+        itemsByInvoice[invoiceId] = [];
+      }
+      itemsByInvoice[invoiceId]!.add(item);
+    }
+
+    return Container(
+      color: Colors.grey.shade50,
+      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: itemsByInvoice.entries.map((entry) {
+          final invoiceId = entry.key;
+          final invoiceItems = entry.value;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Text(
+                  'Invoice: $invoiceId',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87),
+                ),
+              ),
+              ...invoiceItems.map((item) {
+                final itemName = item['itemName'] as String? ?? 'Unknown Item';
+                final quantity = (item['quantity'] as int?) ?? 0;
+                final amount = (item['amount'] as double?) ?? 0.0;
+
+                return Padding(
+                  padding: const EdgeInsets.only(left: 8.0, top: 4, bottom: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(child: Text(itemName, style: TextStyle(fontSize: 14))),
+                      SizedBox(width: 16),
+                      Text('Qty: $quantity', style: TextStyle(fontSize: 14, color: Colors.grey.shade700)),
+                      SizedBox(width: 16),
+                      Text(widget.formatCurrency(amount), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                );
+              }).toList(),
+              if (itemsByInvoice.keys.last != invoiceId) const Divider(thickness: 1, height: 24),
+            ],
+          );
+        }).toList(),
+      ),
     );
   }
 }

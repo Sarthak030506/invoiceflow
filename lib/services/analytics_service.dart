@@ -561,12 +561,49 @@ class AnalyticsService {
         customerAnalytics[customerId]!['totalRevenue'] = (customerAnalytics[customerId]!['totalRevenue'] as double) + invoiceRevenue;
         customerAnalytics[customerId]!['totalPaid'] = (customerAnalytics[customerId]!['totalPaid'] as double) + invoice.amountPaid;
         customerAnalytics[customerId]!['outstandingAmount'] = (customerAnalytics[customerId]!['outstandingAmount'] as double) + invoice.remainingAmount;
+
+        // Debug logging for Dadu (Tejas)
+        if (customerName.toLowerCase().contains('dadu') || customerName.toLowerCase().contains('tejas')) {
+          print('DEBUG ${customerName} Invoice: ${invoice.invoiceNumber}');
+          print('  Total: ${invoice.total}, RefundAdj: ${invoice.refundAdjustment}, Paid: ${invoice.amountPaid}');
+          print('  AdjustedTotal: ${invoice.adjustedTotal}, RemainingAmount: ${invoice.remainingAmount}');
+          print('  Running Outstanding: ${customerAnalytics[customerId]!['outstandingAmount']}');
+        }
+      }
+
+      // Add pending refunds tracking
+      try {
+        final allReturns = await _fs.getReturns();
+        final returnsInDateRange = allReturns.where((ret) =>
+            ret.returnDate.isAfter(startDate.subtract(const Duration(days: 1))) &&
+            ret.returnType == 'sales' &&
+            !ret.isApplied).toList();
+
+        for (final returnModel in returnsInDateRange) {
+          final customerId = returnModel.customerId ?? 'unknown';
+          if (customerAnalytics.containsKey(customerId)) {
+            if (!customerAnalytics[customerId]!.containsKey('pendingRefunds')) {
+              customerAnalytics[customerId]!['pendingRefunds'] = 0.0;
+            }
+            customerAnalytics[customerId]!['pendingRefunds'] =
+                (customerAnalytics[customerId]!['pendingRefunds'] as double) + returnModel.refundAmount;
+          }
+        }
+      } catch (e) {
+        print('Error processing pending refunds in customer analytics: $e');
       }
 
       // Convert to list and filter out customers with 0 revenue
       final filteredResult = customerAnalytics.values
           .where((customer) => (customer['totalRevenue'] as double) > 0)
-          .map((customer) => Map<String, dynamic>.from(customer))
+          .map((customer) {
+            final result = Map<String, dynamic>.from(customer);
+            // Ensure pendingRefunds field exists
+            if (!result.containsKey('pendingRefunds')) {
+              result['pendingRefunds'] = 0.0;
+            }
+            return result;
+          })
           .toList();
 
       // Sort by revenue (highest first)
@@ -574,7 +611,7 @@ class AnalyticsService {
 
       print('Returning ${filteredResult.length} customers with revenue data');
       for (final customer in filteredResult.take(5)) {
-        print('Customer: ${customer['customerName']}, Invoices: ${customer['invoiceCount']}, Revenue: ${customer['totalRevenue']}');
+        print('Customer: ${customer['customerName']}, Invoices: ${customer['invoiceCount']}, Revenue: ${customer['totalRevenue']}, Paid: ${customer['totalPaid']}, Outstanding: ${customer['outstandingAmount']}, Pending Refunds: ${customer['pendingRefunds']}');
       }
 
       return filteredResult;

@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 import '../../core/app_export.dart';
 import '../../widgets/custom_icon_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
+import '../../widgets/app_loading_indicator.dart';
 import '../../services/analytics_service.dart';
 import '../../services/inventory_service.dart';
 import './widgets/analytics_charts_widget.dart'
@@ -289,20 +290,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         ),
       ),
       body: _isLoading
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    color: theme.colorScheme.primary,
-                  ),
-                  SizedBox(height: 2.h),
-                  Text(
-                    'Loading analytics data...',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ],
-              ),
+          ? const AppLoadingIndicator.centered(
+              message: 'Loading analytics data...',
             )
           : _errorMessage.isNotEmpty
               ? _buildErrorState(theme)

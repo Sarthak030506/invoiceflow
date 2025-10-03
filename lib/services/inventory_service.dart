@@ -58,6 +58,10 @@ class InventoryService {
     return await _db.getItemBySku(sku);
   }
 
+  Future<InventoryItem?> getItemByName(String name) async {
+    return await _db.getItemByName(name);
+  }
+
   Future<InventoryItem?> getItemByBarcode(String barcode) async {
     final items = await getAllItems();
     try {

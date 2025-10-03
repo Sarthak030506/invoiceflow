@@ -488,26 +488,13 @@ class _EnhancedPaymentDetailsWidgetState extends State<EnhancedPaymentDetailsWid
                         return;
                       }
 
-                      // Allow overpayments but show warning
-                      if (amountPaid > widget.totalAmount) {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Text('Overpayment Detected'),
-                            content: Text('The amount paid (₹${amountPaid.toStringAsFixed(2)}) exceeds the total amount (₹${widget.totalAmount.toStringAsFixed(2)}). This will result in a refund due of ₹${(amountPaid - widget.totalAmount).toStringAsFixed(2)}. Do you want to continue?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: Text('Cancel'),
-                              ),
-                              ElevatedButton(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  widget.onPaymentDetailsSubmitted(amountPaid, _selectedPaymentMethod, invoiceNumber, _selectedDate);
-                                },
-                                child: Text('Continue'),
-                              ),
-                            ],
+                      // Prevent overpayments - amount paid cannot exceed total
+                      final adjustedTotal = widget.totalAmount - widget.pendingRefundAmount;
+                      if (amountPaid > adjustedTotal) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Amount paid cannot exceed total amount (₹${adjustedTotal.toStringAsFixed(2)})'),
+                            backgroundColor: Colors.red,
                           ),
                         );
                         return;

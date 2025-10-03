@@ -20,6 +20,7 @@ import './widgets/metric_card_widget.dart';
 import './widgets/recent_invoice_item_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
 import '../../widgets/adaptive_scaffold.dart';
+import '../../widgets/app_loading_indicator.dart';
 import '../../widgets/primary_button.dart';
 import '../../animations/fluid_animations.dart';
 import 'dart:async';
@@ -498,23 +499,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
             SliverToBoxAdapter(
               child: _isLoading
                   ? Container(
-                      height: 50.h,
-                      child: const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircularProgressIndicator(),
-                            SizedBox(height: 16),
-                            Text('Loading invoice data...'),
-                          ],
-                        ),
+                      constraints: BoxConstraints(minHeight: 40.h),
+                      padding: EdgeInsets.symmetric(vertical: 5.h),
+                      child: const AppLoadingIndicator.centered(
+                        message: 'Loading dashboard data...',
                       ),
                     )
                   : _errorMessage.isNotEmpty
                       ? Container(
-                          height: 40.h,
+                          constraints: BoxConstraints(minHeight: 30.h),
+                          padding: EdgeInsets.symmetric(vertical: 5.h),
                           child: Center(
                             child: Column(
+                              mainAxisSize: MainAxisSize.min,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 CustomIconWidget(
@@ -603,7 +600,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                               ),
                             ),
 
-                            SizedBox(height: 12.h),
+                            SizedBox(height: 8.h),
                           ],
                         ),
             ),
@@ -1309,9 +1306,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   Widget _buildEmptyState() {
     return Container(
-      height: 30.h,
-      padding: EdgeInsets.symmetric(horizontal: 8.w),
+      constraints: BoxConstraints(minHeight: 20.h),
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           CustomIconWidget(
@@ -1554,7 +1552,10 @@ void _showSnoozeDialog(InvoiceModel invoice) {
             ),
             SizedBox(height: 3.h),
             Container(
-              height: 12.h,
+              constraints: BoxConstraints(
+                minHeight: 10.h,
+                maxHeight: 14.h,
+              ),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -1794,7 +1795,10 @@ void _showSnoozeDialog(InvoiceModel invoice) {
                     child: _buildEmptyInvoiceState(isDark),
                   )
                 : Container(
-                    height: 20.h,
+                    constraints: BoxConstraints(
+                      minHeight: 18.h,
+                      maxHeight: 22.h,
+                    ),
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
                       padding: EdgeInsets.symmetric(horizontal: 3.w),
@@ -1936,9 +1940,11 @@ void _showSnoozeDialog(InvoiceModel invoice) {
 
   Widget _buildEmptyInvoiceState(bool isDark) {
     return Container(
-      height: 20.h,
+      constraints: BoxConstraints(minHeight: 15.h),
+      padding: EdgeInsets.symmetric(vertical: 3.h),
       child: Center(
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(

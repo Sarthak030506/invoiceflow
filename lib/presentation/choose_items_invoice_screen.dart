@@ -459,7 +459,10 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
           
           // Category chips
           Container(
-            height: 5.h,
+            constraints: BoxConstraints(
+              minHeight: 4.h,
+              maxHeight: 6.h,
+            ),
             margin: EdgeInsets.symmetric(horizontal: 3.w),
             child: ListView(
               scrollDirection: Axis.horizontal,
@@ -808,9 +811,11 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                     ],
                   ),
                   SizedBox(height: 2.h),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 6.h,
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: 5.h,
+                      maxHeight: 7.h,
+                    ),
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
@@ -818,6 +823,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24.0),
                         ),
+                        padding: EdgeInsets.symmetric(vertical: 1.5.h),
                       ),
                       onPressed: _selectedItems.isEmpty ? null : () {
                         final items = _selectedItems.values.map((si) => {

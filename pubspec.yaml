@@ -3,10 +3,11 @@ description: Professional invoice management and business analytics app for smal
 version: 1.0.0+1
 environment: 
   sdk: ^3.6.0
-dependencies: 
-  flutter: 
+dependencies:
+  flutter:
     sdk: flutter
-  
+  cupertino_icons: ^1.0.8
+
   # Firebase
   firebase_core: ^4.1.0
   firebase_auth: ^6.0.2
@@ -42,6 +43,8 @@ dependencies:
   flutter_contacts: ^1.1.9
   permission_handler: ^11.3.1
   responsive_framework: ^1.5.1
+  pdf: ^3.11.1
+  printing: ^5.13.4
 
 dev_dependencies: 
   flutter_test: 

@@ -7,6 +7,7 @@ import '../../services/customer_service.dart';
 import './widgets/customer_card_widget.dart';
 import './widgets/enhanced_customer_card.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
+import '../../widgets/app_loading_indicator.dart';
 
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({Key? key}) : super(key: key);
@@ -343,7 +344,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           // Customer List
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppLoadingIndicator.centered(message: 'Loading customers...')
                 : _filteredCustomers.isEmpty
                     ? _buildEmptyState()
                     : RefreshIndicator(
@@ -415,28 +416,32 @@ class _CustomersScreenState extends State<CustomersScreen> {
   
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.people_outline,
-            size: 20.w,
-            color: Colors.grey,
-          ),
-          SizedBox(height: 2.h),
-          Text(
-            'No customers found',
-            style: AppTheme.lightTheme.textTheme.titleMedium,
-          ),
-          SizedBox(height: 1.h),
-          Text(
-            _searchQuery.isNotEmpty
-                ? 'Try a different search term'
-                : 'Add customers when creating sales invoices',
-            style: AppTheme.lightTheme.textTheme.bodyMedium,
-            textAlign: TextAlign.center,
-          ),
-        ],
+      child: Padding(
+        padding: EdgeInsets.all(5.w),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.people_outline,
+              size: 18.w,
+              color: Colors.grey,
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              'No customers found',
+              style: AppTheme.lightTheme.textTheme.titleMedium,
+            ),
+            SizedBox(height: 1.h),
+            Text(
+              _searchQuery.isNotEmpty
+                  ? 'Try a different search term'
+                  : 'Add customers when creating sales invoices',
+              style: AppTheme.lightTheme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

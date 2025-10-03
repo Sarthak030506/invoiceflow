@@ -9,14 +9,19 @@ class EmptyStateWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: EdgeInsets.all(8.w),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 40.w,
-              height: 40.w,
+              width: 35.w,
+              height: 35.w,
+              constraints: BoxConstraints(
+                maxWidth: 150,
+                maxHeight: 150,
+              ),
               decoration: BoxDecoration(
                 color: AppTheme.lightTheme.colorScheme.primary
                     .withValues(alpha: 0.1),
@@ -25,10 +30,10 @@ class EmptyStateWidget extends StatelessWidget {
               child: CustomIconWidget(
                 iconName: 'receipt_long',
                 color: AppTheme.lightTheme.colorScheme.primary,
-                size: 20.w,
+                size: 18.w,
               ),
             ),
-            SizedBox(height: 4.h),
+            SizedBox(height: 3.h),
             Text(
               'No Invoices Found',
               style: AppTheme.lightTheme.textTheme.headlineSmall?.copyWith(
@@ -36,15 +41,17 @@ class EmptyStateWidget extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
-            SizedBox(height: 2.h),
+            SizedBox(height: 1.5.h),
             Text(
               'Create your first invoice to get started with tracking your business revenue and managing client payments.',
               style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                 color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
             ),
-            SizedBox(height: 4.h),
+            SizedBox(height: 3.h),
             ElevatedButton.icon(
               onPressed: () {
                 // Navigate to create invoice screen
@@ -57,10 +64,10 @@ class EmptyStateWidget extends StatelessWidget {
               ),
               label: const Text('Create Your First Invoice'),
               style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                padding: EdgeInsets.symmetric(horizontal: 5.w, vertical: 1.5.h),
               ),
             ),
-            SizedBox(height: 2.h),
+            SizedBox(height: 1.5.h),
             TextButton.icon(
               onPressed: () {
                 _showTutorialDialog(context);

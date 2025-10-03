@@ -8,7 +8,16 @@
       "Bash(firebase deploy:*)",
       "Bash(firebase use:*)",
       "Bash(firebase firestore:indexes:*)",
-      "Bash(start https://console.firebase.google.com/v1/r/project/invoiceflow-deafa/firestore/indexes?create_composite=ClFwcm9qZWN0cy9pbnZvaWNlZmxvdy1kZWFmYS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvcmV0dXJucy9pbmRleGVzL18QARoOCgpjdXN0b21lcklkEAEaDgoKcmV0dXJuRGF0ZRACGgwKCF9fbmFtZV9fEAI)"
+      "Bash(start https://console.firebase.google.com/v1/r/project/invoiceflow-deafa/firestore/indexes?create_composite=ClFwcm9qZWN0cy9pbnZvaWNlZmxvdy1kZWFmYS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvcmV0dXJucy9pbmRleGVzL18QARoOCgpjdXN0b21lcklkEAEaDgoKcmV0dXJuRGF0ZRACGgwKCF9fbmFtZV9fEAI)",
+      "Bash(dart analyze:*)",
+      "Bash(while read file)",
+      "Bash(do echo \"=== $file ===\")",
+      "Bash(grep:*)",
+      "Bash(done)",
+      "Bash(find:*)",
+      "Bash(git checkout:*)",
+      "Bash(if not exist \"C:\\Users\\hp\\Desktop\\invoiceflow\\android\\app\\src\\main\\res\\xml\" mkdir \"C:\\Users\\hp\\Desktop\\invoiceflow\\android\\app\\src\\main\\res\\xml\")",
+      "Bash(./gradlew:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,6 +1,7 @@
 import '../models/return_model.dart';
 import './firestore_service.dart';
 import './customer_service.dart';
+import './inventory_service.dart';
 import '../utils/app_logger.dart';
 
 class ReturnService {
@@ -16,6 +17,7 @@ class ReturnService {
 
   final FirestoreService _fsService = FirestoreService.instance;
   final CustomerService _customerService = CustomerService.instance;
+  final InventoryService _inventoryService = InventoryService();
 
   // Generate unique return number
   Future<String> generateReturnNumber(String returnType) async {
@@ -37,10 +39,58 @@ class ReturnService {
         );
       }
 
+      // Update inventory for returned items
+      await _processReturnInventory(returnModel);
+
       AppLogger.info('Return created successfully: ${returnModel.returnNumber}', 'ReturnService');
     } catch (e) {
       AppLogger.error('Failed to create return', 'ReturnService', e);
       rethrow;
+    }
+  }
+
+  // Process inventory adjustments for returned items
+  Future<void> _processReturnInventory(ReturnModel returnModel) async {
+    try {
+      for (final returnItem in returnModel.items) {
+        // Find inventory item by name
+        final inventoryItem = await _inventoryService.getItemByName(returnItem.name);
+
+        if (inventoryItem != null) {
+          if (returnModel.returnType == 'sales') {
+            // Sales return: Add stock back (receiveStock)
+            await _inventoryService.receiveStock(
+              inventoryItem.id,
+              returnItem.quantity.toDouble(),
+              returnItem.price,
+              'return:${returnModel.returnNumber}',
+            );
+            AppLogger.debug(
+              'Sales return: Added ${returnItem.quantity} units of ${returnItem.name} back to inventory',
+              'ReturnService',
+            );
+          } else if (returnModel.returnType == 'purchase') {
+            // Purchase return: Remove stock (issueStock)
+            await _inventoryService.issueStock(
+              inventoryItem.id,
+              returnItem.quantity.toDouble(),
+              'return:${returnModel.returnNumber}',
+            );
+            AppLogger.debug(
+              'Purchase return: Removed ${returnItem.quantity} units of ${returnItem.name} from inventory',
+              'ReturnService',
+            );
+          }
+        } else {
+          AppLogger.warning(
+            'Inventory item not found for return item: ${returnItem.name}',
+            'ReturnService',
+          );
+        }
+      }
+    } catch (e) {
+      AppLogger.error('Failed to process return inventory', 'ReturnService', e);
+      // Don't rethrow - we still want the return to be created even if inventory update fails
     }
   }
 

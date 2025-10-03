@@ -9,6 +9,7 @@ import './widgets/filter_bottom_sheet_widget.dart';
 import './widgets/invoice_card_widget.dart';
 import './widgets/search_bar_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
+import '../../widgets/app_loading_indicator.dart';
 
 class InvoicesListScreen extends StatefulWidget {
   final String csvPath;
@@ -28,7 +29,7 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
   bool _isMultiSelectMode = false;
   String _searchQuery = '';
   DateTimeRange? _selectedDateRange;
-  RangeValues _revenueRange = const RangeValues(0, 10000);
+  RangeValues _revenueRange = const RangeValues(0, 10000000);
   String? _selectedInvoiceType;
   List<String> _selectedInvoices = [];
 
@@ -488,11 +489,7 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
   Widget _buildLoadingIndicator() {
     return Container(
       padding: EdgeInsets.all(4.w),
-      child: Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.lightTheme.colorScheme.primary,
-        ),
-      ),
+      child: const AppLoadingIndicator.inline(),
     );
   }
 

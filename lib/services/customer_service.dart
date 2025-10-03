@@ -153,4 +153,14 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
       await _fs.upsertCustomer(updatedCustomer);
     }
   }
+
+  // Manually adjust outstanding balance for a customer
+  // This updates the invoice payments to reflect partial payments
+  Future<void> adjustOutstandingBalance(String customerId, double newOutstandingAmount) async {
+    if (newOutstandingAmount < 0) {
+      throw ArgumentError('Outstanding balance cannot be negative');
+    }
+
+    await _fs.adjustCustomerOutstandingBalance(customerId, newOutstandingAmount);
+  }
 }

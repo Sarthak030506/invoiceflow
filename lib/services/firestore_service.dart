@@ -221,13 +221,97 @@ class FirestoreService {
       if (customerId == null || customerId.isEmpty) continue;
       if (status == 'cancelled') continue;
       final total = (data['revenue'] as num?)?.toDouble() ?? 0.0;
+      final refundAdjustment = (data['refundAdjustment'] as num?)?.toDouble() ?? 0.0;
       final paid = (data['amountPaid'] as num?)?.toDouble() ?? 0.0;
-      final remaining = total - paid;
+      final adjustedTotal = total - refundAdjustment;
+      final remaining = adjustedTotal - paid;
       if (remaining > 0) {
         balances[customerId] = (balances[customerId] ?? 0.0) + remaining;
       }
     }
     return balances;
+  }
+
+  /// Adjust customer's outstanding balance by updating invoice payments
+  /// This is used for manual due adjustments (partial payments)
+  Future<void> adjustCustomerOutstandingBalance(String customerId, double newOutstandingAmount) async {
+    final uid = _requireUid();
+
+    // Get all unpaid sales invoices for this customer
+    final q = await _invoicesCol(uid)
+        .where('customerId', isEqualTo: customerId)
+        .where('invoiceType', isEqualTo: 'sales')
+        .get();
+
+    // Filter out cancelled invoices and collect unpaid ones
+    final unpaidInvoices = <Map<String, dynamic>>[];
+    double currentOutstanding = 0.0;
+
+    for (final d in q.docs) {
+      final data = d.data();
+      final String status = (data['status'] as String?)?.toLowerCase() ?? 'pending';
+      if (status == 'cancelled') continue;
+
+      final total = (data['revenue'] as num?)?.toDouble() ?? 0.0;
+      final refundAdjustment = (data['refundAdjustment'] as num?)?.toDouble() ?? 0.0;
+      final paid = (data['amountPaid'] as num?)?.toDouble() ?? 0.0;
+      final adjustedTotal = total - refundAdjustment;
+      final remaining = adjustedTotal - paid;
+
+      if (remaining > 0) {
+        currentOutstanding += remaining;
+        unpaidInvoices.add({
+          'id': d.id,
+          'total': adjustedTotal,
+          'paid': paid,
+          'remaining': remaining,
+          'date': data['date'],
+        });
+      }
+    }
+
+    if (unpaidInvoices.isEmpty) {
+      throw StateError('No unpaid invoices found for this customer');
+    }
+
+    // Sort invoices by date (oldest first)
+    unpaidInvoices.sort((a, b) {
+      final dateA = (a['date'] as Timestamp?)?.toDate() ?? DateTime.now();
+      final dateB = (b['date'] as Timestamp?)?.toDate() ?? DateTime.now();
+      return dateA.compareTo(dateB);
+    });
+
+    // Calculate the payment amount (reduction in outstanding)
+    final paymentAmount = currentOutstanding - newOutstandingAmount;
+
+    if (paymentAmount < 0) {
+      throw ArgumentError('New outstanding amount cannot be greater than current outstanding');
+    }
+
+    // Distribute the payment across invoices (oldest first)
+    double remainingPayment = paymentAmount;
+    final batch = _fs.batch();
+
+    for (final invoice in unpaidInvoices) {
+      if (remainingPayment <= 0) break;
+
+      final remaining = invoice['remaining'] as double;
+      final currentPaid = invoice['paid'] as double;
+      final invoiceId = invoice['id'] as String;
+
+      // Pay as much as possible on this invoice
+      final paymentForThisInvoice = remainingPayment > remaining ? remaining : remainingPayment;
+      final newPaidAmount = currentPaid + paymentForThisInvoice;
+
+      // Update the invoice
+      final ref = _invoicesCol(uid).doc(invoiceId);
+      batch.update(ref, {'amountPaid': newPaidAmount});
+
+      remainingPayment -= paymentForThisInvoice;
+    }
+
+    await batch.commit();
+    AppLogger.firebase('adjustCustomerOutstandingBalance', 'success', customerId);
   }
 
   /// Explicitly clear fields on an invoice document by deleting them.

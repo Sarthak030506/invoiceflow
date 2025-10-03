@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import '../../models/return_model.dart';
 import '../../services/return_service.dart';
+import '../../widgets/app_loading_indicator.dart';
 import 'return_detail_screen.dart';
 
 class ReturnsScreen extends StatefulWidget {
@@ -66,7 +67,7 @@ class _ReturnsList extends StatelessWidget {
       future: ReturnService.instance.getReturnsByType(returnType),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const AppLoadingIndicator.centered(message: 'Loading returns...');
         }
 
         if (snapshot.hasError) {
