@@ -163,4 +163,40 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
 
     await _fs.adjustCustomerOutstandingBalance(customerId, newOutstandingAmount);
   }
+
+  /// Update denormalized customer stats (called when invoices change)
+  /// This provides instant analytics without querying all invoices
+  Future<void> updateCustomerStats(String customerId) async {
+    final customer = await getCustomerById(customerId);
+    if (customer == null) return;
+
+    // Get all invoices for this customer
+    final invoices = await _fs.getInvoicesByCustomerId(customerId);
+
+    double totalSpent = 0.0;
+    double totalPaid = 0.0;
+    DateTime? lastPurchaseDate;
+
+    for (final invoice in invoices) {
+      if (invoice.invoiceType.toLowerCase() == 'sales') {
+        totalSpent += invoice.adjustedTotal;
+        totalPaid += invoice.amountPaid;
+
+        if (lastPurchaseDate == null || invoice.date.isAfter(lastPurchaseDate)) {
+          lastPurchaseDate = invoice.date;
+        }
+      }
+    }
+
+    // Update customer with denormalized stats
+    final updatedCustomer = customer.copyWith(
+      totalSpent: totalSpent,
+      totalPaid: totalPaid,
+      invoiceCount: invoices.where((inv) => inv.invoiceType.toLowerCase() == 'sales').length,
+      lastPurchaseDate: lastPurchaseDate,
+      updatedAt: DateTime.now(),
+    );
+
+    await _fs.upsertCustomer(updatedCustomer);
+  }
 }

@@ -39,7 +39,11 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
   void initState() {
     super.initState();
     _tempDateRange = widget.selectedDateRange;
-    _tempRevenueRange = widget.revenueRange;
+    // Validate and clamp revenue range values
+    _tempRevenueRange = RangeValues(
+      widget.revenueRange.start.clamp(0.0, 10000.0),
+      widget.revenueRange.end.clamp(0.0, 10000.0),
+    );
     _tempInvoiceType = widget.selectedInvoiceType;
   }
 

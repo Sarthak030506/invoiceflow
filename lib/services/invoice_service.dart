@@ -4,6 +4,8 @@ import '../models/inventory_item_model.dart';
 import './csv_invoice_service.dart';
 import './inventory_service.dart';
 import './firestore_service.dart';
+import './analytics_service.dart';
+import './customer_service.dart';
 import '../utils/app_logger.dart';
 
 class InvoiceService {
@@ -121,17 +123,28 @@ class InvoiceService {
     if (invoice.status == 'posted') {
       await _processInvoiceInventory(invoice);
     }
+    // Invalidate analytics cache when invoices change
+    await AnalyticsService().invalidateCache();
+
+    // Update denormalized customer stats for fast queries
+    if (invoice.customerId != null && invoice.customerId!.isNotEmpty) {
+      try {
+        await CustomerService.instance.updateCustomerStats(invoice.customerId!);
+      } catch (e) {
+        AppLogger.warning('Failed to update customer stats', 'InvoiceService');
+      }
+    }
   }
 
   Future<void> updateInvoice(InvoiceModel invoice) async {
     final oldInvoice = await _fsService.getInvoice(invoice.id);
     await _fsService.upsertInvoice(invoice);
-    
+
     // Handle status changes that affect inventory
     if (oldInvoice != null) {
       final wasPosted = oldInvoice.status == 'posted';
       final isPosted = invoice.status == 'posted';
-      
+
       if (!wasPosted && isPosted) {
         // Invoice was just posted - process inventory
         await _processInvoiceInventory(invoice);
@@ -140,12 +153,23 @@ class InvoiceService {
         await _reverseInvoiceInventory(invoice);
       }
     }
+    // Invalidate analytics cache when invoices change
+    await AnalyticsService().invalidateCache();
+
+    // Update denormalized customer stats
+    if (invoice.customerId != null && invoice.customerId!.isNotEmpty) {
+      try {
+        await CustomerService.instance.updateCustomerStats(invoice.customerId!);
+      } catch (e) {
+        AppLogger.warning('Failed to update customer stats', 'InvoiceService');
+      }
+    }
   }
 
   Future<void> deleteInvoice(String invoiceId) async {
     final invoice = await _fsService.getInvoiceById(invoiceId);
     if (invoice == null) return;
-    
+
     if (invoice.status == 'posted') {
       if (invoice.invoiceType == 'purchase') {
         // Delegate to cancellation flow which validates and reverses as needed
@@ -160,6 +184,8 @@ class InvoiceService {
     } else {
       await _fsService.deleteInvoice(invoiceId);
     }
+    // Invalidate analytics cache when invoices change
+    await AnalyticsService().invalidateCache();
   }
 
   /// Gets invoice by ID
@@ -252,7 +278,13 @@ class InvoiceService {
   }
 
   Future<Map<String, dynamic>> fetchDashboardMetrics() async {
-    final invoices = await _fsService.getAllInvoices();
+    // Fetch last 90 days of invoices for dashboard metrics (scalable approach)
+    final startDate = DateTime.now().subtract(Duration(days: 90));
+    final invoices = await _fsService.getInvoicesByDateRange(
+      startDate: startDate,
+      limit: 1000, // Reasonable limit for dashboard
+    );
+
     double totalRevenue = invoices.fold(0.0, (sum, inv) => sum + inv.revenue);
     int totalItemsSold = invoices.fold(0, (sum, inv) => sum + inv.items.fold(0, (s, item) => s + item.quantity));
     int totalInvoices = invoices.length;

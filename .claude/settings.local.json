@@ -17,7 +17,9 @@
       "Bash(find:*)",
       "Bash(git checkout:*)",
       "Bash(if not exist \"C:\\Users\\hp\\Desktop\\invoiceflow\\android\\app\\src\\main\\res\\xml\" mkdir \"C:\\Users\\hp\\Desktop\\invoiceflow\\android\\app\\src\\main\\res\\xml\")",
-      "Bash(./gradlew:*)"
+      "Bash(./gradlew:*)",
+      "Bash(firebase projects:list:*)",
+      "Bash(start https://console.firebase.google.com/project/invoiceflow-deafa/usage)"
     ],
     "deny": [],
     "ask": []

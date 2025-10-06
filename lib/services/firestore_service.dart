@@ -150,12 +150,71 @@ class FirestoreService {
     return 'INV-$datePrefix${nextSequence.toString().padLeft(3, '0')}';
   }
 
+  /// Get all invoices (DEPRECATED - use getInvoicesByDateRange for better performance)
+  /// WARNING: This fetches ALL invoices and should only be used for small datasets
   Future<List<InvoiceModel>> getAllInvoices() async {
     final uid = _requireUid();
     final q = await _invoicesCol(uid).orderBy('date', descending: true).get();
     return q.docs
         .map((d) => _invoiceFromFirestore(d.data()..['id'] = d.id))
         .toList();
+  }
+
+  /// Get invoices within a date range (RECOMMENDED for scalability)
+  Future<List<InvoiceModel>> getInvoicesByDateRange({
+    DateTime? startDate,
+    DateTime? endDate,
+    int? limit,
+    String? invoiceType,
+  }) async {
+    final uid = _requireUid();
+    var query = _invoicesCol(uid).orderBy('date', descending: true);
+
+    if (startDate != null) {
+      query = query.where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate)) as Query<Map<String, dynamic>>;
+    }
+    if (endDate != null) {
+      query = query.where('date', isLessThanOrEqualTo: Timestamp.fromDate(endDate)) as Query<Map<String, dynamic>>;
+    }
+    if (invoiceType != null) {
+      query = query.where('invoiceType', isEqualTo: invoiceType) as Query<Map<String, dynamic>>;
+    }
+    if (limit != null) {
+      query = query.limit(limit) as Query<Map<String, dynamic>>;
+    }
+
+    final q = await query.get();
+    return q.docs
+        .map((d) => _invoiceFromFirestore(d.data()..['id'] = d.id))
+        .toList();
+  }
+
+  /// Get paginated invoices
+  Future<Map<String, dynamic>> getInvoicesPaginated({
+    int limit = 50,
+    DocumentSnapshot? startAfter,
+    String? invoiceType,
+  }) async {
+    final uid = _requireUid();
+    var query = _invoicesCol(uid).orderBy('date', descending: true).limit(limit);
+
+    if (invoiceType != null) {
+      query = query.where('invoiceType', isEqualTo: invoiceType) as Query<Map<String, dynamic>>;
+    }
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter) as Query<Map<String, dynamic>>;
+    }
+
+    final q = await query.get();
+    final invoices = q.docs
+        .map((d) => _invoiceFromFirestore(d.data()..['id'] = d.id))
+        .toList();
+
+    return {
+      'invoices': invoices,
+      'lastDocument': q.docs.isNotEmpty ? q.docs.last : null,
+      'hasMore': invoices.length == limit,
+    };
   }
 
   Future<List<InvoiceModel>> getRecentInvoices({int limit = 5}) async {
@@ -169,17 +228,20 @@ class FirestoreService {
         .toList();
   }
 
-  Future<List<InvoiceModel>> getInvoicesByCustomerId(String customerId) async {
+  Future<List<InvoiceModel>> getInvoicesByCustomerId(String customerId, {int? limit}) async {
     final uid = _requireUid();
-    final q = await _invoicesCol(uid)
+    var query = _invoicesCol(uid)
         .where('customerId', isEqualTo: customerId)
-        .get();
-    final invoices = q.docs
+        .orderBy('date', descending: true);
+
+    if (limit != null) {
+      query = query.limit(limit) as Query<Map<String, dynamic>>;
+    }
+
+    final q = await query.get();
+    return q.docs
         .map((d) => _invoiceFromFirestore(d.data()..['id'] = d.id))
         .toList();
-    // Sort in memory to avoid index requirement
-    invoices.sort((a, b) => b.date.compareTo(a.date));
-    return invoices;
   }
 
   Future<void> deleteInvoice(String invoiceId) async {

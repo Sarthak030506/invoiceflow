@@ -2,6 +2,7 @@ import '../models/return_model.dart';
 import './firestore_service.dart';
 import './customer_service.dart';
 import './inventory_service.dart';
+import './analytics_service.dart';
 import '../utils/app_logger.dart';
 
 class ReturnService {
@@ -41,6 +42,9 @@ class ReturnService {
 
       // Update inventory for returned items
       await _processReturnInventory(returnModel);
+
+      // Invalidate analytics cache when returns are created
+      await AnalyticsService().invalidateCache();
 
       AppLogger.info('Return created successfully: ${returnModel.returnNumber}', 'ReturnService');
     } catch (e) {

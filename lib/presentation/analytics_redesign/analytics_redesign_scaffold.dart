@@ -789,10 +789,12 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
       });
       
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Failed to load analytics: ${e.toString()}';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to load analytics: ${e.toString()}';
+        });
+      }
     }
   }
 

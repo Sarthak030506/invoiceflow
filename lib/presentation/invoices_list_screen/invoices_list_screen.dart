@@ -29,7 +29,7 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
   bool _isMultiSelectMode = false;
   String _searchQuery = '';
   DateTimeRange? _selectedDateRange;
-  RangeValues _revenueRange = const RangeValues(0, 10000000);
+  RangeValues _revenueRange = const RangeValues(0, 10000); // Match slider max value
   String? _selectedInvoiceType;
   List<String> _selectedInvoices = [];
 

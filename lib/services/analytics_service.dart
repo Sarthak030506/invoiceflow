@@ -3,10 +3,66 @@ import '../models/invoice_model.dart';
 import '../models/product_categories.dart';
 import '../models/return_model.dart';
 import './firestore_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class AnalyticsService {
   final FirestoreService _fs = FirestoreService.instance;
-  
+
+  // Cache expiry duration (5 minutes for multi-device sync)
+  static const int _cacheExpiryMinutes = 5;
+
+  /// Invalidate all analytics cache
+  Future<void> invalidateCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys().where((k) => k.startsWith('analytics_cache_')).toList();
+    for (final key in keys) {
+      await prefs.remove(key);
+    }
+    print('✓ Analytics cache cleared (${keys.length} entries)');
+  }
+
+  /// Force refresh analytics (bypasses cache)
+  /// Call this when user explicitly requests fresh data
+  Future<List<Map<String, dynamic>>> refreshFilteredAnalytics(String dateRange, {bool salesOnly = true}) async {
+    // Invalidate cache first
+    await invalidateCache();
+    // Then compute fresh
+    return await getFilteredAnalytics(dateRange, salesOnly: salesOnly);
+  }
+
+  /// Get cached data or compute and cache
+  Future<T?> _getCached<T>(String cacheKey, Future<T> Function() compute) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedJson = prefs.getString('analytics_cache_$cacheKey');
+    final cachedTime = prefs.getInt('analytics_cache_time_$cacheKey');
+
+    // Check if cache is valid
+    if (cachedJson != null && cachedTime != null) {
+      final age = DateTime.now().millisecondsSinceEpoch - cachedTime;
+      if (age < _cacheExpiryMinutes * 60 * 1000) {
+        try {
+          return jsonDecode(cachedJson) as T;
+        } catch (e) {
+          print('Cache decode error for $cacheKey: $e');
+        }
+      }
+    }
+
+    // Compute fresh data
+    final result = await compute();
+
+    // Cache the result
+    try {
+      await prefs.setString('analytics_cache_$cacheKey', jsonEncode(result));
+      await prefs.setInt('analytics_cache_time_$cacheKey', DateTime.now().millisecondsSinceEpoch);
+    } catch (e) {
+      print('Cache encode error for $cacheKey: $e');
+    }
+
+    return result;
+  }
+
   DateTime _calculateStartDate(String dateRange) {
     final now = DateTime.now();
     switch (dateRange) {
@@ -30,22 +86,30 @@ class AnalyticsService {
   // Get customer purchase history and analytics
   // Add methods needed by analytics_screen.dart
   Future<List<Map<String, dynamic>>> getFilteredAnalytics(String dateRange, {bool salesOnly = true}) async {
+    // Use cache for analytics
+    final cacheKey = 'filtered_analytics_${dateRange}_${salesOnly}';
+    final cached = await _getCached<List<dynamic>>(cacheKey, () async => await _computeFilteredAnalytics(dateRange, salesOnly));
+
+    return cached?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  Future<List<Map<String, dynamic>>> _computeFilteredAnalytics(String dateRange, bool salesOnly) async {
     try {
-      final allInvoices = await _fs.getAllInvoices();
-      
-      // Filter invoices by date range
+      // SCALABILITY FIX: Use date-filtered query instead of fetching all invoices
       final DateTime startDate = _calculateStartDate(dateRange);
-      
-      // Filter invoices by date and type
-      final invoices = allInvoices.where((invoice) {
-        final isAfterDate = invoice.date.isAfter(startDate.subtract(const Duration(days: 1))); // Include the start date
-        if (salesOnly) {
-          return isAfterDate && (invoice.invoiceType.toLowerCase() == 'sales');
-        }
-        return isAfterDate;
-      }).toList();
-      
+
+      final invoices = await _fs.getInvoicesByDateRange(
+        startDate: startDate,
+        invoiceType: salesOnly ? 'sales' : null,
+        limit: 5000, // Safety limit
+      );
+
       print('Found ${invoices.length} invoices for date range: $dateRange (salesOnly: $salesOnly)');
+
+      // Warn if result may be truncated
+      if (invoices.length >= 5000) {
+        print('⚠️ WARNING: Analytics may be incomplete. Result limit (5000) reached. Consider narrower date range.');
+      }
       
       if (invoices.isEmpty) {
         print('No invoices found for the selected date range');
@@ -143,12 +207,17 @@ class AnalyticsService {
   
   Future<Map<String, dynamic>> getChartAnalytics(String dateRange) async {
     try {
-      final allInvoices = await _fs.getAllInvoices();
-
-      // Filter invoices by date range
+      // SCALABILITY FIX: Use date-filtered query
       final DateTime startDate = _calculateStartDate(dateRange);
-      final filteredInvoices = allInvoices.where((invoice) =>
-          invoice.date.isAfter(startDate)).toList();
+      final filteredInvoices = await _fs.getInvoicesByDateRange(
+        startDate: startDate,
+        limit: 5000,
+      );
+
+      // Warn if result may be truncated
+      if (filteredInvoices.length >= 5000) {
+        print('⚠️ WARNING: Chart analytics may be incomplete. Result limit (5000) reached.');
+      }
 
       if (filteredInvoices.isEmpty) {
         return {
@@ -284,13 +353,19 @@ class AnalyticsService {
   }
   
   Future<Map<String, dynamic>> fetchPerformanceInsights(String dateRange) async {
-    final allInvoices = await _fs.getAllInvoices();
-    final customers = await _fs.getAllCustomers();
-
-    // Filter invoices by date range
+    // SCALABILITY FIX: Use date-filtered query
     final DateTime startDate = _calculateStartDate(dateRange);
-    final invoices = allInvoices.where((invoice) =>
-        invoice.date.isAfter(startDate.subtract(const Duration(days: 1)))).toList();
+    final invoices = await _fs.getInvoicesByDateRange(
+      startDate: startDate,
+      limit: 5000,
+    );
+
+    // Warn if result may be truncated
+    if (invoices.length >= 5000) {
+      print('⚠️ WARNING: Performance insights may be incomplete. Result limit (5000) reached.');
+    }
+
+    final customers = await _fs.getAllCustomers();
 
     // Calculate insights
     Set<String> uniqueItems = {};
@@ -463,10 +538,32 @@ class AnalyticsService {
   // Get aggregated customer data for all customers
   Future<List<Map<String, dynamic>>> getCustomerAggregatedData() async {
     final List<CustomerModel> customers = await _fs.getAllCustomers();
+
+    // SCALABILITY FIX: Use date-filtered query (last 2 years) instead of all invoices
+    final allInvoices = await _fs.getInvoicesByDateRange(
+      startDate: DateTime.now().subtract(Duration(days: 730)), // Last 2 years
+      limit: 10000, // Safety limit
+    );
+
+    // Warn if result may be truncated
+    if (allInvoices.length >= 10000) {
+      print('⚠️ WARNING: Customer aggregated data may be incomplete. Result limit (10000) reached.');
+    }
+
+    // Group invoices by customer ID
+    final Map<String, List<InvoiceModel>> invoicesByCustomer = {};
+    for (final invoice in allInvoices) {
+      final customerId = invoice.customerId ?? 'unknown';
+      if (!invoicesByCustomer.containsKey(customerId)) {
+        invoicesByCustomer[customerId] = [];
+      }
+      invoicesByCustomer[customerId]!.add(invoice);
+    }
+
     final List<Map<String, dynamic>> result = [];
 
     for (final customer in customers) {
-      final List<InvoiceModel> invoices = await _fs.getInvoicesByCustomerId(customer.id);
+      final invoices = invoicesByCustomer[customer.id] ?? [];
 
       double totalSpent = 0.0;
       double totalPaid = 0.0;
@@ -498,22 +595,23 @@ class AnalyticsService {
   // Get customer-wise revenue breakdown with date range filtering
   Future<List<Map<String, dynamic>>> getCustomerWiseRevenue(String dateRange, {bool salesOnly = true}) async {
     try {
-      final allInvoices = await _fs.getAllInvoices();
-      final allCustomers = await _fs.getAllCustomers();
-
-      // Filter invoices by date range
+      // SCALABILITY FIX: Use date-filtered query
       final DateTime startDate = _calculateStartDate(dateRange);
 
-      // Filter invoices by date and type
-      final invoices = allInvoices.where((invoice) {
-        final isAfterDate = invoice.date.isAfter(startDate.subtract(const Duration(days: 1)));
-        if (salesOnly) {
-          return isAfterDate && (invoice.invoiceType.toLowerCase() == 'sales');
-        }
-        return isAfterDate;
-      }).toList();
+      final invoices = await _fs.getInvoicesByDateRange(
+        startDate: startDate,
+        invoiceType: salesOnly ? 'sales' : null,
+        limit: 5000,
+      );
 
       print('Found ${invoices.length} invoices for customer-wise revenue (date range: $dateRange, salesOnly: $salesOnly)');
+
+      // Warn if result may be truncated
+      if (invoices.length >= 5000) {
+        print('⚠️ WARNING: Customer-wise revenue may be incomplete. Result limit (5000) reached.');
+      }
+
+      final allCustomers = await _fs.getAllCustomers();
 
       if (invoices.isEmpty) {
         print('No invoices found for the selected date range');

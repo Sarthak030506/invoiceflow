@@ -6,16 +6,42 @@ import '../../../core/app_export.dart';
 class ProfileHeaderWidget extends StatelessWidget {
   final String userName;
   final String userEmail;
-  final String profileImageUrl;
+  final String? profileImageUrl;
   final bool isEmailVerified;
 
   const ProfileHeaderWidget({
     super.key,
     required this.userName,
     required this.userEmail,
-    required this.profileImageUrl,
+    this.profileImageUrl,
     required this.isEmailVerified,
   });
+
+  /// Generate user initials from name
+  String _getUserInitials(String name) {
+    if (name.isEmpty) return '?';
+    final parts = name.trim().split(' ');
+    if (parts.length == 1) {
+      return parts[0].substring(0, 1).toUpperCase();
+    }
+    return (parts[0].substring(0, 1) + parts[parts.length - 1].substring(0, 1)).toUpperCase();
+  }
+
+  /// Generate color from name for consistent avatar background
+  Color _getAvatarColor(String name) {
+    final colors = [
+      Color(0xFF1976D2), // Blue
+      Color(0xFF388E3C), // Green
+      Color(0xFFD32F2F), // Red
+      Color(0xFFF57C00), // Orange
+      Color(0xFF7B1FA2), // Purple
+      Color(0xFF0097A7), // Cyan
+      Color(0xFFC2185B), // Pink
+      Color(0xFF5D4037), // Brown
+    ];
+    final hash = name.hashCode.abs();
+    return colors[hash % colors.length];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +61,7 @@ class ProfileHeaderWidget extends StatelessWidget {
       child: Column(
         children: [
           SizedBox(height: 2.h),
-          // Profile Image
+          // Profile Image or Initials Avatar
           Container(
             width: 25.w,
             height: 25.w,
@@ -47,12 +73,26 @@ class ProfileHeaderWidget extends StatelessWidget {
               ),
             ),
             child: ClipOval(
-              child: CustomImageWidget(
-                imageUrl: profileImageUrl,
-                width: 25.w,
-                height: 25.w,
-                fit: BoxFit.cover,
-              ),
+              child: profileImageUrl != null && profileImageUrl!.isNotEmpty
+                  ? CustomImageWidget(
+                      imageUrl: profileImageUrl!,
+                      width: 25.w,
+                      height: 25.w,
+                      fit: BoxFit.cover,
+                    )
+                  : Container(
+                      color: _getAvatarColor(userName),
+                      child: Center(
+                        child: Text(
+                          _getUserInitials(userName),
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
             ),
           ),
           SizedBox(height: 2.h),

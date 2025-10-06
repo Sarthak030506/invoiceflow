@@ -31,8 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Map<String, dynamic> _mockUserData = {
     "fullName": "Sarah Johnson",
     "email": "sarah.johnson@example.com",
-    "profileImage":
-        "https://images.unsplash.com/photo-1494790108755-2616b9c8c8b8?w=400&h=400&fit=crop&crop=face",
+    "profileImage": null, // Use initials-based avatar instead
     "isEmailVerified": true,
     "lastSyncTime": "2025-07-09 17:45:00",
     "appVersion": "1.2.3",
@@ -300,7 +299,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ProfileHeaderWidget(
                     userName: _userName,
                     userEmail: _userEmail,
-                    profileImageUrl: _mockUserData['profileImage'] as String,
+                    profileImageUrl: _mockUserData['profileImage'] as String?,
                     isEmailVerified: _mockUserData['isEmailVerified'] as bool,
                   ),
                   SizedBox(height: 2.h),
