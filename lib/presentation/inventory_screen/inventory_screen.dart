@@ -51,13 +51,21 @@ class _InventoryScreenState extends State<InventoryScreen> {
     setState(() => _isLoading = true);
     try {
       _allItems = await _inventoryService.getAllItems();
-      // Ensure current stock is computed for each item
-      for (int i = 0; i < _allItems.length; i++) {
-        final actualStock = await _inventoryService.computeCurrentStock(_allItems[i].id);
-        if (actualStock != _allItems[i].currentStock) {
-          _allItems[i] = _allItems[i].copyWith(currentStock: actualStock);
-        }
+
+      // OPTIMIZATION: Compute stock for all items in parallel instead of sequentially
+      if (_allItems.isNotEmpty) {
+        final stockComputations = _allItems.map((item) async {
+          final actualStock = await _inventoryService.computeCurrentStock(item.id);
+          if (actualStock != item.currentStock) {
+            return item.copyWith(currentStock: actualStock);
+          }
+          return item;
+        }).toList();
+
+        // Wait for all parallel computations to complete
+        _allItems = await Future.wait(stockComputations);
       }
+
       _applySearchFilter();
     } catch (e) {
       print('Error loading inventory: $e');
@@ -102,7 +110,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ],
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? _buildSkeletonLoader()
           : Column(
               children: [
                 Padding(
@@ -189,6 +197,150 @@ class _InventoryScreenState extends State<InventoryScreen> {
         icon: Icon(Icons.add_box),
         label: Text('Add Items'),
       ),
+    );
+  }
+
+  Widget _buildSkeletonLoader() {
+    return ListView.builder(
+      padding: EdgeInsets.all(16),
+      itemCount: 10,
+      itemBuilder: (context, index) {
+        return _InventorySkeletonCard();
+      },
+    );
+  }
+}
+
+class _InventorySkeletonCard extends StatefulWidget {
+  @override
+  State<_InventorySkeletonCard> createState() => _InventorySkeletonCardState();
+}
+
+class _InventorySkeletonCardState extends State<_InventorySkeletonCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat();
+
+    _animation = Tween<double>(begin: -1.0, end: 2.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: EdgeInsets.all(12),
+        child: Row(
+          children: [
+            // Avatar skeleton
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                shape: BoxShape.circle,
+              ),
+              child: AnimatedBuilder(
+                animation: _animation,
+                builder: (context, child) {
+                  return ShaderMask(
+                    shaderCallback: (bounds) {
+                      return LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        stops: [
+                          _animation.value - 0.3,
+                          _animation.value,
+                          _animation.value + 0.3,
+                        ],
+                        colors: [
+                          Colors.grey.shade300,
+                          Colors.grey.shade100,
+                          Colors.grey.shade300,
+                        ],
+                      ).createShader(bounds);
+                    },
+                    blendMode: BlendMode.srcATop,
+                    child: Container(color: Colors.grey[300]),
+                  );
+                },
+              ),
+            ),
+            SizedBox(width: 12),
+            // Content skeleton
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildShimmerBox(width: double.infinity, height: 16),
+                  SizedBox(height: 6),
+                  _buildShimmerBox(width: 100, height: 12),
+                ],
+              ),
+            ),
+            // Trailing skeleton
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _buildShimmerBox(width: 80, height: 14),
+                SizedBox(height: 4),
+                _buildShimmerBox(width: 60, height: 12),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShimmerBox({required double width, required double height}) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return ShaderMask(
+          shaderCallback: (bounds) {
+            return LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              stops: [
+                _animation.value - 0.3,
+                _animation.value,
+                _animation.value + 0.3,
+              ],
+              colors: [
+                Colors.grey.shade300,
+                Colors.grey.shade100,
+                Colors.grey.shade300,
+              ],
+            ).createShader(bounds);
+          },
+          blendMode: BlendMode.srcATop,
+          child: Container(
+            width: width,
+            height: height,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        );
+      },
     );
   }
 }

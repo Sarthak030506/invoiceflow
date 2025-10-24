@@ -77,7 +77,7 @@ class InventoryService {
 
   Future<void> receiveStock(String itemId, double qty, double unitCost, String sourceRef) async {
     if (qty <= 0) throw Exception('Quantity must be positive');
-    
+
     final movement = StockMovement(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       itemId: itemId,
@@ -88,7 +88,7 @@ class InventoryService {
       sourceRefId: sourceRef.split(':')[1],
       createdAt: DateTime.now(),
     );
-    
+
     await addMovement(movement);
     await _updateItemCurrentStock(itemId);
     await refreshMetricsAndNotify();
@@ -96,15 +96,35 @@ class InventoryService {
     StockMapService().notifyInventoryUpdated();
   }
 
+  /// OPTIMIZATION: Receive stock without triggering full metrics refresh
+  Future<void> receiveStockWithoutRefresh(String itemId, double qty, double unitCost, String sourceRef) async {
+    if (qty <= 0) throw Exception('Quantity must be positive');
+
+    final movement = StockMovement(
+      id: '${DateTime.now().millisecondsSinceEpoch}_${itemId}_in',
+      itemId: itemId,
+      type: sourceRef.contains('return') ? StockMovementType.RETURN_IN : StockMovementType.IN,
+      quantity: qty,
+      unitCost: unitCost,
+      sourceRefType: sourceRef.split(':')[0],
+      sourceRefId: sourceRef.split(':')[1],
+      createdAt: DateTime.now(),
+    );
+
+    await addMovement(movement);
+    await _updateItemCurrentStock(itemId);
+    // Skip refreshMetricsAndNotify() - caller will handle batch refresh
+  }
+
   Future<bool> issueStock(String itemId, double qty, String sourceRef) async {
     if (qty <= 0) throw Exception('Quantity must be positive');
-    
+
     final currentStock = await computeCurrentStock(itemId);
     if (currentStock < qty) {
       final item = await getItemById(itemId);
       throw Exception('Insufficient stock for ${item?.name ?? itemId}. Available: $currentStock, Required: $qty');
     }
-    
+
     final movement = StockMovement(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       itemId: itemId,
@@ -115,12 +135,39 @@ class InventoryService {
       sourceRefId: sourceRef.split(':')[1],
       createdAt: DateTime.now(),
     );
-    
+
     await addMovement(movement);
     await _updateItemCurrentStock(itemId);
     await refreshMetricsAndNotify();
     _inventoryUpdatesController.add(null);
     StockMapService().notifyInventoryUpdated();
+    return true;
+  }
+
+  /// OPTIMIZATION: Issue stock without triggering full metrics refresh
+  Future<bool> issueStockWithoutRefresh(String itemId, double qty, String sourceRef) async {
+    if (qty <= 0) throw Exception('Quantity must be positive');
+
+    final currentStock = await computeCurrentStock(itemId);
+    if (currentStock < qty) {
+      final item = await getItemById(itemId);
+      throw Exception('Insufficient stock for ${item?.name ?? itemId}. Available: $currentStock, Required: $qty');
+    }
+
+    final movement = StockMovement(
+      id: '${DateTime.now().millisecondsSinceEpoch}_${itemId}_out',
+      itemId: itemId,
+      type: sourceRef.contains('return') ? StockMovementType.RETURN_OUT : StockMovementType.OUT,
+      quantity: qty,
+      unitCost: 0.0,
+      sourceRefType: sourceRef.split(':')[0],
+      sourceRefId: sourceRef.split(':')[1],
+      createdAt: DateTime.now(),
+    );
+
+    await addMovement(movement);
+    await _updateItemCurrentStock(itemId);
+    // Skip refreshMetricsAndNotify() - caller will handle batch refresh
     return true;
   }
 
@@ -283,6 +330,12 @@ class InventoryService {
     await _db.insertItem(item);
   }
 
+  /// OPTIMIZATION: Batch add multiple items at once
+  Future<void> batchAddItems(List<InventoryItem> items) async {
+    // Execute all inserts in parallel for better performance
+    await Future.wait(items.map((item) => _db.insertItem(item)));
+  }
+
   Future<void> updateItem(InventoryItem item) async {
     await _db.updateItem(item);
   }
@@ -325,7 +378,7 @@ class InventoryService {
   Future<void> refreshMetricsAndNotify() async {
     final allItems = await getAllItems();
     final previousLowStock = await getLowStockItems();
-    
+
     // Recompute all items to ensure current stock is accurate
     for (final item in allItems) {
       final actualStock = await _db.computeCurrentStock(item.id);
@@ -335,25 +388,72 @@ class InventoryService {
         InventoryNotificationService().notifyItemUpdated(updatedItem);
       }
     }
-    
+
     // Get updated low stock items
     final currentLowStock = await getLowStockItems();
-    
+
     // Check for new low stock items and fire notifications
-    final newLowStockItems = currentLowStock.where((item) => 
+    final newLowStockItems = currentLowStock.where((item) =>
       !previousLowStock.any((prev) => prev.id == item.id)
     ).toList();
-    
+
     if (newLowStockItems.isNotEmpty) {
       await _fireNotifications(newLowStockItems);
     }
-    
+
     // Notify UI of low stock changes
     InventoryNotificationService().notifyLowStock(currentLowStock);
-    
+
     // Calculate and notify metrics
     final metrics = await getInventoryAnalytics();
     InventoryNotificationService().notifyMetricsUpdated(metrics);
+  }
+
+  /// OPTIMIZATION: Refresh metrics for only specific items (much faster than full refresh)
+  Future<void> refreshMetricsForItems(List<String> itemIds) async {
+    if (itemIds.isEmpty) return;
+
+    final previousLowStock = await getLowStockItems();
+
+    // OPTIMIZATION: Only recompute stock for affected items
+    final List<Future<void>> updateTasks = [];
+    for (final itemId in itemIds) {
+      updateTasks.add(() async {
+        final item = await getItemById(itemId);
+        if (item != null) {
+          final actualStock = await _db.computeCurrentStock(itemId);
+          if (actualStock != item.currentStock) {
+            final updatedItem = item.copyWith(currentStock: actualStock, lastUpdated: DateTime.now());
+            await updateItem(updatedItem);
+            InventoryNotificationService().notifyItemUpdated(updatedItem);
+          }
+        }
+      }());
+    }
+
+    // Execute all updates in parallel
+    await Future.wait(updateTasks);
+
+    // Check for low stock changes
+    final currentLowStock = await getLowStockItems();
+    final newLowStockItems = currentLowStock.where((item) =>
+      !previousLowStock.any((prev) => prev.id == item.id)
+    ).toList();
+
+    if (newLowStockItems.isNotEmpty) {
+      await _fireNotifications(newLowStockItems);
+    }
+
+    // Notify UI
+    InventoryNotificationService().notifyLowStock(currentLowStock);
+    _inventoryUpdatesController.add(null);
+    StockMapService().notifyInventoryUpdated();
+
+    // Only recalculate metrics if needed (async to avoid blocking)
+    Future.microtask(() async {
+      final metrics = await getInventoryAnalytics();
+      InventoryNotificationService().notifyMetricsUpdated(metrics);
+    });
   }
 
   /// Fires notifications for low stock items
@@ -440,11 +540,11 @@ class InventoryService {
   /// Adds an item directly to inventory without creating a purchase invoice
   Future<void> addItemDirectlyToInventory(dynamic catalogItem, double quantity) async {
     if (quantity <= 0) throw Exception('Quantity must be positive');
-    
+
     // Check if item already exists in inventory
     String itemId;
     final existingItem = await _db.getItemByName(catalogItem.name);
-    
+
     if (existingItem != null) {
       itemId = existingItem.id;
     } else {
@@ -462,11 +562,11 @@ class InventoryService {
         barcode: '',
         lastUpdated: DateTime.now(),
       );
-      
+
       await addItem(newItem);
       itemId = newItem.id;
     }
-    
+
     // Add stock movement for direct addition
     final movement = StockMovement(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -478,10 +578,91 @@ class InventoryService {
       sourceRefId: 'manual_${DateTime.now().millisecondsSinceEpoch}',
       createdAt: DateTime.now(),
     );
-    
+
     await addMovement(movement);
     await _updateItemCurrentStock(itemId);
     await refreshMetricsAndNotify();
+    _inventoryUpdatesController.add(null);
+    StockMapService().notifyInventoryUpdated();
+  }
+
+  /// OPTIMIZATION: Batch add multiple items to inventory at once (much faster)
+  Future<void> batchAddItemsDirectlyToInventory(List<Map<String, dynamic>> itemsWithQuantities) async {
+    if (itemsWithQuantities.isEmpty) return;
+
+    // OPTIMIZATION: Load all existing items once
+    final allItems = await getAllItems();
+    final itemsByName = {for (var item in allItems) item.name.toLowerCase(): item};
+
+    final List<InventoryItem> newItemsToCreate = [];
+    final List<StockMovement> movements = [];
+    final List<String> affectedItemIds = [];
+    final now = DateTime.now();
+
+    // OPTIMIZATION: Prepare all items and movements without DB calls
+    int timestampOffset = 0;
+    for (final entry in itemsWithQuantities) {
+      final catalogItem = entry['item'];
+      final quantity = entry['quantity'] as double;
+
+      if (quantity <= 0) continue;
+
+      // Check if item exists
+      String itemId;
+      final existingItem = itemsByName[catalogItem.name.toLowerCase()];
+
+      if (existingItem != null) {
+        itemId = existingItem.id;
+      } else {
+        // Queue new item for batch creation
+        final newItem = InventoryItem(
+          id: '${now.millisecondsSinceEpoch + timestampOffset}',
+          name: catalogItem.name,
+          sku: 'SKU-${catalogItem.id}',
+          category: 'General',
+          unit: 'pcs',
+          avgCost: catalogItem.rate,
+          openingStock: 0.0,
+          currentStock: 0.0,
+          reorderPoint: 10.0,
+          barcode: '',
+          lastUpdated: now,
+        );
+        newItemsToCreate.add(newItem);
+        itemId = newItem.id;
+        timestampOffset++;
+      }
+
+      affectedItemIds.add(itemId);
+
+      // Queue stock movement
+      movements.add(StockMovement(
+        id: '${now.millisecondsSinceEpoch + timestampOffset}_manual',
+        itemId: itemId,
+        type: StockMovementType.IN,
+        quantity: quantity,
+        unitCost: catalogItem.rate,
+        sourceRefType: 'direct_add',
+        sourceRefId: 'manual_batch_${now.millisecondsSinceEpoch}',
+        createdAt: now,
+      ));
+      timestampOffset++;
+    }
+
+    // OPTIMIZATION: Batch create all new items
+    if (newItemsToCreate.isNotEmpty) {
+      await batchAddItems(newItemsToCreate);
+    }
+
+    // OPTIMIZATION: Add all movements in parallel
+    await Future.wait(movements.map((m) => addMovement(m)));
+
+    // OPTIMIZATION: Update stock for all affected items in parallel
+    await Future.wait(affectedItemIds.map((id) => _updateItemCurrentStock(id)));
+
+    // OPTIMIZATION: Single metrics refresh at the end for all items
+    await refreshMetricsForItems(affectedItemIds);
+
     _inventoryUpdatesController.add(null);
     StockMapService().notifyInventoryUpdated();
   }

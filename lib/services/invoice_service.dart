@@ -118,6 +118,20 @@ class InvoiceService {
     return await _fsService.getAllInvoices();
   }
 
+  /// Fetch invoices with pagination for better performance
+  /// Returns a map with 'invoices', 'lastDocument', and 'hasMore' keys
+  Future<Map<String, dynamic>> fetchInvoicesPaginated({
+    int limit = 50,
+    dynamic lastDocument,
+    String? invoiceType,
+  }) async {
+    return await _fsService.getInvoicesPaginated(
+      limit: limit,
+      startAfter: lastDocument,
+      invoiceType: invoiceType,
+    );
+  }
+
   Future<void> addInvoice(InvoiceModel invoice) async {
     await _fsService.upsertInvoice(invoice);
     if (invoice.status == 'posted') {
@@ -310,28 +324,29 @@ class InvoiceService {
 
   Future<void> _processInvoiceInventory(InvoiceModel invoice) async {
     final inventoryService = InventoryService();
-    
+
+    // OPTIMIZATION: Load all items once at the start to avoid repeated DB queries
+    final allItems = await inventoryService.getAllItems();
+    final itemsMap = {for (var item in allItems) item.id: item};
+    final itemsByName = {for (var item in allItems) item.name.toLowerCase().trim(): item};
+
+    // OPTIMIZATION: Batch create new items first
+    final List<InventoryItem> newItemsToCreate = [];
+    final Map<String, String> itemNameToFinalId = {};
+
     for (final item in invoice.items) {
       final itemId = _generateItemId(item.name);
-      
-      // Check if item exists in inventory by ID first, then by name as fallback
-      InventoryItem? existingItem = await inventoryService.getItemById(itemId);
-      
-      // If not found by new ID, try to find by name (for legacy items with hash-based IDs)
+      InventoryItem? existingItem = itemsMap[itemId];
+
+      // Fallback: try to find by name
       if (existingItem == null) {
-        final allItems = await inventoryService.getAllItems();
-        existingItem = allItems.cast<InventoryItem?>().firstWhere(
-          (i) => i?.name.toLowerCase().trim() == item.name.toLowerCase().trim(),
-          orElse: () => null,
-        );
+        existingItem = itemsByName[item.name.toLowerCase().trim()];
       }
-      
-      String finalItemId = itemId;
+
       if (existingItem != null) {
-        // Use the existing item's ID to maintain consistency
-        finalItemId = existingItem.id;
+        itemNameToFinalId[item.name] = existingItem.id;
       } else {
-        // Create new item with consistent ID
+        // Queue new item for batch creation
         final newItem = InventoryItem(
           id: itemId,
           sku: itemId.toUpperCase(),
@@ -344,22 +359,53 @@ class InvoiceService {
           category: 'General',
           lastUpdated: DateTime.now(),
         );
-        await inventoryService.addItem(newItem);
+        newItemsToCreate.add(newItem);
+        itemNameToFinalId[item.name] = itemId;
       }
-      
-      // Process stock movement
-      try {
+    }
+
+    // OPTIMIZATION: Batch create all new items
+    if (newItemsToCreate.isNotEmpty) {
+      await inventoryService.batchAddItems(newItemsToCreate);
+    }
+
+    // OPTIMIZATION: Process stock movements without triggering metric refresh each time
+    try {
+      final List<Future<void>> stockOperations = [];
+
+      for (final item in invoice.items) {
+        final finalItemId = itemNameToFinalId[item.name]!;
+
         if (invoice.invoiceType == 'purchase') {
-          // Purchase invoice: increase stock
-          await inventoryService.receiveStock(finalItemId, item.quantity.toDouble(), item.price, 'invoice:${invoice.id}');
+          stockOperations.add(
+            inventoryService.receiveStockWithoutRefresh(
+              finalItemId,
+              item.quantity.toDouble(),
+              item.price,
+              'invoice:${invoice.id}'
+            )
+          );
         } else if (invoice.invoiceType == 'sales') {
-          // Sales invoice: decrease stock
-          await inventoryService.issueStock(finalItemId, item.quantity.toDouble(), 'invoice:${invoice.id}');
+          stockOperations.add(
+            inventoryService.issueStockWithoutRefresh(
+              finalItemId,
+              item.quantity.toDouble(),
+              'invoice:${invoice.id}'
+            )
+          );
         }
-      } catch (e) {
-        AppLogger.error('Inventory processing error', 'Invoice', e);
-        rethrow;
       }
+
+      // OPTIMIZATION: Execute all stock operations in parallel
+      await Future.wait(stockOperations);
+
+      // OPTIMIZATION: Single metric refresh at the end for all affected items
+      final affectedItemIds = itemNameToFinalId.values.toSet().toList();
+      await inventoryService.refreshMetricsForItems(affectedItemIds);
+
+    } catch (e) {
+      AppLogger.error('Inventory processing error', 'Invoice', e);
+      rethrow;
     }
   }
 

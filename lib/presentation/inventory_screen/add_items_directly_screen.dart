@@ -485,21 +485,67 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
 
   Future<void> _addItemsToInventory() async {
     try {
+      // Show enhanced loading dialog with progress info
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (_) => Center(child: CircularProgressIndicator()),
+        builder: (_) => WillPopScope(
+          onWillPop: () async => false,
+          child: Center(
+            child: Container(
+              padding: EdgeInsets.all(6.w),
+              margin: EdgeInsets.symmetric(horizontal: 10.w),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 64,
+                    height: 64,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                    ),
+                  ),
+                  SizedBox(height: 4.h),
+                  Text(
+                    'Adding to Inventory...',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  SizedBox(height: 1.h),
+                  Text(
+                    'Processing ${_selectedItems.length} items',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       );
 
-      for (final selectedItem in _selectedItems.values) {
-        await _inventoryService.addItemDirectlyToInventory(
-          selectedItem.item,
-          selectedItem.quantity.toDouble(),
-        );
-      }
+      // OPTIMIZATION: Use batch method instead of sequential processing
+      final itemsWithQuantities = _selectedItems.values.map((selectedItem) => {
+        'item': selectedItem.item,
+        'quantity': selectedItem.quantity.toDouble(),
+      }).toList();
 
+      await _inventoryService.batchAddItemsDirectlyToInventory(itemsWithQuantities);
+
+      if (!mounted) return;
       Navigator.of(context).pop(); // Close loading dialog
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${_selectedItems.length} items added to inventory successfully!'),
@@ -509,8 +555,9 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
 
       Navigator.of(context).pop(); // Go back to inventory screen
     } catch (e) {
+      if (!mounted) return;
       Navigator.of(context).pop(); // Close loading dialog
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error adding items: ${e.toString()}'),

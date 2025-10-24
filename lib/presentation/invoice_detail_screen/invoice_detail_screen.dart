@@ -695,6 +695,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             onMarkAsPaid: _markAsPaid,
             onDownloadPdf: _downloadPdf,
             onDelete: _deleteInvoice,
+            isMarkingAsPaid: _isLoading,
           ),
 
           SizedBox(height: 10.h), // Bottom padding for FAB

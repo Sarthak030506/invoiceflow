@@ -3,6 +3,7 @@ import 'package:sizer/sizer.dart';
 import '../../services/analytics_service.dart';
 import '../../services/inventory_service.dart';
 import '../../services/firestore_service.dart';
+import './widgets/skeleton_loader.dart';
 
 class OverviewKpisScreen extends StatefulWidget {
   final String selectedDateRange;
@@ -134,7 +135,22 @@ class _OverviewKpisScreenState extends State<OverviewKpisScreen> {
         elevation: 0,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? ListView(
+              padding: EdgeInsets.all(4.w),
+              children: [
+                SkeletonLoader.kpiCard(icon: Icons.trending_up, color: Colors.green),
+                SizedBox(height: 3.w),
+                SkeletonLoader.kpiCard(icon: Icons.shopping_cart, color: Colors.blue),
+                SizedBox(height: 3.w),
+                SkeletonLoader.kpiCard(icon: Icons.account_balance_wallet, color: Colors.orange),
+                SizedBox(height: 3.w),
+                SkeletonLoader.kpiCard(icon: Icons.people, color: Colors.purple),
+                SizedBox(height: 3.w),
+                SkeletonLoader.kpiCard(icon: Icons.receipt_long, color: Colors.indigo),
+                SizedBox(height: 3.w),
+                SkeletonLoader.kpiCard(icon: Icons.inventory_2, color: Colors.teal),
+              ],
+            )
           : ListView(
               padding: EdgeInsets.all(4.w),
               children: [
@@ -298,4 +314,5 @@ class _OverviewKpisScreenState extends State<OverviewKpisScreen> {
         return 'previous period';
     }
   }
+
 }

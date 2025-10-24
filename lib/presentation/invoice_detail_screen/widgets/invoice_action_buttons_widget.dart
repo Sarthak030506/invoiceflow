@@ -8,6 +8,7 @@ class InvoiceActionButtonsWidget extends StatelessWidget {
   final VoidCallback onMarkAsPaid;
   final VoidCallback onDownloadPdf;
   final VoidCallback? onDelete;
+  final bool isMarkingAsPaid;
 
   const InvoiceActionButtonsWidget({
     super.key,
@@ -15,6 +16,7 @@ class InvoiceActionButtonsWidget extends StatelessWidget {
     required this.onMarkAsPaid,
     required this.onDownloadPdf,
     this.onDelete,
+    this.isMarkingAsPaid = false,
   });
 
   @override
@@ -55,13 +57,24 @@ class InvoiceActionButtonsWidget extends StatelessWidget {
                 SizedBox(width: 3.w),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: onMarkAsPaid,
-                    icon: Icon(Icons.check_circle, size: 20),
-                    label: Text("Mark Paid"),
+                    onPressed: isMarkingAsPaid ? null : onMarkAsPaid,
+                    icon: isMarkingAsPaid
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Icon(Icons.check_circle, size: 20),
+                    label: Text(isMarkingAsPaid ? "Processing..." : "Mark Paid"),
                     style: ElevatedButton.styleFrom(
                       padding: EdgeInsets.symmetric(vertical: 1.8.h),
                       backgroundColor: Colors.green.shade600,
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.green.shade400,
+                      disabledForegroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

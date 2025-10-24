@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'widgets/sparkline_painter.dart';
+import 'widgets/skeleton_loader.dart';
 import '../analytics_screen/widgets/analytics_table_widget.dart';
 import '../../services/analytics_service.dart';
 import '../../services/inventory_service.dart';
@@ -146,17 +147,33 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   }
   
   Widget _buildChartsSection() {
-    return Column(
-      children: [
-        _buildRevenueChart(),
-        const SizedBox(height: 16),
-        _buildSalesVsPurchasesChart(),
-        const SizedBox(height: 16),
-        _buildTopItemsChart(),
-        const SizedBox(height: 16),
-        _buildInventoryChart(),
-      ],
-    );
+    return _isLoading
+        ? Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4.w),
+            child: Column(
+              children: [
+                const SizedBox(height: 16),
+                SkeletonLoader.chart(height: 250),
+                const SizedBox(height: 16),
+                SkeletonLoader.chart(height: 250),
+                const SizedBox(height: 16),
+                SkeletonLoader.chart(height: 200),
+                const SizedBox(height: 16),
+                SkeletonLoader.chart(height: 200),
+              ],
+            ),
+          )
+        : Column(
+            children: [
+              _buildRevenueChart(),
+              const SizedBox(height: 16),
+              _buildSalesVsPurchasesChart(),
+              const SizedBox(height: 16),
+              _buildTopItemsChart(),
+              const SizedBox(height: 16),
+              _buildInventoryChart(),
+            ],
+          );
   }
   
   Widget _buildRevenueChart() {
@@ -814,47 +831,77 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
             ),
           ),
           SizedBox(height: 12),
-          Container(
-            key: const Key('compactKpiCards'),
-            height: 100,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.zero,
-              children: [
-                _buildKpiCard(
-                  title: 'Total Revenue',
-                  value: _formatCurrency(_getTotalRevenue()),
-                  delta: _getRevenueDelta(),
-                  icon: Icons.trending_up,
-                  onTap: () => _scrollToSection('revenue'),
+          _isLoading
+              ? Container(
+                  height: 100,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.zero,
+                    children: [
+                      Container(
+                        width: 140,
+                        child: SkeletonLoader.kpiCard(icon: Icons.trending_up, color: Colors.blue),
+                      ),
+                      SizedBox(width: 12),
+                      Container(
+                        width: 140,
+                        child: SkeletonLoader.kpiCard(icon: Icons.shopping_cart, color: Colors.green),
+                      ),
+                      SizedBox(width: 12),
+                      Container(
+                        width: 140,
+                        child: SkeletonLoader.kpiCard(icon: Icons.account_balance_wallet, color: Colors.orange),
+                      ),
+                      SizedBox(width: 12),
+                      Container(
+                        width: 140,
+                        child: SkeletonLoader.kpiCard(icon: Icons.people, color: Colors.purple),
+                      ),
+                      SizedBox(width: 16),
+                    ],
+                  ),
+                )
+              : Container(
+                  key: const Key('compactKpiCards'),
+                  height: 100,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.zero,
+                    children: [
+                      _buildKpiCard(
+                        title: 'Total Revenue',
+                        value: _formatCurrency(_getTotalRevenue()),
+                        delta: _getRevenueDelta(),
+                        icon: Icons.trending_up,
+                        onTap: () => _scrollToSection('revenue'),
+                      ),
+                      SizedBox(width: 12),
+                      _buildKpiCard(
+                        title: 'Total Purchases',
+                        value: _formatCurrency(_getTotalPurchases()),
+                        icon: Icons.shopping_cart,
+                        onTap: () => _scrollToSection('revenue'),
+                      ),
+                      SizedBox(width: 12),
+                      _buildKpiCard(
+                        title: 'Outstanding',
+                        value: _formatCurrency(_getOutstanding()),
+                        icon: Icons.account_balance_wallet,
+                        color: Colors.orange,
+                        onTap: () => _scrollToSection('due'),
+                      ),
+                      SizedBox(width: 12),
+                      _buildKpiCard(
+                        title: 'Total Clients',
+                        value: _getTotalClients().toString(),
+                        icon: Icons.people,
+                        color: Colors.purple,
+                        onTap: () => _scrollToSection('items'),
+                      ),
+                      SizedBox(width: 16), // Extra padding at end
+                    ],
+                  ),
                 ),
-                SizedBox(width: 12),
-                _buildKpiCard(
-                  title: 'Total Purchases',
-                  value: _formatCurrency(_getTotalPurchases()),
-                  icon: Icons.shopping_cart,
-                  onTap: () => _scrollToSection('revenue'),
-                ),
-                SizedBox(width: 12),
-                _buildKpiCard(
-                  title: 'Outstanding',
-                  value: _formatCurrency(_getOutstanding()),
-                  icon: Icons.account_balance_wallet,
-                  color: Colors.orange,
-                  onTap: () => _scrollToSection('due'),
-                ),
-                SizedBox(width: 12),
-                _buildKpiCard(
-                  title: 'Total Clients',
-                  value: _getTotalClients().toString(),
-                  icon: Icons.people,
-                  color: Colors.purple,
-                  onTap: () => _scrollToSection('items'),
-                ),
-                SizedBox(width: 16), // Extra padding at end
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -1021,9 +1068,21 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
             ),
           ),
           SizedBox(height: 12),
-          _buildTodaysRevenueCard(),
-          SizedBox(height: 12),
-          _buildItemRevenueCard(),
+          _isLoading
+              ? Column(
+                  children: [
+                    SkeletonLoader.kpiCard(icon: Icons.attach_money, color: Colors.green),
+                    SizedBox(height: 12),
+                    SkeletonLoader.kpiCard(icon: Icons.bar_chart, color: Colors.blue),
+                  ],
+                )
+              : Column(
+                  children: [
+                    _buildTodaysRevenueCard(),
+                    SizedBox(height: 12),
+                    _buildItemRevenueCard(),
+                  ],
+                ),
         ],
       ),
     );
@@ -1989,19 +2048,41 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
             ),
           ),
           SizedBox(height: 12),
-          _buildInvoiceMixCard(),
-          SizedBox(height: 12),
-          _buildBestSellingItemsCard(),
-          SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _buildCustomersCard()),
-              const SizedBox(width: 12),
-              Expanded(child: _buildCategoriesCard()),
-            ],
-          ),
-          SizedBox(height: 12),
-          _buildTrendsCard(),
+          _isLoading
+              ? Column(
+                  children: [
+                    SkeletonLoader.kpiCard(icon: Icons.receipt_long, color: Colors.blue),
+                    SizedBox(height: 12),
+                    SkeletonLoader.kpiCard(icon: Icons.star, color: Colors.orange),
+                    SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(child: SkeletonLoader.kpiCard(icon: Icons.people, color: Colors.purple)),
+                        const SizedBox(width: 12),
+                        Expanded(child: SkeletonLoader.kpiCard(icon: Icons.category, color: Colors.teal)),
+                      ],
+                    ),
+                    SizedBox(height: 12),
+                    SkeletonLoader.kpiCard(icon: Icons.trending_up, color: Colors.green),
+                  ],
+                )
+              : Column(
+                  children: [
+                    _buildInvoiceMixCard(),
+                    SizedBox(height: 12),
+                    _buildBestSellingItemsCard(),
+                    SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(child: _buildCustomersCard()),
+                        const SizedBox(width: 12),
+                        Expanded(child: _buildCategoriesCard()),
+                      ],
+                    ),
+                    SizedBox(height: 12),
+                    _buildTrendsCard(),
+                  ],
+                ),
         ],
       ),
     );
@@ -2667,11 +2748,25 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
             ),
           ),
           SizedBox(height: 12),
-          _buildInventorySummaryCard(),
-          SizedBox(height: 16),
-          _buildMovementHealthCard(),
-          SizedBox(height: 16),
-          _buildHoldingCard(),
+          _isLoading
+              ? Column(
+                  children: [
+                    SkeletonLoader.inventoryCard(),
+                    SizedBox(height: 16),
+                    SkeletonLoader.kpiCard(icon: Icons.inventory, color: Colors.indigo),
+                    SizedBox(height: 16),
+                    SkeletonLoader.kpiCard(icon: Icons.shopping_bag, color: Colors.purple),
+                  ],
+                )
+              : Column(
+                  children: [
+                    _buildInventorySummaryCard(),
+                    SizedBox(height: 16),
+                    _buildMovementHealthCard(),
+                    SizedBox(height: 16),
+                    _buildHoldingCard(),
+                  ],
+                ),
         ],
       ),
     );
@@ -3658,7 +3753,9 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
             ),
           ),
           SizedBox(height: 12),
-          _buildDueRemindersCard(),
+          _isLoading
+              ? SkeletonLoader.dueReminderCard()
+              : _buildDueRemindersCard(),
         ],
       ),
     );

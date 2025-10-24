@@ -1116,17 +1116,53 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                 invoiceType: widget.invoiceType,
                 pendingRefundAmount: _pendingRefundAmount,
                 onPaymentDetailsSubmitted: (amountPaid, paymentMethod, invoiceNumber, invoiceDate) async {
-                  // Show a blocking loader while we save and process inventory to avoid perceived freeze
+                  // Show a blocking loader with progress message
                   showDialog(
                     context: parentContext,
                     barrierDismissible: false,
                     builder: (_) => WillPopScope(
                       onWillPop: () async => false,
-                      child: const Center(
-                        child: SizedBox(
-                          width: 64,
-                          height: 64,
-                          child: CircularProgressIndicator(),
+                      child: Center(
+                        child: Container(
+                          padding: EdgeInsets.all(6.w),
+                          margin: EdgeInsets.symmetric(horizontal: 10.w),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 64,
+                                height: 64,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 5,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: 4.h),
+                              Text(
+                                'Processing Invoice...',
+                                style: TextStyle(
+                                  fontSize: 16.sp,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              SizedBox(height: 1.h),
+                              Text(
+                                'Saving ${invoiceItems.length} items\nand updating inventory',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
