@@ -249,36 +249,59 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
           ],
         ),
       ),
+      actionsPadding: EdgeInsets.fromLTRB(3.w, 0, 3.w, 2.h),
       actions: [
-        OutlinedButton(
-          onPressed: () => Navigator.of(context).pop(),
-          style: OutlinedButton.styleFrom(
-            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.5.h),
-            side: BorderSide(color: Colors.grey.shade400),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: OutlinedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                  side: BorderSide(color: Colors.grey.shade400, width: 1.5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  'Cancel',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ),
-          ),
-          child: Text('Cancel', style: TextStyle(fontSize: 14.sp)),
-        ),
-        ElevatedButton(
-          onPressed: _validateAndSubmit,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green.shade600,
-            foregroundColor: Colors.white,
-            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.5.h),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+            SizedBox(width: 3.w), // Gap between buttons
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _validateAndSubmit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade600,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle_outline, size: 18),
+                    SizedBox(width: 1.5.w),
+                    Flexible(
+                      child: Text(
+                        'Record Payment',
+                        style: TextStyle(fontSize: 13.sp),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.check_circle_outline, size: 20),
-              SizedBox(width: 1.w),
-              Text('Record Payment', style: TextStyle(fontSize: 14.sp)),
-            ],
-          ),
+          ],
         ),
       ],
     );
