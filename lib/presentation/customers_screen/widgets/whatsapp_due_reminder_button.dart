@@ -174,9 +174,12 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
           backgroundColor: const Color(0xFF25D366),
           foregroundColor: Colors.white,
           disabledBackgroundColor: Colors.grey[300],
+          disabledForegroundColor: Colors.grey[600],
+          elevation: 2,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(12),
           ),
+          padding: EdgeInsets.symmetric(vertical: 14),
         ),
         icon: _isGenerating
             ? SizedBox(

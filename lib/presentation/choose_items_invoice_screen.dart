@@ -820,10 +820,13 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                       style: ElevatedButton.styleFrom(
                         backgroundColor: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
                         foregroundColor: Colors.white,
+                        disabledBackgroundColor: Colors.grey.shade300,
+                        disabledForegroundColor: Colors.grey.shade600,
+                        elevation: 2,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24.0),
+                          borderRadius: BorderRadius.circular(16.0),
                         ),
-                        padding: EdgeInsets.symmetric(vertical: 1.5.h),
+                        padding: EdgeInsets.symmetric(vertical: 1.8.h),
                       ),
                       onPressed: _selectedItems.isEmpty ? null : () {
                         final items = _selectedItems.values.map((si) => {
@@ -944,69 +947,84 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                                       context: context,
                                       isScrollControlled: true,
                                       backgroundColor: Colors.transparent,
-                                      builder: (context) => Container(
-                                        padding: EdgeInsets.only(
-                                          bottom: MediaQuery.of(context).viewInsets.bottom,
-                                          left: 4.w,
-                                          right: 4.w,
-                                          top: 2.h,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius: BorderRadius.only(
-                                            topLeft: Radius.circular(20),
-                                            topRight: Radius.circular(20),
+                                      builder: (context) => StatefulBuilder(
+                                        builder: (context, setModalState) => Container(
+                                          padding: EdgeInsets.only(
+                                            bottom: MediaQuery.of(context).viewInsets.bottom,
+                                            left: 4.w,
+                                            right: 4.w,
+                                            top: 2.h,
                                           ),
-                                        ),
-                                        child: SingleChildScrollView(
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(
-                                                width: 10.w,
-                                                height: 0.5.h,
-                                                margin: EdgeInsets.only(bottom: 2.h),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.grey[300],
-                                                  borderRadius: BorderRadius.circular(10),
-                                                ),
-                                              ),
-                                              Text(
-                                                'Customer Information',
-                                                style: TextStyle(
-                                                  fontSize: 18.sp,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              SizedBox(height: 2.h),
-                                              CustomerInputWidget(
-                                                initialName: _customerName,
-                                                initialPhone: _customerPhone,
-                                                onCustomerSelected: _onCustomerSelected,
-                                              ),
-                                              SizedBox(height: 2.h),
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: ElevatedButton(
-                                                      style: ElevatedButton.styleFrom(
-                                                        backgroundColor: Colors.grey[300],
-                                                        foregroundColor: Colors.black,
-                                                      ),
-                                                      onPressed: () {
-                                                        Navigator.pop(context);
-                                                      },
-                                                      child: Text('Cancel'),
-                                                    ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.only(
+                                              topLeft: Radius.circular(20),
+                                              topRight: Radius.circular(20),
+                                            ),
+                                          ),
+                                          child: SingleChildScrollView(
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Container(
+                                                  width: 10.w,
+                                                  height: 0.5.h,
+                                                  margin: EdgeInsets.only(bottom: 2.h),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.grey[300],
+                                                    borderRadius: BorderRadius.circular(10),
                                                   ),
-                                                  SizedBox(width: 2.w),
-                                                  Expanded(
-                                                    child: ElevatedButton(
-                                                      style: ElevatedButton.styleFrom(
-                                                        backgroundColor: Colors.blue,
-                                                        foregroundColor: Colors.white,
+                                                ),
+                                                Text(
+                                                  'Customer Information',
+                                                  style: TextStyle(
+                                                    fontSize: 18.sp,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                SizedBox(height: 2.h),
+                                                CustomerInputWidget(
+                                                  initialName: _customerName,
+                                                  initialPhone: _customerPhone,
+                                                  onCustomerSelected: (name, phone, customerId) {
+                                                    _onCustomerSelected(name, phone, customerId);
+                                                    // Rebuild modal to enable/disable button
+                                                    setModalState(() {});
+                                                  },
+                                                ),
+                                                SizedBox(height: 2.h),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: OutlinedButton(
+                                                        style: OutlinedButton.styleFrom(
+                                                          padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                                                          side: BorderSide(color: Colors.grey.shade400),
+                                                          foregroundColor: Colors.black87,
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(12),
+                                                          ),
+                                                        ),
+                                                        onPressed: () {
+                                                          Navigator.pop(context);
+                                                        },
+                                                        child: Text('Cancel', style: TextStyle(fontSize: 14.sp)),
                                                       ),
-                                                      onPressed: _customerPhone.isEmpty ? null : () async {
+                                                    ),
+                                                    SizedBox(width: 3.w),
+                                                    Expanded(
+                                                      child: ElevatedButton(
+                                                        style: ElevatedButton.styleFrom(
+                                                          padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                                                          backgroundColor: Colors.blue,
+                                                          foregroundColor: Colors.white,
+                                                          disabledBackgroundColor: Colors.grey.shade300,
+                                                          disabledForegroundColor: Colors.grey.shade600,
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(12),
+                                                          ),
+                                                        ),
+                                                        onPressed: _customerPhone.isEmpty ? null : () async {
                                                         // Save customer if needed
                                                         if (_customerId == null && _customerPhone.isNotEmpty) {
                                                           try {
@@ -1027,7 +1045,21 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                                                         }
                                                         _showPaymentDetailsSheet(invoiceItems, totalAmount);
                                                       },
-                                                      child: Text('Continue to Payment'),
+                                                      child: Row(
+                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(Icons.arrow_forward, size: 16),
+                                                          SizedBox(width: 1.w),
+                                                          Flexible(
+                                                            child: Text(
+                                                              'Continue to Payment',
+                                                              style: TextStyle(fontSize: 13.sp),
+                                                              overflow: TextOverflow.ellipsis,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
                                                     ),
                                                   ),
                                                 ],
@@ -1037,6 +1069,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                                           ),
                                         ),
                                       ),
+                                    ),
                                     );
                                   } else {
                                     // For purchase invoices, go directly to payment details
