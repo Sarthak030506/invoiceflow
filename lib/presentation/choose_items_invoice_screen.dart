@@ -1166,32 +1166,50 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              SizedBox(
-                                width: 64,
-                                height: 64,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 5,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+                              // Icon background
+                              Container(
+                                padding: EdgeInsets.all(3.w),
+                                decoration: BoxDecoration(
+                                  color: widget.invoiceType == 'sales' ? Colors.blue.shade50 : Colors.green.shade50,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: SizedBox(
+                                  width: 50,
+                                  height: 50,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 4,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      widget.invoiceType == 'sales' ? Colors.blue.shade600 : Colors.green.shade600,
+                                    ),
                                   ),
                                 ),
                               ),
-                              SizedBox(height: 4.h),
+                              SizedBox(height: 3.h),
                               Text(
                                 'Processing Invoice...',
                                 style: TextStyle(
-                                  fontSize: 16.sp,
+                                  fontSize: 18.sp,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.black87,
+                                  letterSpacing: 0.5,
                                 ),
                               ),
-                              SizedBox(height: 1.h),
-                              Text(
-                                'Saving ${invoiceItems.length} items\nand updating inventory',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 12.sp,
-                                  color: Colors.grey.shade600,
+                              SizedBox(height: 1.5.h),
+                              Container(
+                                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+                                decoration: BoxDecoration(
+                                  color: widget.invoiceType == 'sales' ? Colors.blue.shade50 : Colors.green.shade50,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  'Saving ${invoiceItems.length} item${invoiceItems.length > 1 ? 's' : ''}\nand updating inventory',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 13.sp,
+                                    color: widget.invoiceType == 'sales' ? Colors.blue.shade700 : Colors.green.shade700,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.4,
+                                  ),
                                 ),
                               ),
                             ],

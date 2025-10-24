@@ -374,26 +374,27 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
                 SizedBox(height: AppScaling.spacing),
                 SizedBox(
                   width: double.infinity,
-                  height: AppScaling.buttonHeight,
-                  child: ElevatedButton(
+                  child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
+                      backgroundColor: Colors.green.shade600,
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey.shade300,
+                      disabledForegroundColor: Colors.grey.shade600,
+                      elevation: 2,
+                      padding: EdgeInsets.symmetric(vertical: 1.8.h),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24.0),
+                        borderRadius: BorderRadius.circular(16.0),
                       ),
                     ),
                     onPressed: _selectedItems.isEmpty ? null : _addItemsToInventory,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.add_box, size: AppScaling.iconSize),
-                        SizedBox(width: AppScaling.spacing),
-                        Text(
-                          'Add to Inventory',
-                          style: TextStyle(fontSize: AppScaling.button, fontWeight: FontWeight.bold),
-                        ),
-                      ],
+                    icon: Icon(Icons.add_box, size: 22),
+                    label: Text(
+                      'Add to Inventory',
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
                 ),
@@ -502,30 +503,47 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
-                    width: 64,
-                    height: 64,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 5,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                  // Icon background
+                  Container(
+                    padding: EdgeInsets.all(3.w),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: SizedBox(
+                      width: 50,
+                      height: 50,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 4,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade600),
+                      ),
                     ),
                   ),
-                  SizedBox(height: 4.h),
+                  SizedBox(height: 3.h),
                   Text(
                     'Adding to Inventory...',
                     style: TextStyle(
-                      fontSize: 16.sp,
+                      fontSize: 18.sp,
                       fontWeight: FontWeight.bold,
                       color: Colors.black87,
+                      letterSpacing: 0.5,
                     ),
                   ),
-                  SizedBox(height: 1.h),
-                  Text(
-                    'Processing ${_selectedItems.length} items',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: Colors.grey.shade600,
+                  SizedBox(height: 1.5.h),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Processing ${_selectedItems.length} item${_selectedItems.length > 1 ? 's' : ''}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        color: Colors.green.shade700,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
