@@ -134,9 +134,13 @@ class InvoiceService {
 
   Future<void> addInvoice(InvoiceModel invoice) async {
     await _fsService.upsertInvoice(invoice);
-    if (invoice.status == 'posted') {
+
+    // Process inventory for all valid invoice statuses (posted, paid, partial)
+    // Only skip for cancelled/draft invoices
+    if (invoice.status != 'cancelled' && invoice.status != 'draft') {
       await _processInvoiceInventory(invoice);
     }
+
     // Invalidate analytics cache when invoices change
     await AnalyticsService().invalidateCache();
 
@@ -156,14 +160,14 @@ class InvoiceService {
 
     // Handle status changes that affect inventory
     if (oldInvoice != null) {
-      final wasPosted = oldInvoice.status == 'posted';
-      final isPosted = invoice.status == 'posted';
+      final wasActive = oldInvoice.status != 'cancelled' && oldInvoice.status != 'draft';
+      final isActive = invoice.status != 'cancelled' && invoice.status != 'draft';
 
-      if (!wasPosted && isPosted) {
-        // Invoice was just posted - process inventory
+      if (!wasActive && isActive) {
+        // Invoice was just activated (posted/paid/partial) - process inventory
         await _processInvoiceInventory(invoice);
-      } else if (wasPosted && !isPosted) {
-        // Invoice was unposted - reverse inventory
+      } else if (wasActive && !isActive) {
+        // Invoice was deactivated (cancelled/draft) - reverse inventory
         await _reverseInvoiceInventory(invoice);
       }
     }
@@ -184,12 +188,15 @@ class InvoiceService {
     final invoice = await _fsService.getInvoiceById(invoiceId);
     if (invoice == null) return;
 
-    if (invoice.status == 'posted') {
+    // Check if invoice is active (has affected inventory)
+    final isActive = invoice.status != 'cancelled' && invoice.status != 'draft';
+
+    if (isActive) {
       if (invoice.invoiceType == 'purchase') {
         // Delegate to cancellation flow which validates and reverses as needed
         await cancelInvoice(invoiceId);
       } else if (invoice.invoiceType == 'sales') {
-        // Reverse issued stock for posted sales before delete
+        // Reverse issued stock for active sales before delete
         await _reverseInvoiceInventory(invoice);
         await _fsService.deleteInvoice(invoiceId);
       } else {
