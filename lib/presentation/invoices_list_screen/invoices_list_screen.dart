@@ -34,7 +34,6 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
   bool _isMultiSelectMode = false;
   String _searchQuery = '';
   DateTimeRange? _selectedDateRange;
-  RangeValues _revenueRange = const RangeValues(0, 10000); // Match slider max value
   String? _selectedInvoiceType;
   List<String> _selectedInvoices = [];
 
@@ -194,10 +193,6 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
         if (!matchesType) return false;
       }
 
-      final matchesRevenue = invoice.total >= _revenueRange.start && 
-                           invoice.total <= _revenueRange.end;
-      if (!matchesRevenue) return false;
-
       return true;
     }).toList();
 
@@ -228,16 +223,10 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
       backgroundColor: Colors.transparent,
       builder: (context) => FilterBottomSheetWidget(
         selectedDateRange: _selectedDateRange,
-        revenueRange: _revenueRange,
         selectedInvoiceType: _selectedInvoiceType,
         onDateRangeChanged: (range) {
           setState(() {
             _selectedDateRange = range;
-          });
-        },
-        onRevenueRangeChanged: (range) {
-          setState(() {
-            _revenueRange = range;
           });
         },
         onInvoiceTypeChanged: (type) {
@@ -252,7 +241,6 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
         onClearFilters: () {
           setState(() {
             _selectedDateRange = null;
-            _revenueRange = const RangeValues(0, 10000);
             _selectedInvoiceType = null;
           });
           _filterInvoices();

@@ -5,10 +5,8 @@ import '../../../core/app_export.dart';
 
 class FilterBottomSheetWidget extends StatefulWidget {
   final DateTimeRange? selectedDateRange;
-  final RangeValues revenueRange;
   final String? selectedInvoiceType;
   final ValueChanged<DateTimeRange?> onDateRangeChanged;
-  final ValueChanged<RangeValues> onRevenueRangeChanged;
   final ValueChanged<String?> onInvoiceTypeChanged;
   final VoidCallback onApplyFilters;
   final VoidCallback onClearFilters;
@@ -16,10 +14,8 @@ class FilterBottomSheetWidget extends StatefulWidget {
   const FilterBottomSheetWidget({
     Key? key,
     required this.selectedDateRange,
-    required this.revenueRange,
     this.selectedInvoiceType,
     required this.onDateRangeChanged,
-    required this.onRevenueRangeChanged,
     required this.onInvoiceTypeChanged,
     required this.onApplyFilters,
     required this.onClearFilters,
@@ -32,18 +28,12 @@ class FilterBottomSheetWidget extends StatefulWidget {
 
 class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
   late DateTimeRange? _tempDateRange;
-  late RangeValues _tempRevenueRange;
   String? _tempInvoiceType;
 
   @override
   void initState() {
     super.initState();
     _tempDateRange = widget.selectedDateRange;
-    // Validate and clamp revenue range values
-    _tempRevenueRange = RangeValues(
-      widget.revenueRange.start.clamp(0.0, 10000.0),
-      widget.revenueRange.end.clamp(0.0, 10000.0),
-    );
     _tempInvoiceType = widget.selectedInvoiceType;
   }
 
@@ -67,8 +57,6 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
                   _buildDateRangeSection(),
                   SizedBox(height: 3.h),
                   _buildInvoiceTypeSection(),
-                  SizedBox(height: 3.h),
-                  _buildRevenueRangeSection(),
                   SizedBox(height: 4.h),
                   _buildActionButtons(),
                 ],
@@ -225,49 +213,6 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
     );
   }
 
-  Widget _buildRevenueRangeSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Revenue Range',
-          style: AppTheme.lightTheme.textTheme.titleMedium,
-        ),
-        SizedBox(height: 2.h),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              '₹${_tempRevenueRange.start.toInt()}',
-              style: AppTheme.financialDataStyle(isLight: true, fontSize: 14),
-            ),
-            Text(
-              '₹${_tempRevenueRange.end.toInt()}',
-              style: AppTheme.financialDataStyle(isLight: true, fontSize: 14),
-            ),
-          ],
-        ),
-        RangeSlider(
-          values: _tempRevenueRange,
-          min: 0,
-          max: 10000,
-          divisions: 100,
-          labels: RangeLabels(
-            '₹${_tempRevenueRange.start.toInt()}',
-            '₹${_tempRevenueRange.end.toInt()}',
-          ),
-          onChanged: (values) {
-            setState(() {
-              _tempRevenueRange = values;
-            });
-          },
-          activeColor: AppTheme.lightTheme.colorScheme.primary,
-          inactiveColor: AppTheme.lightTheme.colorScheme.outline,
-        ),
-      ],
-    );
-  }
-
   Widget _buildActionButtons() {
     return Row(
       children: [
@@ -276,11 +221,9 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
             onPressed: () {
               setState(() {
                 _tempDateRange = null;
-                _tempRevenueRange = const RangeValues(0, 10000);
                 _tempInvoiceType = null;
               });
               widget.onDateRangeChanged(_tempDateRange);
-              widget.onRevenueRangeChanged(_tempRevenueRange);
               widget.onInvoiceTypeChanged(_tempInvoiceType);
               widget.onClearFilters();
             },
@@ -292,7 +235,6 @@ class _FilterBottomSheetWidgetState extends State<FilterBottomSheetWidget> {
           child: ElevatedButton(
             onPressed: () {
               widget.onDateRangeChanged(_tempDateRange);
-              widget.onRevenueRangeChanged(_tempRevenueRange);
               widget.onInvoiceTypeChanged(_tempInvoiceType);
               widget.onApplyFilters();
             },
