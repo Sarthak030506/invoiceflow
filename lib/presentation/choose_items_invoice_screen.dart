@@ -301,6 +301,38 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     }
   }
 
+  /// Get count of available items (respecting inventory filter for sales)
+  int _getAvailableItemsCount() {
+    if (widget.invoiceType == 'sales') {
+      // Only count items that exist in inventory
+      return _itemCatalog.where((item) => _stockMap.containsKey(item.id)).length;
+    }
+    return _itemCatalog.length;
+  }
+
+  /// Get count of items in a category (respecting inventory filter for sales)
+  int _getCategoryItemCount(String keyword) {
+    var items = _itemCatalog;
+
+    // For sales invoices, only count items in inventory
+    if (widget.invoiceType == 'sales') {
+      items = items.where((item) => _stockMap.containsKey(item.id)).toList();
+    }
+
+    // Apply category filter
+    switch (keyword) {
+      case 'clean':
+        return items.where((item) {
+          final name = item.name.toLowerCase();
+          return name.contains('clean') ||
+                 name.contains('phenyl') ||
+                 name.contains('mop');
+        }).length;
+      default:
+        return items.where((item) => item.name.toLowerCase().contains(keyword)).length;
+    }
+  }
+
   Widget _buildFilterChip(String label, int count) {
     final bool isSelected = _selectedCategory == label;
     final color = widget.invoiceType == 'sales' ? Colors.blue : Colors.green;
@@ -402,14 +434,21 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     }
 
     List<CatalogItem> filteredItems = _itemCatalog;
-    
+
+    // For sales invoices, only show items that exist in inventory
+    if (widget.invoiceType == 'sales') {
+      filteredItems = filteredItems
+          .where((item) => _stockMap.containsKey(item.id))
+          .toList();
+    }
+
     // Apply search filter
     if (_search.isNotEmpty) {
       filteredItems = filteredItems
           .where((item) => item.name.toLowerCase().contains(_search.toLowerCase()))
           .toList();
     }
-    
+
     // Apply category filter
     if (_selectedCategory != 'All') {
       filteredItems = filteredItems.where((item) {
@@ -418,8 +457,8 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
           case 'Kitchen':
             return name.contains('kitchen');
           case 'Cleaning':
-            return name.contains('clean') || 
-                   name.contains('phenyl') || 
+            return name.contains('clean') ||
+                   name.contains('phenyl') ||
                    name.contains('mop');
           case 'Containers':
             return name.contains('container');
@@ -467,14 +506,11 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
-                _buildFilterChip('All', filteredItems.length),
-                _buildFilterChip('Kitchen', _itemCatalog.where((item) => item.name.toLowerCase().contains('kitchen')).length),
-                _buildFilterChip('Cleaning', _itemCatalog.where((item) => 
-                  item.name.toLowerCase().contains('clean') || 
-                  item.name.toLowerCase().contains('phenyl') ||
-                  item.name.toLowerCase().contains('mop')).length),
-                _buildFilterChip('Containers', _itemCatalog.where((item) => item.name.toLowerCase().contains('container')).length),
-                _buildFilterChip('Bags', _itemCatalog.where((item) => item.name.toLowerCase().contains('bag')).length),
+                _buildFilterChip('All', _getAvailableItemsCount()),
+                _buildFilterChip('Kitchen', _getCategoryItemCount('kitchen')),
+                _buildFilterChip('Cleaning', _getCategoryItemCount('clean')),
+                _buildFilterChip('Containers', _getCategoryItemCount('container')),
+                _buildFilterChip('Bags', _getCategoryItemCount('bag')),
               ],
             ),
           ),
@@ -1246,6 +1282,22 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
 
                     AppLogger.debug('Creating invoice with refund adjustment: $_pendingRefundAmount', 'ChooseItemsInvoice');
 
+                    // Calculate adjusted total for status determination
+                    final adjustedTotal = totalAmount - _pendingRefundAmount;
+
+                    // Determine invoice status based on payment
+                    String invoiceStatus;
+                    if ((amountPaid - adjustedTotal).abs() < 0.01) {
+                      // Fully paid
+                      invoiceStatus = 'paid';
+                    } else if (amountPaid > 0.01) {
+                      // Partially paid
+                      invoiceStatus = 'partial';
+                    } else {
+                      // Not paid (due)
+                      invoiceStatus = 'posted';
+                    }
+
                     final newInvoice = InvoiceModel(
                       id: invoiceId,
                       invoiceNumber: invoiceNumber,
@@ -1255,7 +1307,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                       date: invoiceDate,
                       refundAdjustment: _pendingRefundAmount,
                       revenue: totalAmount,
-                      status: 'posted', // Always post invoices to process inventory
+                      status: invoiceStatus,
                       items: invoiceItems,
                       notes: returnNotes,
                       createdAt: now,
