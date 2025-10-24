@@ -9,8 +9,8 @@ import 'dart:convert';
 class AnalyticsService {
   final FirestoreService _fs = FirestoreService.instance;
 
-  // Cache expiry duration (5 minutes for multi-device sync)
-  static const int _cacheExpiryMinutes = 5;
+  // Cache expiry duration (30 minutes for better performance, still reasonable for multi-device sync)
+  static const int _cacheExpiryMinutes = 30;
 
   /// Invalidate all analytics cache
   Future<void> invalidateCache() async {

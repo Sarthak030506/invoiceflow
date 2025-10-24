@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
@@ -19,13 +20,14 @@ class CustomersScreen extends StatefulWidget {
 class _CustomersScreenState extends State<CustomersScreen> {
   final CustomerService _customerService = CustomerService.instance;
   final TextEditingController _searchController = TextEditingController();
-  
+  Timer? _searchDebounce;
+
   List<CustomerModel> _allCustomers = [];
   List<CustomerModel> _filteredCustomers = [];
   Map<String, double> _outstandingBalances = {};
   bool _isLoading = true;
   String _searchQuery = '';
-  
+
   // Sorting options
   String _sortBy = 'name'; // 'name' or 'balance'
   bool _sortAscending = true;
@@ -39,6 +41,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
   }
   
@@ -68,21 +71,29 @@ class _CustomersScreenState extends State<CustomersScreen> {
   }
   
   void _filterCustomers(String query) {
-    setState(() {
-      _searchQuery = query;
-      
-      if (query.isEmpty) {
-        _filteredCustomers = List.from(_allCustomers);
-      } else {
-        final lowerQuery = query.toLowerCase();
-        _filteredCustomers = _allCustomers.where((customer) {
-          return customer.name.toLowerCase().contains(lowerQuery) ||
-                 customer.phoneNumber.contains(query);
-        }).toList();
+    // Cancel previous timer
+    _searchDebounce?.cancel();
+
+    // Create new timer for 500ms debounce
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        setState(() {
+          _searchQuery = query;
+
+          if (query.isEmpty) {
+            _filteredCustomers = List.from(_allCustomers);
+          } else {
+            final lowerQuery = query.toLowerCase();
+            _filteredCustomers = _allCustomers.where((customer) {
+              return customer.name.toLowerCase().contains(lowerQuery) ||
+                     customer.phoneNumber.contains(query);
+            }).toList();
+          }
+
+          // Apply sorting after filtering
+          _sortCustomers();
+        });
       }
-      
-      // Apply sorting after filtering
-      _sortCustomers();
     });
   }
   

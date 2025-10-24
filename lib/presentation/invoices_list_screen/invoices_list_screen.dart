@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/invoice_model.dart';
 import '../../services/invoice_service.dart';
@@ -24,8 +25,12 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
   late TabController _tabController;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
 
   bool _isLoading = false;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  dynamic _lastDocument;
   bool _isMultiSelectMode = false;
   String _searchQuery = '';
   DateTimeRange? _selectedDateRange;
@@ -36,6 +41,8 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
   final InvoiceService _invoiceService = InvoiceService.instance;
   List<InvoiceModel> _allInvoices = [];
   List<InvoiceModel> _filteredInvoices = [];
+
+  static const int _pageSize = 50;
 
   @override
   void initState() {
@@ -53,20 +60,37 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
 
 
   Future<void> _loadInvoices() async {
+    if (_isLoading || _isLoadingMore) return;
+
     setState(() {
       _isLoading = true;
+      _allInvoices = [];
+      _lastDocument = null;
+      _hasMore = true;
     });
+
     try {
-      final invoices = await _invoiceService.fetchAllInvoices();
-      setState(() {
-        _allInvoices = invoices;
-        _isLoading = false;
-      });
-      _filterInvoices();
+      final result = await _invoiceService.fetchInvoicesPaginated(
+        limit: _pageSize,
+        lastDocument: null,
+        invoiceType: null,
+      );
+
+      if (mounted) {
+        setState(() {
+          _allInvoices = result['invoices'] as List<InvoiceModel>;
+          _lastDocument = result['lastDocument'];
+          _hasMore = result['hasMore'] as bool;
+          _isLoading = false;
+        });
+        _filterInvoices();
+      }
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       // Optionally handle error (e.g., show toast)
     }
   }
@@ -76,30 +100,49 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
     _tabController.dispose();
     _scrollController.dispose();
     _searchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels ==
-        _scrollController.position.maxScrollExtent) {
+    // Load more when user is 80% through the list (not at the very bottom)
+    final threshold = _scrollController.position.maxScrollExtent * 0.8;
+    if (_scrollController.position.pixels >= threshold) {
       _loadMoreInvoices();
     }
   }
 
-  void _loadMoreInvoices() {
-    if (!_isLoading) {
-      setState(() {
-        _isLoading = true;
-      });
+  Future<void> _loadMoreInvoices() async {
+    if (_isLoading || _isLoadingMore || !_hasMore) return;
 
-      // Simulate loading more data
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      });
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      final result = await _invoiceService.fetchInvoicesPaginated(
+        limit: _pageSize,
+        lastDocument: _lastDocument,
+        invoiceType: null,
+      );
+
+      if (mounted) {
+        setState(() {
+          final newInvoices = result['invoices'] as List<InvoiceModel>;
+          _allInvoices.addAll(newInvoices);
+          _lastDocument = result['lastDocument'];
+          _hasMore = result['hasMore'] as bool;
+          _isLoadingMore = false;
+        });
+        _filterInvoices();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingMore = false;
+        });
+      }
+      // Optionally handle error
     }
   }
 
@@ -164,10 +207,18 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
   }
 
   void _onSearchChanged(String query) {
-    setState(() {
-      _searchQuery = query;
+    // Cancel previous timer
+    _searchDebounce?.cancel();
+
+    // Create new timer for 500ms debounce
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        setState(() {
+          _searchQuery = query;
+        });
+        _filterInvoices();
+      }
     });
-    _filterInvoices();
   }
 
   void _showFilterBottomSheet() {
@@ -446,7 +497,7 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
                     ),
                     // Use cacheExtent to improve scrolling performance
                     cacheExtent: 500,
-                    itemCount: _filteredInvoices.length + (_isLoading ? 1 : 0),
+                    itemCount: _filteredInvoices.length + (_isLoadingMore ? 1 : 0),
                     // Add key to help Flutter optimize rebuilds
                     key: PageStorageKey('invoice_list'),
                     itemBuilder: (context, index) {

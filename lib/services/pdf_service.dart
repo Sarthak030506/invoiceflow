@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -18,8 +19,16 @@ class PdfService {
     return _instance!;
   }
 
-  /// Generate PDF document for an invoice
+  /// Generate PDF document for an invoice (optimized with isolate)
   Future<Uint8List> generateInvoicePdf(InvoiceModel invoice) async {
+    // Use compute to run PDF generation in a separate isolate
+    // This prevents UI freezing during PDF creation
+    return await compute(_generatePdfInIsolate, invoice);
+  }
+
+  /// Static method to generate PDF in an isolate
+  /// This is called by compute() and runs in a background thread
+  static Future<Uint8List> _generatePdfInIsolate(InvoiceModel invoice) async {
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -80,7 +89,7 @@ class PdfService {
   }
 
   /// Build header section
-  pw.Widget _buildHeader(InvoiceModel invoice) {
+  static pw.Widget _buildHeader(InvoiceModel invoice) {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -165,7 +174,7 @@ class PdfService {
   }
 
   /// Build invoice details section
-  pw.Widget _buildInvoiceDetails(InvoiceModel invoice) {
+  static pw.Widget _buildInvoiceDetails(InvoiceModel invoice) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
@@ -215,7 +224,7 @@ class PdfService {
   }
 
   /// Build customer details section
-  pw.Widget _buildCustomerDetails(InvoiceModel invoice) {
+  static pw.Widget _buildCustomerDetails(InvoiceModel invoice) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
@@ -275,7 +284,7 @@ class PdfService {
   }
 
   /// Build items table
-  pw.Widget _buildItemsTable(InvoiceModel invoice) {
+  static pw.Widget _buildItemsTable(InvoiceModel invoice) {
     return pw.Table(
       border: pw.TableBorder.symmetric(
         outside: pw.BorderSide(color: PdfColors.grey400, width: 1.5),
@@ -326,7 +335,7 @@ class PdfService {
   }
 
   /// Build totals section
-  pw.Widget _buildTotals(InvoiceModel invoice) {
+  static pw.Widget _buildTotals(InvoiceModel invoice) {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.end,
       children: [
@@ -411,7 +420,7 @@ class PdfService {
   }
 
   /// Build notes section
-  pw.Widget _buildNotes(InvoiceModel invoice) {
+  static pw.Widget _buildNotes(InvoiceModel invoice) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(12),
       decoration: pw.BoxDecoration(
@@ -454,7 +463,7 @@ class PdfService {
   }
 
   /// Build footer section
-  pw.Widget _buildFooter() {
+  static pw.Widget _buildFooter() {
     return pw.Container(
       padding: const pw.EdgeInsets.symmetric(vertical: 10),
       decoration: const pw.BoxDecoration(
@@ -494,7 +503,7 @@ class PdfService {
   }
 
   /// Helper: Build detail row
-  pw.Widget _buildDetailRow(String label, String value) {
+  static pw.Widget _buildDetailRow(String label, String value) {
     return pw.Row(
       children: [
         pw.Text(
@@ -514,7 +523,7 @@ class PdfService {
   }
 
   /// Helper: Build table cell
-  pw.Widget _buildTableCell(
+  static pw.Widget _buildTableCell(
     String text, {
     bool isHeader = false,
     bool isBold = false,
@@ -537,7 +546,7 @@ class PdfService {
   }
 
   /// Helper: Build total row
-  pw.Widget _buildTotalRow(
+  static pw.Widget _buildTotalRow(
     String label,
     String value, {
     bool isBold = false,
@@ -568,7 +577,7 @@ class PdfService {
   }
 
   /// Helper: Format date
-  String _formatDate(DateTime date) {
+  static String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 
