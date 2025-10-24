@@ -59,25 +59,33 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
   }
 
   Future<void> _validateAndSave() async {
+    print('DEBUG: _validateAndSave called');
+
     if (!_formKey.currentState!.validate()) {
+      print('DEBUG: Form validation failed');
+      FeedbackAnimations.showError(context, message: 'Please fill all required fields correctly');
       return;
     }
 
     if (_items.isEmpty) {
+      print('DEBUG: No items in invoice');
       FeedbackAnimations.showError(context, message: 'Add at least one item');
       return;
     }
 
     if (_editReasonController.text.trim().isEmpty) {
+      print('DEBUG: Edit reason is empty');
       FeedbackAnimations.showError(context, message: 'Please provide a reason for editing');
       return;
     }
 
+    print('DEBUG: Starting invoice update process');
     setState(() {
       _isLoading = true;
     });
 
     try {
+      print('DEBUG: Creating new invoice object');
       // Create new invoice with updated data
       final newInvoice = widget.invoice.copyWith(
         items: _items
@@ -92,10 +100,13 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
         amountPaid: double.parse(_amountPaidController.text),
         paymentMethod: _paymentMethod,
       );
+      print('DEBUG: New invoice created with ${newInvoice.items.length} items');
 
       // Validate if invoice can be edited
+      print('DEBUG: Validating invoice can be edited');
       final validationError = await _editService.validateInvoiceCanBeEdited(widget.invoice);
       if (validationError != null) {
+        print('DEBUG: Validation error: $validationError');
         if (!mounted) return;
         FeedbackAnimations.showError(context, message: validationError);
         setState(() {
@@ -103,13 +114,16 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
         });
         return;
       }
+      print('DEBUG: Validation passed');
 
       // Edit the invoice
+      print('DEBUG: Calling editInvoice service');
       final result = await _editService.editInvoice(
         oldInvoice: widget.invoice,
         newInvoice: newInvoice,
         editReason: _editReasonController.text.trim(),
       );
+      print('DEBUG: Edit service returned. Success: ${result.success}');
 
       if (!mounted) return;
 
@@ -118,27 +132,44 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
       });
 
       if (result.success && result.updatedInvoice != null) {
-        // Show reconciliation info if payment status changed
-        if (result.paymentReconciliation!.totalChanged) {
-          await _showReconciliationDialog(result.paymentReconciliation!);
-        }
+        print('DEBUG: Invoice updated successfully');
 
+        // Close the dialog first
+        print('DEBUG: Closing edit dialog');
+        if (!mounted) return;
+        Navigator.of(context).pop();
+
+        // Small delay to ensure dialog is closed
+        await Future.delayed(Duration(milliseconds: 100));
+
+        // Update the parent screen
+        if (!mounted) return;
+        widget.onInvoiceUpdated(result.updatedInvoice!);
+
+        // Show success feedback
         FeedbackAnimations.showSuccess(
           context,
           message: 'Invoice updated successfully',
         );
         HapticFeedbackUtil.success();
 
-        Navigator.pop(context);
-        widget.onInvoiceUpdated(result.updatedInvoice!);
+        // Show reconciliation info if payment status changed
+        if (result.paymentReconciliation != null && result.paymentReconciliation!.totalChanged) {
+          print('DEBUG: Showing reconciliation dialog');
+          await _showReconciliationDialog(result.paymentReconciliation!);
+        }
       } else {
+        print('DEBUG: Update failed: ${result.errorMessage}');
         FeedbackAnimations.showError(
           context,
           message: result.errorMessage ?? 'Failed to update invoice',
         );
         HapticFeedbackUtil.error();
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('DEBUG: Exception occurred: $e');
+      print('DEBUG: Stack trace: $stackTrace');
+
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -404,16 +435,49 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
                   Row(
                     children: [
                       Expanded(
-                        child: PrimaryButton(
-                          text: 'Cancel',
-                          onPressed: () => Navigator.pop(context),
+                        child: OutlinedButton(
+                          onPressed: () {
+                            print('DEBUG: Cancel button pressed');
+                            Navigator.pop(context);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                            side: BorderSide(color: Colors.grey.shade400, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ),
                       SizedBox(width: 3.w),
                       Expanded(
-                        child: PrimaryButton(
-                          text: 'Update Invoice',
-                          onPressed: _validateAndSave,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            print('DEBUG: Update Invoice button pressed');
+                            _validateAndSave();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue.shade600,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Update Invoice',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -427,25 +491,27 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
   Widget _buildItemCard(EditableInvoiceItem item, int index) {
     return Card(
       margin: EdgeInsets.only(bottom: 1.h),
+      elevation: 2,
       child: Padding(
-        padding: EdgeInsets.all(2.w),
+        padding: EdgeInsets.all(3.w),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: Text(
-                    item.name,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
+                Text(
+                  'Item ${index + 1}',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 IconButton(
                   icon: Icon(Icons.delete, color: Colors.red, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints(),
                   onPressed: () {
                     setState(() {
                       _items.removeAt(index);
@@ -455,14 +521,40 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
               ],
             ),
             SizedBox(height: 1.h),
+
+            // Item Name Field
+            TextFormField(
+              initialValue: item.name,
+              decoration: InputDecoration(
+                labelText: 'Item Name',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  item.name = value;
+                });
+              },
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Item name is required';
+                }
+                return null;
+              },
+            ),
+            SizedBox(height: 1.h),
+
+            // Quantity, Price, and Total Row
             Row(
               children: [
                 Expanded(
+                  flex: 2,
                   child: TextFormField(
                     initialValue: item.quantity.toStringAsFixed(1),
                     decoration: InputDecoration(
                       labelText: 'Qty',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
                     ),
                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [
@@ -476,16 +568,28 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
                         });
                       }
                     },
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Required';
+                      }
+                      final qty = double.tryParse(value);
+                      if (qty == null || qty <= 0) {
+                        return 'Invalid';
+                      }
+                      return null;
+                    },
                   ),
                 ),
                 SizedBox(width: 2.w),
                 Expanded(
+                  flex: 3,
                   child: TextFormField(
                     initialValue: item.price.toStringAsFixed(2),
                     decoration: InputDecoration(
                       labelText: 'Price',
                       prefixText: '₹',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
                     ),
                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: [
@@ -499,14 +603,48 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
                         });
                       }
                     },
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Required';
+                      }
+                      final price = double.tryParse(value);
+                      if (price == null || price < 0) {
+                        return 'Invalid';
+                      }
+                      return null;
+                    },
                   ),
                 ),
                 SizedBox(width: 2.w),
-                Text(
-                  '₹${(item.quantity * item.price).toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  flex: 3,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.8.h),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Total',
+                          style: TextStyle(
+                            fontSize: 10.sp,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        Text(
+                          '₹${(item.quantity * item.price).toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],

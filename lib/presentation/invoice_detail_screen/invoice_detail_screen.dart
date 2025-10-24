@@ -191,9 +191,29 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     if (confirmed != true) return;
 
     HapticFeedback.mediumImpact();
-    setState(() {
-      _isLoading = true;
-    });
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(4.w),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade600),
+                ),
+                SizedBox(height: 2.h),
+                Text('Marking as paid...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
 
     try {
       final updatedInvoice = _invoice!.copyWith(
@@ -206,9 +226,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
 
       if (!mounted) return;
 
+      // Close loading dialog
+      Navigator.pop(context);
+
       setState(() {
         _invoice = updatedInvoice;
-        _isLoading = false;
       });
 
       FeedbackAnimations.showSuccess(
@@ -219,9 +241,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      setState(() {
-        _isLoading = false;
-      });
+      // Close loading dialog
+      Navigator.pop(context);
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Error marking as paid: ${e.toString()}"),
@@ -250,9 +272,29 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     final String paymentMethod = result['paymentMethod'];
 
     HapticFeedback.mediumImpact();
-    setState(() {
-      _isLoading = true;
-    });
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(4.w),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade600),
+                ),
+                SizedBox(height: 2.h),
+                Text('Recording payment...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
 
     try {
       final newAmountPaid = _invoice!.amountPaid + paymentAmount;
@@ -269,9 +311,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
 
       if (!mounted) return;
 
+      // Close loading dialog
+      Navigator.pop(context);
+
       setState(() {
         _invoice = updatedInvoice;
-        _isLoading = false;
       });
 
       FeedbackAnimations.showSuccess(
@@ -284,9 +328,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      setState(() {
-        _isLoading = false;
-      });
+      // Close loading dialog
+      Navigator.pop(context);
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Error recording payment: ${e.toString()}"),
@@ -613,9 +657,10 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
               );
             },
           ),
-          
+
           // Modified Badge (if invoice has been modified)
-          if (_invoice?.modifiedFlag ?? false && _invoice?.modifiedAt != null)
+          if (_invoice?.modifiedFlag ?? false && _invoice?.modifiedAt != null) ...[
+            SizedBox(height: 2.h),
             FluidAnimations.createStaggeredListAnimation(
               index: 0,
               child: Container(
@@ -662,7 +707,8 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 ),
               ),
             ),
-          
+          ],
+
           SizedBox(height: 3.h),
           // Invoice Header Card with animation
           FluidAnimations.createStaggeredListAnimation(
@@ -762,7 +808,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             onRecordPayment: _recordPayment,
             onDownloadPdf: _downloadPdf,
             onDelete: _deleteInvoice,
-            isMarkingAsPaid: _isLoading,
+            isMarkingAsPaid: false, // We now use dialogs for loading instead of screen-wide loading
             hasRemainingBalance: _invoice!.remainingAmount > 0.01,
           ),
 
