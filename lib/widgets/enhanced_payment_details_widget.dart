@@ -460,12 +460,15 @@ class _EnhancedPaymentDetailsWidgetState extends State<EnhancedPaymentDetailsWid
           // Submit Button
           SizedBox(
             width: double.infinity,
-            height: 5.h,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryColor,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                disabledBackgroundColor: Colors.grey.shade300,
+                disabledForegroundColor: Colors.grey.shade600,
+                elevation: 2,
+                padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: _isLoadingInvoiceNumber || _isValidatingInvoiceNumber || _invoiceNumberExists || _invoiceNumberController.text.trim().isEmpty
                   ? null
@@ -503,9 +506,17 @@ class _EnhancedPaymentDetailsWidgetState extends State<EnhancedPaymentDetailsWid
                       // Submit payment details
                       widget.onPaymentDetailsSubmitted(amountPaid, _selectedPaymentMethod, invoiceNumber, _selectedDate);
                     },
-              child: Text(
-                'Create Invoice',
-                style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle_outline, size: 20),
+                  SizedBox(width: 2.w),
+                  Text(
+                    'Create Invoice',
+                    style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
             ),
           ),
