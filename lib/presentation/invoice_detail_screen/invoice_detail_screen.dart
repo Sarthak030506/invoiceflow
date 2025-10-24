@@ -16,6 +16,7 @@ import './widgets/invoice_revenue_widget.dart';
 import './widgets/invoice_summary_widget.dart';
 import './widgets/whatsapp_reminder_button.dart';
 import './widgets/edit_invoice_dialog.dart';
+import './widgets/record_payment_dialog.dart';
 import '../return_goods_screen/return_goods_screen.dart';
 
 class InvoiceDetailScreen extends StatefulWidget {
@@ -224,6 +225,71 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Error marking as paid: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _recordPayment() async {
+    if (_invoice == null) return;
+
+    // Show payment dialog
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => RecordPaymentDialog(
+        totalAmount: _invoice!.adjustedTotal,
+        alreadyPaid: _invoice!.amountPaid,
+        currentPaymentMethod: _invoice!.paymentMethod,
+      ),
+    );
+
+    if (result == null) return;
+
+    final double paymentAmount = result['amount'];
+    final String paymentMethod = result['paymentMethod'];
+
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final newAmountPaid = _invoice!.amountPaid + paymentAmount;
+      final isFullyPaid = (newAmountPaid - _invoice!.adjustedTotal).abs() < 0.01;
+
+      final updatedInvoice = _invoice!.copyWith(
+        amountPaid: newAmountPaid,
+        paymentMethod: paymentMethod,
+        status: isFullyPaid ? 'paid' : 'partial',
+        updatedAt: DateTime.now(),
+      );
+
+      await _invoiceService.updateInvoice(updatedInvoice);
+
+      if (!mounted) return;
+
+      setState(() {
+        _invoice = updatedInvoice;
+        _isLoading = false;
+      });
+
+      FeedbackAnimations.showSuccess(
+        context,
+        message: isFullyPaid
+            ? 'Payment recorded! Invoice paid in full'
+            : 'Payment of ₹${paymentAmount.toStringAsFixed(2)} recorded successfully',
+      );
+      HapticFeedbackUtil.success();
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error recording payment: ${e.toString()}"),
           backgroundColor: Colors.red,
         ),
       );
@@ -693,9 +759,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           InvoiceActionButtonsWidget(
             onShare: _shareInvoice,
             onMarkAsPaid: _markAsPaid,
+            onRecordPayment: _recordPayment,
             onDownloadPdf: _downloadPdf,
             onDelete: _deleteInvoice,
             isMarkingAsPaid: _isLoading,
+            hasRemainingBalance: _invoice!.remainingAmount > 0.01,
           ),
 
           SizedBox(height: 10.h), // Bottom padding for FAB

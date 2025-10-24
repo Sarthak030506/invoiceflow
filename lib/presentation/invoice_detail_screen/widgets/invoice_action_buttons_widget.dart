@@ -6,17 +6,21 @@ import '../../../core/app_export.dart';
 class InvoiceActionButtonsWidget extends StatelessWidget {
   final VoidCallback onShare;
   final VoidCallback onMarkAsPaid;
+  final VoidCallback onRecordPayment;
   final VoidCallback onDownloadPdf;
   final VoidCallback? onDelete;
   final bool isMarkingAsPaid;
+  final bool hasRemainingBalance;
 
   const InvoiceActionButtonsWidget({
     super.key,
     required this.onShare,
     required this.onMarkAsPaid,
+    required this.onRecordPayment,
     required this.onDownloadPdf,
     this.onDelete,
     this.isMarkingAsPaid = false,
+    this.hasRemainingBalance = true,
   });
 
   @override
@@ -57,7 +61,9 @@ class InvoiceActionButtonsWidget extends StatelessWidget {
                 SizedBox(width: 3.w),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: isMarkingAsPaid ? null : onMarkAsPaid,
+                    onPressed: hasRemainingBalance
+                        ? (isMarkingAsPaid ? null : onRecordPayment)
+                        : null,
                     icon: isMarkingAsPaid
                         ? SizedBox(
                             width: 20,
@@ -67,14 +73,25 @@ class InvoiceActionButtonsWidget extends StatelessWidget {
                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
-                        : Icon(Icons.check_circle, size: 20),
-                    label: Text(isMarkingAsPaid ? "Processing..." : "Mark Paid"),
+                        : Icon(
+                            hasRemainingBalance ? Icons.payment : Icons.check_circle,
+                            size: 20,
+                          ),
+                    label: Text(
+                      isMarkingAsPaid
+                          ? "Processing..."
+                          : hasRemainingBalance
+                              ? "Record Payment"
+                              : "Paid in Full",
+                    ),
                     style: ElevatedButton.styleFrom(
                       padding: EdgeInsets.symmetric(vertical: 1.8.h),
-                      backgroundColor: Colors.green.shade600,
+                      backgroundColor: hasRemainingBalance
+                          ? Colors.green.shade600
+                          : Colors.grey.shade400,
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.green.shade400,
-                      disabledForegroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.grey.shade300,
+                      disabledForegroundColor: Colors.grey.shade600,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -83,6 +100,27 @@ class InvoiceActionButtonsWidget extends StatelessWidget {
                 ),
               ],
             ),
+
+            // Quick Mark as Paid button (only show if there's remaining balance)
+            if (hasRemainingBalance && !isMarkingAsPaid) ...[
+              SizedBox(height: 2.h),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onMarkAsPaid,
+                  icon: Icon(Icons.check_circle_outline, size: 18),
+                  label: Text("Mark as Fully Paid (Quick)"),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(vertical: 1.5.h),
+                    side: BorderSide(color: Colors.green.shade600, width: 1.5),
+                    foregroundColor: Colors.green.shade600,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
 
             SizedBox(height: 2.h),
 
