@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
+import 'package:provider/provider.dart';
 
+import '../../providers/auth_provider.dart';
 import '../../core/app_export.dart';
 import './widgets/logout_button_widget.dart';
 import './widgets/profile_header_widget.dart';
@@ -222,20 +224,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
 
     try {
+      // Clear local preferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
 
-      // Simulate logout delay
-      await Future.delayed(const Duration(seconds: 1));
+      // Sign out from Firebase
+      if (mounted) {
+        await context.read<AuthProvider>().signOut();
+      }
 
+      // Navigate to root (AuthGate will handle showing LoginScreen)
       if (mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil(
-          '/login',
+          '/',
           (route) => false,
         );
       }
     } catch (e) {
-      debugPrint('Error during logout: \$e');
+      debugPrint('Error during logout: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -245,9 +251,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
