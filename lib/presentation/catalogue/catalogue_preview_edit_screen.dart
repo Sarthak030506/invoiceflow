@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/business_catalogue_service.dart';
 import '../../services/items_service.dart';
 import '../../models/business_catalogue_template.dart';
@@ -640,6 +641,19 @@ class _CataloguePreviewEditScreenState
     });
 
     try {
+      // Ensure user is authenticated
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        // Wait a moment for auth to initialize
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        // Check again
+        final retryUser = FirebaseAuth.instance.currentUser;
+        if (retryUser == null) {
+          throw Exception('Please sign in again to continue');
+        }
+      }
+
       // Get selected items
       final selectedItems =
           _allItems.where((item) => item.isSelected).toList();
