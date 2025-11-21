@@ -454,7 +454,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
               elevation: 0,
               leading: Builder(
                 builder: (context) => Container(
-                  margin: EdgeInsets.symmetric(horizontal: 5.w, vertical: 1.w),
+                  margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.5.h),
+                  padding: EdgeInsets.all(2.w),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
@@ -462,6 +463,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   child: IconButton(
                     icon: Icon(Icons.menu, color: Colors.white),
                     iconSize: 7.w,
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(),
                     onPressed: () {
                       Scaffold.of(context).openDrawer();
                     },
