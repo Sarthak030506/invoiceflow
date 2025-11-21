@@ -8,6 +8,7 @@ import '../../theme/app_theme.dart';
 
 import '../../providers/auth_provider.dart';
 import '../invoice_type_selection_screen.dart';
+import '../catalogue/business_type_selection_screen.dart';
 import '../../models/invoice_model.dart';
 import '../../services/invoice_service.dart';
 import '../../services/csv_invoice_service.dart';
@@ -400,6 +401,28 @@ class _HomeDashboardState extends State<HomeDashboard> {
                 Navigator.pushNamed(context, '/items-screen');
               },
             ),
+            ListTile(
+              leading: Icon(Icons.store_outlined, color: Colors.teal.shade600),
+              title: Text(
+                'Manage Product Catalogue',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              subtitle: Text('Add or update your product catalogue'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const BusinessTypeSelectionScreen(
+                      isFirstTimeSetup: false,
+                    ),
+                  ),
+                );
+              },
+            ),
             Divider(),
             ListTile(
               leading: Icon(Icons.settings, color: Colors.grey.shade600),
@@ -430,11 +453,19 @@ class _HomeDashboardState extends State<HomeDashboard> {
               backgroundColor: Colors.transparent,
               elevation: 0,
               leading: Builder(
-                builder: (context) => IconButton(
-                  icon: Icon(Icons.menu, color: Colors.white),
-                  onPressed: () {
-                    Scaffold.of(context).openDrawer();
-                  },
+                builder: (context) => Container(
+                  margin: EdgeInsets.symmetric(horizontal: 5.w, vertical: 1.w),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    icon: Icon(Icons.menu, color: Colors.white),
+                    iconSize: 7.w,
+                    onPressed: () {
+                      Scaffold.of(context).openDrawer();
+                    },
+                  ),
                 ),
               ),
               flexibleSpace: FlexibleSpaceBar(
@@ -458,14 +489,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    'Good ${_getGreeting()}',
-                                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                      color: Colors.white.withOpacity(0.9),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  SizedBox(height: 0.5.h),
                                   Text(
                                     'InvoiceFlow',
                                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -1357,13 +1380,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
         ],
       ),
     );
-  }
-
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Morning';
-    if (hour < 17) return 'Afternoon';
-    return 'Evening';
   }
 
   String _formatCurrency(double amount) {

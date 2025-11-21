@@ -78,12 +78,37 @@ class ItemsService {
   Future<void> addMultipleItems(List<ProductCatalogItem> items) async {
     final uid = _requireUid();
     final batch = _fs.batch();
-    
+
     for (final item in items) {
       final data = _itemToFirestore(item);
       batch.set(_itemsCol(uid).doc(item.id), data);
     }
-    
+
+    await batch.commit();
+  }
+
+  // Batch add multiple items from maps (for template imports)
+  Future<void> addMultipleItemsFromMaps(List<dynamic> itemMaps) async {
+    final uid = _requireUid();
+    final batch = _fs.batch();
+
+    for (final itemMap in itemMaps) {
+      final map = itemMap as Map<String, dynamic>;
+      final id = map['id'] as String;
+      final data = {
+        'name': map['name'],
+        'sku': map['sku'],
+        'category': map['category'],
+        'unit': map['unit'],
+        'rate': map['rate'],
+        'barcode': map['barcode'] ?? '',
+        'description': map['description'] ?? '',
+        'createdAt': Timestamp.fromDate(DateTime.parse(map['createdAt'])),
+        'updatedAt': Timestamp.fromDate(DateTime.parse(map['updatedAt'])),
+      };
+      batch.set(_itemsCol(uid).doc(id), data);
+    }
+
     await batch.commit();
   }
 

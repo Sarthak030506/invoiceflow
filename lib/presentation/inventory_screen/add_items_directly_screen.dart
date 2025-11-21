@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import '../../models/catalog_item.dart';
 import '../../services/inventory_service.dart';
+import '../../services/catalog_service.dart';
 import '../../constants/app_scaling.dart';
+import '../catalogue/business_type_selection_screen.dart';
 
 class AddItemsDirectlyScreen extends StatefulWidget {
   @override
@@ -14,8 +16,136 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
   String _search = '';
   String _selectedCategory = 'All';
   final InventoryService _inventoryService = InventoryService();
-  
-  static const List<CatalogItem> _itemCatalog = ItemCatalog.items;
+  final CatalogService _catalogService = CatalogService.instance;
+
+  List<CatalogItem> _itemCatalog = [];
+  bool _catalogLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCatalog();
+  }
+
+  Future<void> _loadCatalog() async {
+    setState(() => _catalogLoading = true);
+    try {
+      final catalog = await _catalogService.getAllItems();
+      if (mounted) {
+        setState(() {
+          _itemCatalog = catalog;
+          _catalogLoading = false;
+        });
+
+        // If catalogue is empty, prompt user to set it up
+        if (catalog.isEmpty) {
+          _promptCatalogueSetup();
+        }
+      }
+    } catch (e) {
+      print('Error loading catalog: $e');
+      // Fallback to static catalog
+      if (mounted) {
+        setState(() {
+          _itemCatalog = ItemCatalog.items;
+          _catalogLoading = false;
+        });
+      }
+    }
+  }
+
+  void _promptCatalogueSetup() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.inventory_2, color: Colors.green, size: 7.w),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: Text(
+                  'Set Up Your Catalogue',
+                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Your product catalogue is empty. Set it up now to start adding items to inventory.',
+                style: TextStyle(fontSize: 12.sp, height: 1.4),
+              ),
+              SizedBox(height: 2.h),
+              Container(
+                padding: EdgeInsets.all(3.w),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.lightbulb_outline, color: Colors.green[700], size: 5.w),
+                    SizedBox(width: 2.w),
+                    Expanded(
+                      child: Text(
+                        'Choose from 8 business types or create your own custom catalogue',
+                        style: TextStyle(fontSize: 10.sp, color: Colors.green[900]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // Also pop the add items screen
+              },
+              child: Text('Cancel', style: TextStyle(fontSize: 12.sp)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop(); // Close dialog
+
+                // Navigate to catalogue setup
+                final result = await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const BusinessTypeSelectionScreen(
+                      isFirstTimeSetup: false,
+                      returnRoute: 'inventory',
+                    ),
+                  ),
+                );
+
+                // Reload catalogue if setup was completed
+                if (result == true && mounted) {
+                  _loadCatalog();
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text('Set Up Catalogue', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    });
+  }
 
   Widget _buildFilterChip(String label, int count) {
     final bool isSelected = _selectedCategory == label;
@@ -71,7 +201,21 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: _buildItemsList(),
+      body: _catalogLoading
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Colors.green),
+                  SizedBox(height: 2.h),
+                  Text(
+                    'Loading catalogue...',
+                    style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            )
+          : _buildItemsList(),
     );
   }
 

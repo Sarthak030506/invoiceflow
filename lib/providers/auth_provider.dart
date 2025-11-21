@@ -5,9 +5,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/auth_service.dart';
+import '../services/items_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
+  final ItemsService _itemsService = ItemsService();
 
   User? _user;
   bool _isLoading = true; // start loading while we detect auth state
@@ -25,6 +27,8 @@ class AuthProvider extends ChangeNotifier {
   bool _isFirstTimeUser = false;
   bool _hasCompletedOnboarding = false;
   bool get hasCompletedOnboarding => _hasCompletedOnboarding;
+  bool _hasCatalogueItems = false;
+  bool get hasCatalogueItems => _hasCatalogueItems;
 
   AuthProvider() {
     _init();
@@ -68,58 +72,54 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Called when the provider sees a non-null user from Firebase.
-  /// Idempotent: it will only mark prefs if needed.
+  /// Checks if user has catalogue items to determine if they need onboarding.
   Future<void> _handleNewlySignedInUser() async {
     try {
       debugPrint('[AuthProvider] _handleNewlySignedInUser called for user: ${_user?.uid}');
-      final prefs = await SharedPreferences.getInstance();
-      
-      // Debug: Check current state of preferences
-      final hasFirstTimeKey = prefs.containsKey('is_first_time_user');
-      final firstTimeValue = prefs.getBool('is_first_time_user');
-      final hasOnboardingKey = prefs.containsKey('has_completed_items_onboarding');
-      final onboardingValue = prefs.getBool('has_completed_items_onboarding');
-      
-      debugPrint('[AuthProvider] Current prefs state:');
-      debugPrint('  - has_first_time_key: $hasFirstTimeKey, value: $firstTimeValue');
-      debugPrint('  - has_onboarding_key: $hasOnboardingKey, value: $onboardingValue');
 
-      // Default to not being a first-time user
-      _isFirstTimeUser = false;
+      // Check if user has any catalogue items
+      final hasCatalogueItems = await _checkUserHasCatalogueItems();
+      _hasCatalogueItems = hasCatalogueItems;
 
-      // If there is no explicit flag set, treat it as first sign-in and mark it
-      if (!prefs.containsKey('is_first_time_user')) {
-        debugPrint('[AuthProvider] Setting first-time user flags...');
-        await prefs.setBool('is_first_time_user', true);
-        _isFirstTimeUser = true; // Update the state
+      // User is first-time if they have NO catalogue items
+      _isFirstTimeUser = !hasCatalogueItems;
 
-        // ensure we don't mark onboarding completed accidentally
-        await prefs.remove('has_completed_items_onboarding');
-        debugPrint('[AuthProvider] Marked user as first-time for onboarding (prefs updated).');
-        
-        // Force a small delay to ensure SharedPreferences are fully committed
-        await Future.delayed(const Duration(milliseconds: 100));
-        
-        // Verify the changes were saved
-        final verifyFirstTime = prefs.getBool('is_first_time_user');
-        final verifyOnboarding = prefs.containsKey('has_completed_items_onboarding');
-        debugPrint('[AuthProvider] Verification - is_first_time_user: $verifyFirstTime, has_onboarding_key: $verifyOnboarding');
-      } else {
-        // If the flag exists, respect its value
-        _isFirstTimeUser = prefs.getBool('is_first_time_user') ?? false;
-        debugPrint('[AuthProvider] is_first_time_user already present: $_isFirstTimeUser');
-      }
+      debugPrint('[AuthProvider] Has catalogue items: $hasCatalogueItems');
+      debugPrint('[AuthProvider] Is first time user: $_isFirstTimeUser');
+
     } catch (e) {
       debugPrint('[AuthProvider] _handleNewlySignedInUser error: $e');
+      // On error, assume not first time to avoid blocking user
+      _isFirstTimeUser = false;
+      _hasCatalogueItems = false;
+    }
+  }
+
+  /// Check if the current user has any items in their catalogue
+  Future<bool> _checkUserHasCatalogueItems() async {
+    try {
+      final itemsCount = await _itemsService.getItemsCount();
+      return itemsCount > 0;
+    } catch (e) {
+      debugPrint('[AuthProvider] Error checking catalogue items: $e');
+      return false; // Assume no items on error
     }
   }
 
   Future<void> completeOnboarding() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_first_time_user', false);
     _isFirstTimeUser = false;
+    _hasCatalogueItems = true;
     notifyListeners();
-    debugPrint('[AuthProvider] Onboarding completed, is_first_time_user set to false.');
+    debugPrint('[AuthProvider] Onboarding completed');
+  }
+
+  /// Refresh the catalogue status (useful after adding/removing items)
+  Future<void> refreshCatalogueStatus() async {
+    final hasCatalogueItems = await _checkUserHasCatalogueItems();
+    _hasCatalogueItems = hasCatalogueItems;
+    _isFirstTimeUser = !hasCatalogueItems;
+    notifyListeners();
+    debugPrint('[AuthProvider] Catalogue status refreshed: has items = $hasCatalogueItems');
   }
 
   

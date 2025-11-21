@@ -3,6 +3,7 @@ import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 
+import '../catalogue/business_type_selection_screen.dart';
 import 'import_methods/csv_upload_screen.dart';
 import 'import_methods/manual_entry_screen.dart';
 import 'import_methods/demo_items_screen.dart';
@@ -121,7 +122,17 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
           ),
         ),
         SizedBox(height: 2.h),
-        
+
+        // Business Type Selection (RECOMMENDED)
+        _buildOptionCard(
+          icon: Icons.store,
+          title: 'Choose Business Type',
+          subtitle: 'Select your business type and get pre-filled catalogue with 100+ items',
+          color: Colors.purple,
+          onTap: () => _navigateToImportMethod(const BusinessTypeSelectionScreen(isFirstTimeSetup: true)),
+          isRecommended: true,
+        ),
+
         // CSV/Excel Upload
         _buildOptionCard(
           icon: Icons.upload_file_rounded,
@@ -130,7 +141,7 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
           color: Colors.green,
           onTap: () => _navigateToImportMethod(const CsvUploadScreen()),
         ),
-        
+
         // Manual Entry
         _buildOptionCard(
           icon: Icons.edit_note_rounded,
@@ -139,13 +150,13 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
           color: Colors.orange,
           onTap: () => _navigateToImportMethod(const ManualEntryScreen()),
         ),
-        
+
         // Demo List
         _buildOptionCard(
           icon: Icons.inventory_2_rounded,
-          title: 'Use Existing Catalog',
-          subtitle: 'Start with your comprehensive catalog of 133+ items.',
-          color: Colors.blue,
+          title: 'Demo Catalogue',
+          subtitle: 'Restaurant & hotel supplies catalogue with 133 items',
+          color: Colors.teal,
           onTap: () => _navigateToImportMethod(const DemoItemsScreen()),
         ),
       ],
@@ -159,14 +170,15 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
     required Color color,
     required VoidCallback onTap,
     bool isOptional = false,
+    bool isRecommended = false,
   }) {
     return Container(
       margin: EdgeInsets.only(bottom: 3.h),
       child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        elevation: 2,
-        shadowColor: color.withOpacity(0.1),
+        elevation: isRecommended ? 4 : 2,
+        shadowColor: color.withOpacity(isRecommended ? 0.3 : 0.1),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(16),
@@ -174,7 +186,10 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
             padding: EdgeInsets.all(4.w),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: color.withOpacity(0.2)),
+              border: Border.all(
+                color: isRecommended ? color : color.withOpacity(0.2),
+                width: isRecommended ? 2 : 1,
+              ),
             ),
             child: Row(
               children: [
@@ -197,14 +212,38 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
                     children: [
                       Row(
                         children: [
-                          Text(
-                            title,
-                            style: TextStyle(
-                              fontSize: 13.sp,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[800],
+                          Flexible(
+                            child: Text(
+                              title,
+                              style: TextStyle(
+                                fontSize: 13.sp,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[800],
+                              ),
                             ),
                           ),
+                          if (isRecommended) ...[
+                            SizedBox(width: 2.w),
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 2.w,
+                                vertical: 0.5.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'RECOMMENDED',
+                                style: TextStyle(
+                                  fontSize: 8.sp,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
                           if (isOptional) ...[
                             SizedBox(width: 2.w),
                             Container(

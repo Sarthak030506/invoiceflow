@@ -12,6 +12,7 @@ import '../services/catalog_service.dart';
 import '../utils/app_logger.dart';
 import '../widgets/enhanced_payment_details_widget.dart';
 import './create_invoice/widgets/customer_input_widget.dart';
+import './catalogue/business_type_selection_screen.dart';
 import 'dart:async';
 
 class ChooseItemsInvoiceScreen extends StatefulWidget {
@@ -92,6 +93,11 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
           _itemCatalog = catalog;
           _catalogLoading = false;
         });
+
+        // If catalogue is empty, prompt user to set it up
+        if (catalog.isEmpty) {
+          _promptCatalogueSetup();
+        }
       }
     } catch (e) {
       AppLogger.error('Error loading catalog', 'ChooseItemsInvoice', e);
@@ -117,7 +123,100 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
       AppLogger.error('Error loading stock map', 'ChooseItemsInvoice', e);
     }
   }
-  
+
+  void _promptCatalogueSetup() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.inventory_2, color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green, size: 7.w),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: Text(
+                  'Set Up Your Catalogue',
+                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Your product catalogue is empty. Set it up now to start creating ${widget.invoiceType} invoices.',
+                style: TextStyle(fontSize: 12.sp, height: 1.4),
+              ),
+              SizedBox(height: 2.h),
+              Container(
+                padding: EdgeInsets.all(3.w),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.lightbulb_outline, color: Colors.blue[700], size: 5.w),
+                    SizedBox(width: 2.w),
+                    Expanded(
+                      child: Text(
+                        'Choose from 8 business types or create your own custom catalogue',
+                        style: TextStyle(fontSize: 10.sp, color: Colors.blue[900]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // Also pop the invoice screen
+              },
+              child: Text('Cancel', style: TextStyle(fontSize: 12.sp)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop(); // Close dialog
+
+                // Navigate to catalogue setup
+                final result = await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const BusinessTypeSelectionScreen(
+                      isFirstTimeSetup: false,
+                      returnRoute: 'invoice',
+                    ),
+                  ),
+                );
+
+                // Reload catalogue if setup was completed
+                if (result == true && mounted) {
+                  _loadCatalog();
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text('Set Up Catalogue', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
   void _onSearchChanged(String value) {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 300), () {
