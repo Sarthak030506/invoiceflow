@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/business_catalogue_service.dart';
 import '../../services/items_service.dart';
+import '../../services/catalog_service.dart';
 import '../../models/business_catalogue_template.dart';
 import '../../providers/auth_provider.dart' as app_auth;
 import '../home_dashboard/home_dashboard.dart';
@@ -32,6 +33,7 @@ class _CataloguePreviewEditScreenState
   final BusinessCatalogueService _catalogueService =
       BusinessCatalogueService.instance;
   final ItemsService _itemsService = ItemsService();
+  final CatalogService _catalogService = CatalogService.instance;
   final TextEditingController _searchController = TextEditingController();
 
   List<EditableCatalogueItem> _allItems = [];
@@ -684,6 +686,9 @@ class _CataloguePreviewEditScreenState
 
       // Save to Firestore
       await _itemsService.addMultipleItemsFromMaps(products);
+
+      // Clear catalog cache to force reload of new items
+      _catalogService.clearCache();
 
       // Mark onboarding as complete if first time
       if (widget.isFirstTimeSetup && mounted) {

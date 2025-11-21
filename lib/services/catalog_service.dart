@@ -1,5 +1,6 @@
 import '../models/catalog_item.dart';
 import './firestore_service.dart';
+import './items_service.dart';
 import '../utils/app_logger.dart';
 
 class CatalogService {
@@ -14,13 +15,14 @@ class CatalogService {
   }
 
   final FirestoreService _fsService = FirestoreService.instance;
+  final ItemsService _itemsService = ItemsService();
 
   // Cache for catalog items with custom rates
   Map<int, CatalogItem>? _catalogCache;
   DateTime? _lastCacheUpdate;
   static const _cacheValidityDuration = Duration(minutes: 5);
 
-  // Get all catalog items (merges default catalog with custom rates from Firestore)
+  // Get all catalog items (loads from ItemsService or falls back to default catalog)
   Future<List<CatalogItem>> getAllItems() async {
     try {
       // Check cache validity
@@ -30,7 +32,34 @@ class CatalogService {
         return _catalogCache!.values.toList();
       }
 
-      // Get custom rates from Firestore
+      // Try to load from ItemsService (items_catalog collection)
+      try {
+        final productCatalogItems = await _itemsService.getAllItems();
+
+        if (productCatalogItems.isNotEmpty) {
+          // Convert ProductCatalogItem to CatalogItem
+          final catalogMap = <int, CatalogItem>{};
+          for (int i = 0; i < productCatalogItems.length; i++) {
+            final product = productCatalogItems[i];
+            catalogMap[i + 1] = CatalogItem(
+              id: i + 1,
+              name: product.name,
+              rate: product.rate,
+            );
+          }
+
+          // Update cache
+          _catalogCache = catalogMap;
+          _lastCacheUpdate = DateTime.now();
+
+          AppLogger.info('Loaded ${catalogMap.length} items from items_catalog', 'CatalogService');
+          return catalogMap.values.toList();
+        }
+      } catch (e) {
+        AppLogger.warning('Could not load from items_catalog, trying fallback', 'CatalogService');
+      }
+
+      // Fallback: Get custom rates from Firestore (old system)
       final customRates = await _fsService.getAllCatalogRates();
 
       // Create a map from default catalog
@@ -48,10 +77,11 @@ class CatalogService {
       _catalogCache = catalogMap;
       _lastCacheUpdate = DateTime.now();
 
+      AppLogger.info('Loaded ${catalogMap.length} items from default catalog', 'CatalogService');
       return catalogMap.values.toList();
     } catch (e) {
       AppLogger.error('Failed to get all items', 'CatalogService', e);
-      // Fallback to default catalog
+      // Final fallback to default catalog
       return ItemCatalog.items;
     }
   }
