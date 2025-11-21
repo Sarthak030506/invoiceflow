@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/business_catalogue_service.dart';
 import '../../services/items_service.dart';
 import '../../models/business_catalogue_template.dart';
-import '../../providers/auth_provider.dart';
+import '../../providers/auth_provider.dart' as app_auth;
 import '../home_dashboard/home_dashboard.dart';
 
 class CataloguePreviewEditScreen extends StatefulWidget {
@@ -687,7 +687,7 @@ class _CataloguePreviewEditScreenState
 
       // Mark onboarding as complete if first time
       if (widget.isFirstTimeSetup && mounted) {
-        context.read<AuthProvider>().completeOnboarding();
+        context.read<app_auth.AuthProvider>().completeOnboarding();
       }
 
       // Show success message
