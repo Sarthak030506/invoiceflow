@@ -300,7 +300,7 @@ class _RevenueAnalyticsSectionState extends State<RevenueAnalyticsSection> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Inventory Timeholding â€” Unsold Items Only',
+                        'Inventory Timeholding — Unsold Items Only',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -964,11 +964,11 @@ class _RevenueAnalyticsSectionState extends State<RevenueAnalyticsSection> {
 
   String _formatCurrency(double amount) {
     if (amount >= 100000) {
-      return 'â‚¹${(amount / 100000).toStringAsFixed(1)}L';
+      return '₹${(amount / 100000).toStringAsFixed(1)}L';
     } else if (amount >= 1000) {
-      return 'â‚¹${(amount / 1000).toStringAsFixed(1)}K';
+      return '₹${(amount / 1000).toStringAsFixed(1)}K';
     } else {
-      return 'â‚¹${amount.toStringAsFixed(0)}';
+      return '₹${amount.toStringAsFixed(0)}';
     }
   }
 }

@@ -104,7 +104,7 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
           const SizedBox(height: 16),
           _buildLowStockMetric('Low-Stock Items', lowStockCount),
           const SizedBox(height: 16),
-          _buildVerticalMetric('Avg/Item', 'â‚¹${avgStockValue.toStringAsFixed(0)}'),
+          _buildVerticalMetric('Avg/Item', '₹${avgStockValue.toStringAsFixed(0)}'),
         ],
       ),
     );
@@ -254,7 +254,7 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Inventory Timeholding â€” Unsold Items Only',
+                        'Inventory Timeholding — Unsold Items Only',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -565,7 +565,7 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
                 ),
               ] else ...[
                 Text(
-                  'Stock: ${item['currentStock']} units â€¢ Sales: ${item['totalSold']} units',
+                  'Stock: ${item['currentStock']} units • Sales: ${item['totalSold']} units',
                   style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                 ),
                 Text(
@@ -994,11 +994,11 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
 
   String _formatCurrency(double amount) {
     if (amount >= 100000) {
-      return 'â‚¹${(amount / 100000).toStringAsFixed(1)}L';
+      return '₹${(amount / 100000).toStringAsFixed(1)}L';
     } else if (amount >= 1000) {
-      return 'â‚¹${(amount / 1000).toStringAsFixed(1)}K';
+      return '₹${(amount / 1000).toStringAsFixed(1)}K';
     } else {
-      return 'â‚¹${amount.toStringAsFixed(0)}';
+      return '₹${amount.toStringAsFixed(0)}';
     }
   }
 }
