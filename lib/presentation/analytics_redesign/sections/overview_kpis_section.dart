@@ -35,7 +35,7 @@ class OverviewKpisSection extends StatelessWidget {
           SizedBox(height: 12),
           isLoading
               ? Container(
-                  height: 100,
+                  height: 110,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     padding: EdgeInsets.zero,
@@ -65,7 +65,7 @@ class OverviewKpisSection extends StatelessWidget {
                 )
               : Container(
                   key: const Key('compactKpiCards'),
-                  height: 100,
+                  height: 110,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     padding: EdgeInsets.zero,
@@ -123,7 +123,7 @@ class OverviewKpisSection extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: 140,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -137,6 +137,7 @@ class OverviewKpisSection extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Row(
               children: [
@@ -149,23 +150,32 @@ class OverviewKpisSection extends StatelessWidget {
                 if (delta != null) _buildDeltaBadge(delta),
               ],
             ),
-            const Spacer(),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w500,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ],
         ),
