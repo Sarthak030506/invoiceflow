@@ -1,0 +1,166 @@
+﻿Analyzing analytics_redesign...                                 
+
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\analytics_main_screen.dart:8:9 - use_super_parameters
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\analytics_main_screen.dart:221:40 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\analytics_main_screen.dart:232:30 - deprecated_member_use
+warning - Unused import: 'package:url_launcher/url_launcher.dart' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:3:8 - unused_import
+warning - Unused import: 'widgets/sparkline_painter.dart' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:4:8 - unused_import
+warning - Unused import: 'widgets/skeleton_loader.dart' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:5:8 - unused_import
+warning - Unused import: '../../services/customer_service.dart' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:9:8 - unused_import
+warning - Unused import: '../../services/firestore_service.dart' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:10:8 - unused_import
+warning - Unused import: 'item_wise_revenue_screen.dart' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:11:8 - unused_import
+warning - Unused import: 'customer_wise_revenue_screen.dart' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:12:8 - unused_import
+warning - Unused import: 'sections/revenue_analytics_section.dart' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:14:8 - unused_import
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:28:9 - use_super_parameters
+warning - The value of the field '_errorMessage' isn't used - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:47:10 - unused_field
+   info - The private field _isCustomerWiseView could be 'final' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:56:8 - prefer_final_fields
+warning - The value of the field '_isCustomerWiseView' isn't used - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:56:8 - unused_field
+   info - The private field _invoiceTypeFilter could be 'final' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:62:10 - prefer_final_fields
+warning - The value of the field '_invoiceTypeFilter' isn't used - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:62:10 - unused_field
+  error - The method 'RevenueAnalyticsSection' isn't defined for the type '_AnalyticsRedesignScaffoldState' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:104:11 - undefined_method
+  error - The method 'RevenueAnalyticsSection' isn't defined for the type '_AnalyticsRedesignScaffoldState' - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:149:18 - undefined_method
+warning - The declaration '_getTotalRevenue' isn't referenced - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:424:10 - unused_element
+warning - The declaration '_getTotalPurchases' isn't referenced - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:429:10 - unused_element
+warning - The declaration '_getOutstanding' isn't referenced - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:434:10 - unused_element
+warning - The declaration '_getTotalClients' isn't referenced - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:439:7 - unused_element
+warning - The declaration '_getRevenueDelta' isn't referenced - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:444:11 - unused_element
+warning - The declaration '_formatCurrency' isn't referenced - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:449:10 - unused_element
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:480:29 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:488:37 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:499:38 - deprecated_member_use
+warning - The declaration '_getDateRangeText' isn't referenced - lib\presentation\analytics_redesign\analytics_redesign_scaffold.dart:584:10 - unused_element
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\analytics_redesign_screen.dart:5:9 - use_super_parameters
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:8:9 - use_super_parameters
+warning - The declaration '_totalInvoices' isn't referenced - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:62:11 - unused_element
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:287:22 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:289:41 - deprecated_member_use
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:351:9 - use_super_parameters
+   info - Invalid use of a private type in a public API - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:360:3 - library_private_types_in_public_api
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:375:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:413:58 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:413:90 - deprecated_member_use
+warning - The declaration '_buildRefundDetailRow' isn't referenced - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:575:10 - unused_element
+   info - Unnecessary use of 'toList' in a spread - lib\presentation\analytics_redesign\customer_wise_revenue_screen.dart:656:18 - unnecessary_to_list_in_spreads
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\item_wise_revenue_screen.dart:8:9 - use_super_parameters
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\item_wise_revenue_screen.dart:257:22 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\item_wise_revenue_screen.dart:259:41 - deprecated_member_use
+   info - Don't invoke 'print' in production code - lib\presentation\analytics_redesign\item_wise_revenue_screen.dart:293:5 - avoid_print
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\item_wise_revenue_screen.dart:302:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\item_wise_revenue_screen.dart:319:53 - deprecated_member_use
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\overview_kpis_screen.dart:12:9 - use_super_parameters
+warning - The value of the local variable 'insights' isn't used - lib\presentation\analytics_redesign\overview_kpis_screen.dart:58:13 - unused_local_variable
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\overview_kpis_screen.dart:187:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\overview_kpis_screen.dart:201:32 - deprecated_member_use
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\sections\charts_section.dart:10:9 - use_super_parameters
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\charts_section.dart:59:33 - deprecated_member_use
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\presentation\analytics_redesign\sections\charts_section.dart:83:11 - sized_box_for_whitespace
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\charts_section.dart:145:33 - deprecated_member_use
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\presentation\analytics_redesign\sections\charts_section.dart:174:21 - sized_box_for_whitespace
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\charts_section.dart:240:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\charts_section.dart:337:33 - deprecated_member_use
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\presentation\analytics_redesign\sections\charts_section.dart:428:9 - sized_box_for_whitespace
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:10:9 - use_super_parameters
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:54:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:135:31 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:294:39 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:369:39 - deprecated_member_use
+   info - Don't use 'BuildContext's across async gaps - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:731:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:768:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:772:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:777:28 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:793:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:806:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:810:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\presentation\analytics_redesign\sections\due_reminders_section.dart:815:28 - use_build_context_synchronously
+   info - The file name 'due_reminders_section_TEMP.dart' isn't a lower_case_with_underscores identifier - lib\presentation\analytics_redesign\sections\due_reminders_section_TEMP.dart:1:1 - file_names
+warning - Unused import: 'package:sizer/sizer.dart' - lib\presentation\analytics_redesign\sections\due_reminders_section_TEMP.dart:2:8 - unused_import
+warning - Unused import: 'package:url_launcher/url_launcher.dart' - lib\presentation\analytics_redesign\sections\due_reminders_section_TEMP.dart:3:8 - unused_import
+warning - Unused import: '../widgets/skeleton_loader.dart' - lib\presentation\analytics_redesign\sections\due_reminders_section_TEMP.dart:4:8 - unused_import
+warning - Unused import: '../../../services/customer_service.dart' - lib\presentation\analytics_redesign\sections\due_reminders_section_TEMP.dart:5:8 - unused_import
+   info - Constructors for public widgets should have a named 'key' parameter - lib\presentation\analytics_redesign\sections\due_reminders_section_TEMP.dart:7:7 - use_key_in_widget_constructors
+  error - Missing concrete implementation of 'abstract class StatefulWidget extends Widget.createState' - lib\presentation\analytics_redesign\sections\due_reminders_section_TEMP.dart:7:7 - non_abstract_class_inherits_abstract_member
+  error - The final variable 'isLoading' must be initialized - lib\presentation\analytics_redesign\sections\due_reminders_section_TEMP.dart:8:14 - final_not_initialized
+  error - The final variable 'outstandingPayments' must be initialized - lib\presentation\analytics_redesign\sections\due_reminders_section_TEMP.dart:9:30 - final_not_initialized
+  error - Expected to find '}' - lib\presentation\analytics_redesign\sections\due_reminders_section_TEMP.dart:11:1 - expected_token
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\sections\inventory_analytics_section.dart:12:9 - use_super_parameters
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\inventory_analytics_section.dart:79:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\inventory_analytics_section.dart:124:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\inventory_analytics_section.dart:247:39 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\inventory_analytics_section.dart:353:43 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\inventory_analytics_section.dart:551:45 - deprecated_member_use
+   info - Don't invoke 'print' in production code - lib\presentation\analytics_redesign\sections\inventory_analytics_section.dart:653:7 - avoid_print
+   info - Don't use 'BuildContext's across async gaps - lib\presentation\analytics_redesign\sections\inventory_analytics_section.dart:662:28 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\presentation\analytics_redesign\sections\inventory_analytics_section.dart:671:7 - use_build_context_synchronously
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\inventory_analytics_section.dart:787:30 - deprecated_member_use
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\sections\items_insights_section.dart:9:9 - use_super_parameters
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\items_insights_section.dart:82:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\items_insights_section.dart:195:35 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\items_insights_section.dart:244:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\items_insights_section.dart:299:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\items_insights_section.dart:357:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\items_insights_section.dart:453:35 - deprecated_member_use
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\sections\overview_kpis_section.dart:11:9 - use_super_parameters
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\presentation\analytics_redesign\sections\overview_kpis_section.dart:37:17 - sized_box_for_whitespace
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\presentation\analytics_redesign\sections\overview_kpis_section.dart:43:23 - sized_box_for_whitespace
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\presentation\analytics_redesign\sections\overview_kpis_section.dart:48:23 - sized_box_for_whitespace
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\presentation\analytics_redesign\sections\overview_kpis_section.dart:53:23 - sized_box_for_whitespace
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\presentation\analytics_redesign\sections\overview_kpis_section.dart:58:23 - sized_box_for_whitespace
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\presentation\analytics_redesign\sections\overview_kpis_section.dart:66:17 - sized_box_for_whitespace
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\overview_kpis_section.dart:132:35 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\overview_kpis_section.dart:181:57 - deprecated_member_use
+warning - The declaration '<unnamed>' isn't referenced - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:1:1 - unused_element
+  error - Can't have modifier 'required' here - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:9:5 - extraneous_modifier
+   info - Missing type annotation - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:9:14 - strict_top_level_inference
+  error - 'this' can't be used as an identifier because it's a keyword - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:9:14 - expected_identifier_but_got_keyword
+  error - Functions must have an explicit list of parameters - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:9:14 - missing_function_parameters
+  error - A function body must be provided - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:9:18 - missing_function_body
+  error - Expected a method, getter, setter or operator declaration - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:9:18 - expected_executable
+   info - An uninitialized variable should have an explicit type annotation - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:9:19 - prefer_typing_uninitialized_variables
+   info - Missing type annotation - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:9:19 - strict_top_level_inference
+  error - Variables must be declared using the keywords 'const', 'final', 'var' or a type name - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:9:19 - missing_const_final_var_or_type
+   info - An uninitialized variable should have an explicit type annotation - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:10:5 - prefer_typing_uninitialized_variables
+   info - Missing type annotation - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:10:5 - strict_top_level_inference
+  error - 'this' can't be used as an identifier because it's a keyword - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:10:5 - expected_identifier_but_got_keyword
+  error - Expected to find ';' - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:10:5 - expected_token
+  error - The name 'this' is already defined - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:10:5 - duplicate_definition
+  error - Expected a method, getter, setter or operator declaration - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:10:9 - expected_executable
+   info - An uninitialized variable should have an explicit type annotation - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:10:10 - prefer_typing_uninitialized_variables
+   info - Missing type annotation - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:10:10 - strict_top_level_inference
+  error - Variables must be declared using the keywords 'const', 'final', 'var' or a type name - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:10:10 - missing_const_final_var_or_type
+  error - Expected an identifier - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:3 - missing_identifier
+  error - Expected to find ';' - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:3 - expected_token
+   info - An uninitialized variable should have an explicit type annotation - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:4 - prefer_typing_uninitialized_variables
+  error - Expected a method, getter, setter or operator declaration - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:4 - expected_executable
+  error - Expected a method, getter, setter or operator declaration - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:6 - expected_executable
+   info - Missing type annotation - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:8 - strict_top_level_inference
+  error - 'super' can't be used as an identifier because it's a keyword - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:8 - expected_identifier_but_got_keyword
+   info - Missing type annotation - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:14 - strict_top_level_inference
+  error - Named parameters must be enclosed in curly braces ('{' and '}') - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:17 - named_parameter_outside_group
+  error - Using a colon as the separator before a default value is no longer supported - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:17 - obsolete_colon_for_default_value
+  error - Undefined name 'key' - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:19 - undefined_identifier
+  error - A function body must be provided - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:11:23 - missing_function_body
+  error - The name 'RevenueAnalyticsSection' isn't a type, so it can't be used as a type argument - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:14:9 - non_type_as_type_argument
+  error - Expected a method, getter, setter or operator declaration - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:15:1 - expected_executable
+  error - The name 'RevenueAnalyticsSection' isn't a type, so it can't be used as a type argument - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:17:51 - non_type_as_type_argument
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:70:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:131:33 - deprecated_member_use
+   info - Use a 'SizedBox' to add whitespace to a layout - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:257:12 - sized_box_for_whitespace
+warning - The declaration '_buildHoldingBucket' isn't referenced - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:397:10 - unused_element
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:401:22 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:403:41 - deprecated_member_use
+  error - The method 'CustomerWiseRevenueScreen' isn't defined for the type '_RevenueAnalyticsSectionState' - lib\presentation\analytics_redesign\sections\revenue_analytics_section.dart:520:31 - undefined_method
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\widgets\analytics_table_card.dart:7:9 - use_super_parameters
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\analytics_table_card.dart:25:37 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\analytics_table_card.dart:30:37 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\analytics_table_card.dart:44:42 - deprecated_member_use
+   info - Parameter 'key' could be a super parameter - lib\presentation\analytics_redesign\widgets\charts_insights_section.dart:10:9 - use_super_parameters
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\charts_insights_section.dart:40:37 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\charts_insights_section.dart:70:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\charts_insights_section.dart:148:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\charts_insights_section.dart:237:22 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\charts_insights_section.dart:239:41 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\skeleton_loader.dart:15:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\skeleton_loader.dart:30:34 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\skeleton_loader.dart:33:50 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\presentation\analytics_redesign\widgets\skeleton_loader.dart:154:33 - deprecated_member_use
+

@@ -22,11 +22,16 @@ class AnalyticsRedesignScaffold extends StatefulWidget {
   final String? selectedDateRange;
   final Map<String, DateTime>? customDateRange;
   
+  final AnalyticsService? analyticsService;
+  final InventoryService? inventoryService;
+  
   const AnalyticsRedesignScaffold({
     Key? key,
     this.initialSection,
     this.selectedDateRange,
     this.customDateRange,
+    this.analyticsService,
+    this.inventoryService,
   }) : super(key: key);
 
   @override
@@ -102,6 +107,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
             chartData: chartData,
             customerAnalyticsData: customerAnalyticsData,
             inventoryAnalytics: inventoryAnalytics,
+            inventoryService: widget.inventoryService,
           ),
           SizedBox(height: 16),
           ItemsInsightsSection(
@@ -112,6 +118,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
           InventoryAnalyticsSection(
             isLoading: _isLoading,
             inventoryAnalytics: inventoryAnalytics,
+            inventoryService: widget.inventoryService,
           ),
           SizedBox(height: 16),
           DueRemindersSection(
@@ -145,6 +152,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
             chartData: chartData,
             customerAnalyticsData: customerAnalyticsData,
             inventoryAnalytics: inventoryAnalytics,
+            inventoryService: widget.inventoryService,
           ),
         );
       case 'items':
@@ -161,6 +169,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
           child: InventoryAnalyticsSection(
             isLoading: _isLoading,
             inventoryAnalytics: inventoryAnalytics,
+            inventoryService: widget.inventoryService,
           ),
         );
       case 'due':
@@ -377,9 +386,9 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
           serviceRange = 'All time';
       }
       
-      // Use actual service calls
-      final analyticsService = AnalyticsService();
-      final inventoryService = InventoryService();
+      // Use injected services or default to actual instances
+      final analyticsService = widget.analyticsService ?? AnalyticsService();
+      final inventoryService = widget.inventoryService ?? InventoryService();
 
       final results = await Future.wait([
         analyticsService.getFilteredAnalytics(serviceRange),

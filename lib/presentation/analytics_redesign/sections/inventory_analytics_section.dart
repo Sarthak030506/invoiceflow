@@ -7,11 +7,13 @@ import '../../../services/firestore_service.dart';
 class InventoryAnalyticsSection extends StatefulWidget {
   final bool isLoading;
   final Map<String, dynamic> inventoryAnalytics;
+  final InventoryService? inventoryService;
 
   const InventoryAnalyticsSection({
     Key? key,
     required this.isLoading,
     required this.inventoryAnalytics,
+    this.inventoryService,
   }) : super(key: key);
 
   @override
@@ -152,10 +154,12 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
             ],
           ),
           const SizedBox(height: 20),
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: _getFastMovingItems(),
-            builder: (context, snapshot) {
-              final fastMoving = snapshot.data ?? [];
+          const SizedBox(height: 20),
+          Builder(
+            builder: (context) {
+              final fastMoving = (widget.inventoryAnalytics['fastMovingItems'] as List<dynamic>?)
+                  ?.cast<Map<String, dynamic>>() ?? [];
+              
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -182,13 +186,14 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
                   )),
                 ],
               );
-            },
+            }
           ),
           const SizedBox(height: 20),
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: _getSlowMovingItems(),
-            builder: (context, snapshot) {
-              final slowMoving = snapshot.data ?? [];
+          Builder(
+            builder: (context) {
+              final slowMoving = (widget.inventoryAnalytics['slowMovingItems'] as List<dynamic>?)
+                  ?.cast<Map<String, dynamic>>() ?? [];
+                  
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -215,7 +220,7 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
                   )),
                 ],
               );
-            },
+            }
           ),
         ],
       ),
@@ -463,9 +468,11 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
     );
   }
 
-  void _showMovementHealthModal() async {
-    final fastMoving = await _getFastMovingItems();
-    final slowMoving = await _getSlowMovingItems();
+  void _showMovementHealthModal() {
+    final fastMoving = (widget.inventoryAnalytics['fastMovingItems'] as List<dynamic>?)
+        ?.cast<Map<String, dynamic>>() ?? [];
+    final slowMoving = (widget.inventoryAnalytics['slowMovingItems'] as List<dynamic>?)
+        ?.cast<Map<String, dynamic>>() ?? [];
 
     showModalBottomSheet(
       context: context,
@@ -582,156 +589,11 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
     );
   }
 
-  Future<List<Map<String, dynamic>>> _getFastMovingItems() async {
-    try {
-      final fs = FirestoreService.instance;
-      final allInvoices = await fs.getAllInvoices();
-      final inventoryService = InventoryService();
-      final allItems = await inventoryService.getAllItems(); // This might be expensive if called repeatedly
 
-      final now = DateTime.now();
-      final thirtyDaysAgo = now.subtract(Duration(days: 30));
-
-      Map<String, Map<String, dynamic>> itemSales = {};
-
-      for (final invoice in allInvoices) {
-        if (invoice.invoiceType == 'sales' &&
-            invoice.date.isAfter(thirtyDaysAgo) &&
-            invoice.status != 'cancelled') {
-
-          for (final item in invoice.items) {
-            final itemName = item.name;
-            if (!itemSales.containsKey(itemName)) {
-              itemSales[itemName] = {
-                'totalSold': 0,
-                'saleCount': 0,
-                'lastSoldDate': invoice.date,
-              };
-            }
-
-            itemSales[itemName]!['totalSold'] += item.quantity;
-            itemSales[itemName]!['saleCount'] += 1;
-
-            if (invoice.date.isAfter(itemSales[itemName]!['lastSoldDate'])) {
-              itemSales[itemName]!['lastSoldDate'] = invoice.date;
-            }
-          }
-        }
-      }
-
-      List<Map<String, dynamic>> fastMoving = [];
-
-      for (final entry in itemSales.entries) {
-        final itemName = entry.key;
-        final salesData = entry.value;
-        final saleCount = salesData['saleCount'] as int;
-        final totalSold = salesData['totalSold'] as int;
-
-        if (saleCount >= 2 || totalSold >= 10) {
-          final turnoverRate = (saleCount / 4.3).toDouble();
-
-          fastMoving.add({
-            'name': itemName,
-            'turnoverRate': turnoverRate,
-            'saleCount': saleCount,
-            'totalSold': totalSold,
-            'lastSoldDate': salesData['lastSoldDate'],
-            'id': itemName.toLowerCase().replaceAll(' ', '_'),
-          });
-        }
-      }
-
-      fastMoving.sort((a, b) => (b['turnoverRate'] as double).compareTo(a['turnoverRate'] as double));
-
-      return fastMoving;
-    } catch (e) {
-      print('Error calculating fast moving items: $e');
-      return [];
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _getSlowMovingItems() async {
-    try {
-      final fs = FirestoreService.instance;
-      final allInvoices = await fs.getAllInvoices();
-      final inventoryService = InventoryService();
-      final allItems = await inventoryService.getAllItems();
-
-      final now = DateTime.now();
-      final thirtyDaysAgo = now.subtract(Duration(days: 30));
-
-      Map<String, Map<String, dynamic>> itemData = {};
-
-      for (final item in allItems) {
-        if (item.currentStock > 0) {
-          itemData[item.name] = {
-            'currentStock': item.currentStock,
-            'lastUpdated': item.lastUpdated,
-            'totalSold': 0,
-            'saleCount': 0,
-            'lastSoldDate': null,
-          };
-        }
-      }
-
-      for (final invoice in allInvoices) {
-        if (invoice.invoiceType == 'sales' &&
-            invoice.date.isAfter(thirtyDaysAgo) &&
-            invoice.status != 'cancelled') {
-
-          for (final item in invoice.items) {
-            final itemName = item.name;
-            if (itemData.containsKey(itemName)) {
-              itemData[itemName]!['totalSold'] += item.quantity;
-              itemData[itemName]!['saleCount'] += 1;
-
-              if (itemData[itemName]!['lastSoldDate'] == null ||
-                  invoice.date.isAfter(itemData[itemName]!['lastSoldDate'])) {
-                itemData[itemName]!['lastSoldDate'] = invoice.date;
-              }
-            }
-          }
-        }
-      }
-
-      List<Map<String, dynamic>> slowMoving = [];
-
-      for (final entry in itemData.entries) {
-        final itemName = entry.key;
-        final data = entry.value;
-        final saleCount = data['saleCount'] as int;
-        final totalSold = data['totalSold'] as int;
-
-        if (saleCount < 2 && totalSold < 10) {
-          final lastSoldDate = data['lastSoldDate'] as DateTime?;
-          final daysInStock = lastSoldDate != null
-              ? now.difference(lastSoldDate).inDays
-              : now.difference(data['lastUpdated'] as DateTime).inDays;
-
-          slowMoving.add({
-            'name': itemName,
-            'currentStock': data['currentStock'],
-            'saleCount': saleCount,
-            'totalSold': totalSold,
-            'daysInStock': daysInStock,
-            'lastSoldDate': lastSoldDate,
-            'id': itemName.toLowerCase().replaceAll(' ', '_'),
-          });
-        }
-      }
-
-      slowMoving.sort((a, b) => (b['daysInStock'] as int).compareTo(a['daysInStock'] as int));
-
-      return slowMoving;
-    } catch (e) {
-      print('Error calculating slow moving items: $e');
-      return [];
-    }
-  }
 
   Future<List<Map<String, dynamic>>> _getUnsoldItems() async {
     try {
-      final inventoryService = InventoryService();
+      final inventoryService = widget.inventoryService ?? InventoryService();
       final fs = FirestoreService.instance;
 
       final allItems = await inventoryService.getAllItems();
@@ -1002,4 +864,6 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
     }
   }
 }
+
+
 

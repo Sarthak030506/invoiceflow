@@ -10,9 +10,11 @@ import '../customer_wise_revenue_screen.dart';
 
 class RevenueAnalyticsSection extends StatefulWidget {
   final bool isLoading;
-  final String selectedDateRange;  final Map<String, dynamic> chartData;
+  final String selectedDateRange;
+  final Map<String, dynamic> chartData;
   final List<Map<String, dynamic>> customerAnalyticsData;
   final Map<String, dynamic> inventoryAnalytics;
+  final InventoryService? inventoryService;
 
   const RevenueAnalyticsSection({
     Key? key,
@@ -21,6 +23,7 @@ class RevenueAnalyticsSection extends StatefulWidget {
     required this.chartData,
     required this.customerAnalyticsData,
     required this.inventoryAnalytics,
+    this.inventoryService,
   }) : super(key: key);
 
   @override
@@ -565,5 +568,7 @@ class _RevenueAnalyticsSectionState extends State<RevenueAnalyticsSection> {
     }
   }
 }
+
+
 
 
