@@ -128,11 +128,14 @@ class _OverviewKpisScreenState extends State<OverviewKpisScreen> {
             fontSize: 20,
             fontWeight: FontWeight.w700,
             color: Colors.black87,
+            letterSpacing: -0.5,
           ),
         ),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         elevation: 0,
+        centerTitle: true,
+        toolbarHeight: 64,
       ),
       body: _isLoading
           ? ListView(
