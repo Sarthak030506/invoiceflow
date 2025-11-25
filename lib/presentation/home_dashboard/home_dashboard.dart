@@ -1300,9 +1300,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
       }
     } else {
       // For supplier dues - show info message
-      FeedbackAnimations.showInfo(
-        context,
-        message: 'Tap on invoice to record payment',
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Tap on invoice to record payment'),
+          backgroundColor: Colors.blue,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     }
   }
@@ -1313,7 +1316,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
       final customersWithDues = <Map<String, dynamic>>[];
 
       for (final customer in customers) {
-        final invoices = await _invoiceService.getCustomerInvoices(customer.id);
+        final allInvoices = await _invoiceService.fetchAllInvoices();
+        final invoices = allInvoices.where((inv) => inv.customerId == customer.id).toList();
         final unpaidInvoices = invoices.where((inv) =>
           inv.invoiceType == 'sales' &&
           inv.paymentStatus == PaymentStatus.balanceDue
