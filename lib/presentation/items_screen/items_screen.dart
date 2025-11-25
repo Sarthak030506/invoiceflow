@@ -93,7 +93,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manage Item Rates'),
+        title: const Text('Manage Items'),
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(8.h),
           child: Container(
@@ -261,7 +261,7 @@ class _ItemCard extends StatelessWidget {
                     color: Colors.blue.shade700,
                   ),
                   onPressed: onEditRate,
-                  tooltip: 'Edit rate',
+                  tooltip: 'Edit item',
                 ),
               ),
             ],

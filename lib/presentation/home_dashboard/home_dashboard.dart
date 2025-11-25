@@ -218,7 +218,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('✓ Loaded data from Local Database'),
+              content: const Text('✓ Loaded data from Central Database'),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 2),
             ),
@@ -241,7 +241,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Data refreshed successfully from Local Database'),
+            content: Text('Data refreshed successfully from Central Database'),
             duration: Duration(seconds: 2),
           ),
         );
@@ -389,13 +389,13 @@ class _HomeDashboardState extends State<HomeDashboard> {
             ListTile(
               leading: Icon(Icons.shopping_basket, color: Colors.purple.shade600),
               title: Text(
-                'Manage Item Rates',
+                'Manage Items',
                 style: TextStyle(
                   fontSize: 16.sp,
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              subtitle: Text('Edit prices for all items'),
+              subtitle: Text('Edit item names and prices'),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.pushNamed(context, '/items-screen');
@@ -603,7 +603,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Data Source: Local Database',
+                                    'Data Source: Central Database',
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodySmall
@@ -1353,7 +1353,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
           ),
           SizedBox(height: 1.h),
           Text(
-            'No invoice data found in local storage. Please add a new invoice.',
+            'No invoice data found in Central storage. Please add a new invoice.',
             textAlign: TextAlign.center,
             style: Theme.of(context)
                 .textTheme

@@ -129,6 +129,47 @@ class CatalogService {
     }
   }
 
+  // Update item name and rate
+  Future<void> updateItemNameAndRate(int itemId, String newName, double newRate) async {
+    try {
+      // Validate input
+      if (newName.trim().isEmpty) {
+        throw Exception('Item name cannot be empty');
+      }
+      if (newRate <= 0) {
+        throw Exception('Rate must be positive');
+      }
+
+      // Get all items from ItemsService
+      final allItems = await _itemsService.getAllItems();
+
+      // Find the item to update
+      final itemToUpdate = allItems.firstWhere(
+        (item) => item.id == itemId.toString(),
+        orElse: () => throw Exception('Item not found'),
+      );
+
+      // Create updated item
+      final updatedItem = itemToUpdate.copyWith(
+        name: newName.trim(),
+        rate: newRate,
+        updatedAt: DateTime.now(),
+      );
+
+      // Update in Firestore
+      await _itemsService.updateItem(updatedItem);
+
+      // Clear cache to force refresh
+      _catalogCache = null;
+      _lastCacheUpdate = null;
+
+      AppLogger.info('Item updated: $newName - ₹$newRate', 'CatalogService');
+    } catch (e) {
+      AppLogger.error('Failed to update item', 'CatalogService', e);
+      rethrow;
+    }
+  }
+
   // Reset item rate to default
   Future<void> resetItemRate(int itemId) async {
     try {

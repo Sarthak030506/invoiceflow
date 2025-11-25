@@ -29,6 +29,7 @@ class RateEditDialog extends StatefulWidget {
 }
 
 class _RateEditDialogState extends State<RateEditDialog> {
+  late TextEditingController _nameController;
   late TextEditingController _rateController;
   final CatalogService _catalogService = CatalogService.instance;
   bool _isLoading = false;
@@ -38,6 +39,7 @@ class _RateEditDialogState extends State<RateEditDialog> {
   @override
   void initState() {
     super.initState();
+    _nameController = TextEditingController(text: widget.item.name);
     _rateController = TextEditingController(text: widget.item.rate.toStringAsFixed(2));
     _loadRateInfo();
   }
@@ -52,19 +54,31 @@ class _RateEditDialogState extends State<RateEditDialog> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _rateController.dispose();
     super.dispose();
   }
 
   Future<void> _updateRate() async {
+    final newName = _nameController.text.trim();
     final newRateText = _rateController.text.trim();
     final newRate = double.tryParse(newRateText);
 
     // Validation
+    if (newName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter an item name'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     if (newRate == null || newRate <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter a valid positive number'),
+          content: Text('Please enter a valid positive rate'),
           backgroundColor: Colors.red,
         ),
       );
@@ -76,14 +90,14 @@ class _RateEditDialogState extends State<RateEditDialog> {
     });
 
     try {
-      await _catalogService.updateItemRate(widget.item.id, newRate);
+      await _catalogService.updateItemNameAndRate(widget.item.id, newName, newRate);
 
       if (!mounted) return;
 
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Rate updated to ₹${newRate.toStringAsFixed(2)}'),
+          content: Text('Item updated successfully'),
           backgroundColor: Colors.green,
         ),
       );
@@ -100,7 +114,7 @@ class _RateEditDialogState extends State<RateEditDialog> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error updating rate: ${e.toString()}'),
+          content: Text('Error updating item: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -166,7 +180,7 @@ class _RateEditDialogState extends State<RateEditDialog> {
           SizedBox(width: 2.w),
           Expanded(
             child: Text(
-              'Edit Item Rate',
+              'Edit Item',
               style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
             ),
           ),
@@ -176,17 +190,6 @@ class _RateEditDialogState extends State<RateEditDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Item name
-          Text(
-            widget.item.name,
-            style: TextStyle(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade800,
-            ),
-          ),
-          SizedBox(height: 2.h),
-
           // Current rate info
           if (_hasCustomRate)
             Container(
@@ -227,10 +230,30 @@ class _RateEditDialogState extends State<RateEditDialog> {
               ),
             ),
 
+          // Name input
+          TextField(
+            controller: _nameController,
+            enabled: !_isLoading,
+            textCapitalization: TextCapitalization.words,
+            decoration: InputDecoration(
+              labelText: 'Item Name',
+              hintText: 'Enter item name',
+              prefixIcon: Icon(Icons.inventory_2, color: Colors.blue),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.blue, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.grey.shade50,
+            ),
+          ),
+
+          SizedBox(height: 2.h),
+
           // Rate input
           TextField(
             controller: _rateController,
-            autofocus: true,
             enabled: !_isLoading,
             keyboardType: TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
@@ -238,7 +261,7 @@ class _RateEditDialogState extends State<RateEditDialog> {
             ],
             decoration: InputDecoration(
               labelText: 'Rate (₹)',
-              hintText: 'Enter new rate',
+              hintText: 'Enter rate',
               prefixIcon: Icon(Icons.currency_rupee, color: Colors.blue),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               focusedBorder: OutlineInputBorder(
@@ -255,7 +278,7 @@ class _RateEditDialogState extends State<RateEditDialog> {
 
           // Info text
           Text(
-            'This will update the rate for all future invoices',
+            'This will update the item for all future invoices',
             style: TextStyle(
               fontSize: 11.sp,
               color: Colors.grey.shade600,
