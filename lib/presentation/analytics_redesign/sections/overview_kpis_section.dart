@@ -137,7 +137,6 @@ class OverviewKpisSection extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Row(
               children: [
@@ -150,6 +149,7 @@ class OverviewKpisSection extends StatelessWidget {
                 if (delta != null) _buildDeltaBadge(delta),
               ],
             ),
+            const Spacer(),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,

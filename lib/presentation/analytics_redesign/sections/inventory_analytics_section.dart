@@ -180,12 +180,36 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  ...fastMoving.take(3).map((item) => _buildMovementItem(
-                    item['name'] ?? 'Unknown',
-                    '${item['saleCount']}x sold',
-                    Colors.green[600]!,
-                    () => _navigateToInventoryDetail(item),
-                  )),
+                  if (fastMoving.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.grey.shade600, size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            'No fast-moving items found',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ...fastMoving.take(3).map((item) => _buildMovementItem(
+                      item['name'] ?? 'Unknown',
+                      '${item['saleCount']}x sold',
+                      Colors.green[600]!,
+                      () => _navigateToInventoryDetail(item),
+                    )),
                 ],
               );
             }
@@ -214,12 +238,36 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  ...slowMoving.take(3).map((item) => _buildMovementItem(
-                    item['name'] ?? 'Unknown',
-                    '${item['daysInStock']}d old',
-                    Colors.orange[600]!,
-                    () => _navigateToInventoryDetail(item),
-                  )),
+                  if (slowMoving.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle_outline, color: Colors.green.shade600, size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Great! No slow-moving inventory',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ...slowMoving.take(3).map((item) => _buildMovementItem(
+                      item['name'] ?? 'Unknown',
+                      '${item['daysInStock']}d old',
+                      Colors.orange[600]!,
+                      () => _navigateToInventoryDetail(item),
+                    )),
                 ],
               );
             }

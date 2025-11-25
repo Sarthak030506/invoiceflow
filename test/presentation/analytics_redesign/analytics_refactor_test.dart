@@ -140,6 +140,11 @@ void main() {
     expect(find.text('Item Wise'), findsOneWidget);
     expect(find.text('Customer Wise'), findsOneWidget);
 
+    // Verify Due Reminders Section
+    expect(find.text('Due Reminders'), findsOneWidget);
+    expect(find.text('By Customer'), findsOneWidget);
+    expect(find.text('By Item'), findsOneWidget);
+
     // Tap Customer Wise tab
     await tester.tap(find.text('Customer Wise'));
     await tester.pumpAndSettle();
