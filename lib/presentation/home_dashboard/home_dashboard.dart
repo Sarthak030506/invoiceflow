@@ -10,12 +10,14 @@ import '../../providers/auth_provider.dart';
 import '../invoice_type_selection_screen.dart';
 import '../catalogue/business_type_selection_screen.dart';
 import '../../models/invoice_model.dart';
+import '../../models/customer_model.dart';
 import '../../services/invoice_service.dart';
 import '../../services/csv_invoice_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/background_service.dart';
 import '../../services/inventory_service.dart';
 import '../../services/event_service.dart';
+import '../../services/customer_service.dart';
 import '../../utils/app_logger.dart';
 import './widgets/metric_card_widget.dart';
 import './widgets/recent_invoice_item_widget.dart';
@@ -23,6 +25,8 @@ import '../../widgets/enhanced_bottom_nav.dart';
 import '../../widgets/adaptive_scaffold.dart';
 import '../../widgets/app_loading_indicator.dart';
 import '../../widgets/primary_button.dart';
+import '../../widgets/customer_due_edit_dialog.dart';
+import '../../widgets/feedback_animations.dart';
 import '../../animations/fluid_animations.dart';
 import 'dart:async';
 
@@ -41,6 +45,7 @@ class HomeDashboard extends StatefulWidget {
 class _HomeDashboardState extends State<HomeDashboard> {
   late final CsvInvoiceService _csvInvoiceService;
   final InvoiceService _invoiceService = InvoiceService.instance;
+  final CustomerService _customerService = CustomerService.instance;
   final EventService _eventService = EventService();
   bool _isLoading = true;
   bool _isRefreshing = false;
@@ -1097,6 +1102,35 @@ class _HomeDashboardState extends State<HomeDashboard> {
                       ),
                     ),
                   ),
+
+                // Edit Due Icon
+                if (pendingInvoices.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 2.h, right: 2.w),
+                      child: InkWell(
+                        onTap: () => _showQuickEditDue(isCustomerDues),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: EdgeInsets.all(2.w),
+                          decoration: BoxDecoration(
+                            color: isCustomerDues
+                                ? Colors.white.withOpacity(0.2)
+                                : const Color(0xFF263238).withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.edit,
+                            size: 4.5.w,
+                            color: isCustomerDues
+                                ? Colors.white
+                                : const Color(0xFF263238),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1158,6 +1192,151 @@ class _HomeDashboardState extends State<HomeDashboard> {
         arguments: invoice,
       ),
     );
+  }
+
+  Future<void> _showQuickEditDue(bool isCustomerDues) async {
+    if (isCustomerDues) {
+      // Get customers with dues
+      final customerDues = await _getCustomersWithDues();
+
+      if (customerDues.isEmpty) {
+        FeedbackAnimations.showError(
+          context,
+          message: 'No customer dues found',
+        );
+        return;
+      }
+
+      // Sort by outstanding amount (highest first)
+      customerDues.sort((a, b) => (b['due'] as double).compareTo(a['due'] as double));
+
+      // If only one customer, open dialog directly
+      if (customerDues.length == 1) {
+        final topCustomer = customerDues.first;
+        final customer = topCustomer['customer'] as CustomerModel;
+        final dueAmount = topCustomer['due'] as double;
+
+        await CustomerDueEditDialog.show(
+          context,
+          customer,
+          dueAmount,
+          onUpdated: () {
+            setState(() {
+              _isLoading = true;
+            });
+            _loadDashboardData();
+          },
+        );
+      } else {
+        // Show customer selection bottom sheet
+        final selectedCustomer = await showModalBottomSheet<Map<String, dynamic>>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          builder: (context) => Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(4.w),
+                  child: Text(
+                    'Select Customer to Edit Due',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                ...customerDues.map((data) {
+                  final customer = data['customer'] as CustomerModel;
+                  final due = data['due'] as double;
+
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: AppTheme.primaryAccentLight.withOpacity(0.1),
+                      child: Text(
+                        customer.name[0].toUpperCase(),
+                        style: TextStyle(
+                          color: AppTheme.primaryAccentLight,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    title: Text(customer.name),
+                    subtitle: Text(customer.phoneNumber),
+                    trailing: Text(
+                      '₹${due.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange,
+                      ),
+                    ),
+                    onTap: () => Navigator.pop(context, data),
+                  );
+                }),
+                SizedBox(height: 2.h),
+              ],
+            ),
+          ),
+        );
+
+        if (selectedCustomer != null) {
+          final customer = selectedCustomer['customer'] as CustomerModel;
+          final dueAmount = selectedCustomer['due'] as double;
+
+          await CustomerDueEditDialog.show(
+            context,
+            customer,
+            dueAmount,
+            onUpdated: () {
+              setState(() => _isLoading = true);
+              _loadDashboardData();
+            },
+          );
+        }
+      }
+    } else {
+      // For supplier dues - show info message
+      FeedbackAnimations.showInfo(
+        context,
+        message: 'Tap on invoice to record payment',
+      );
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getCustomersWithDues() async {
+    try {
+      final customers = await _customerService.getAllCustomers();
+      final customersWithDues = <Map<String, dynamic>>[];
+
+      for (final customer in customers) {
+        final invoices = await _invoiceService.getCustomerInvoices(customer.id);
+        final unpaidInvoices = invoices.where((inv) =>
+          inv.invoiceType == 'sales' &&
+          inv.paymentStatus == PaymentStatus.balanceDue
+        ).toList();
+
+        if (unpaidInvoices.isNotEmpty) {
+          final totalDue = unpaidInvoices.fold<double>(
+            0.0,
+            (sum, inv) => sum + inv.remainingAmount,
+          );
+
+          customersWithDues.add({
+            'customer': customer,
+            'due': totalDue,
+          });
+        }
+      }
+
+      return customersWithDues;
+    } catch (e) {
+      print('Error getting customers with dues: $e');
+      return [];
+    }
   }
 
   Widget _buildPendingInvoiceItem(InvoiceModel invoice) {
