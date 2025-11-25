@@ -3,8 +3,10 @@ import 'package:sizer/sizer.dart';
 import '../../models/catalog_item.dart';
 import '../../services/inventory_service.dart';
 import '../../services/catalog_service.dart';
+import '../../services/stock_map_service.dart';
 import '../../constants/app_scaling.dart';
 import '../catalogue/business_type_selection_screen.dart';
+import '../../widgets/rate_edit_dialog.dart';
 
 class AddItemsDirectlyScreen extends StatefulWidget {
   @override
@@ -17,14 +19,17 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
   String _selectedCategory = 'All';
   final InventoryService _inventoryService = InventoryService();
   final CatalogService _catalogService = CatalogService.instance;
+  final StockMapService _stockMapService = StockMapService();
 
   List<CatalogItem> _itemCatalog = [];
+  Map<int, int> _stockMap = {};
   bool _catalogLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadCatalog();
+    _loadStockMap();
   }
 
   Future<void> _loadCatalog() async {
@@ -52,6 +57,34 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
         });
       }
     }
+  }
+
+  Future<void> _loadStockMap() async {
+    try {
+      final stockMap = await _stockMapService.getStockMapSnapshot();
+      if (mounted) {
+        setState(() {
+          _stockMap = stockMap;
+        });
+      }
+    } catch (e) {
+      print('Error loading stock map: $e');
+    }
+  }
+
+  int _getItemStock(int itemId) {
+    return _stockMap[itemId] ?? 0;
+  }
+
+  Future<void> _editItem(CatalogItem item) async {
+    final result = await RateEditDialog.show(
+      context,
+      item,
+      onRateUpdated: () {
+        _loadCatalog(); // Refresh catalog after update
+        _loadStockMap(); // Refresh stock data
+      },
+    );
   }
 
   void _promptCatalogueSetup() {
@@ -327,7 +360,10 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
               final itemId = item.id;
               final selected = _selectedItems.containsKey(itemId);
               final selectedItem = _selectedItems[itemId];
-              
+              final currentStock = _getItemStock(itemId);
+              final isLowStock = currentStock <= 10;
+              final isOutOfStock = currentStock <= 0;
+
               return Card(
                 margin: AppScaling.cardMargin,
                 elevation: 2,
@@ -373,12 +409,43 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      item.name,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: AppScaling.h2,
-                                      ),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            item.name,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: AppScaling.h2,
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+                                          decoration: BoxDecoration(
+                                            color: isOutOfStock ? Colors.red.withOpacity(0.1) :
+                                                   isLowStock ? Colors.orange.withOpacity(0.1) :
+                                                   Colors.green.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(
+                                              color: isOutOfStock ? Colors.red :
+                                                     isLowStock ? Colors.orange :
+                                                     Colors.green,
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'Stock: $currentStock',
+                                            style: TextStyle(
+                                              color: isOutOfStock ? Colors.red :
+                                                     isLowStock ? Colors.orange :
+                                                     Colors.green,
+                                              fontSize: 10.sp,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     SizedBox(height: AppScaling.spacingSmall),
                                     Text(
@@ -393,6 +460,26 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
                               ),
                             ],
                           ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: InkWell(
+                              onTap: () => _editItem(item),
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                padding: EdgeInsets.all(2.w),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.edit,
+                                  size: 4.5.w,
+                                  color: Colors.blue.shade700,
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: 1.h),
                           
                           if (selected)
                             Container(

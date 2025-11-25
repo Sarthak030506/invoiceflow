@@ -11,6 +11,7 @@ import '../services/return_service.dart';
 import '../services/catalog_service.dart';
 import '../utils/app_logger.dart';
 import '../widgets/enhanced_payment_details_widget.dart';
+import '../widgets/rate_edit_dialog.dart';
 import './create_invoice/widgets/customer_input_widget.dart';
 import './catalogue/business_type_selection_screen.dart';
 import 'dart:async';
@@ -109,6 +110,16 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
         });
       }
     }
+  }
+
+  Future<void> _editItem(CatalogItem item) async {
+    final result = await RateEditDialog.show(
+      context,
+      item,
+      onRateUpdated: () {
+        _loadCatalog(); // Refresh catalog after update
+      },
+    );
   }
 
   Future<void> _loadStockMap() async {
@@ -752,7 +763,27 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                                 ),
                               ],
                             ),
-                            
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: InkWell(
+                                onTap: () => _editItem(item),
+                                borderRadius: BorderRadius.circular(20),
+                                child: Container(
+                                  padding: EdgeInsets.all(2.w),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.edit,
+                                    size: 4.5.w,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 1.h),
+
                             // Quantity controls (only show if selected)
                             if (selected)
                               Container(
