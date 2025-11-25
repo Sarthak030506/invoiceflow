@@ -186,10 +186,13 @@ class _RateEditDialogState extends State<RateEditDialog> {
           ),
         ],
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           // Current rate info
           if (_hasCustomRate)
             Container(
@@ -285,7 +288,9 @@ class _RateEditDialogState extends State<RateEditDialog> {
               fontStyle: FontStyle.italic,
             ),
           ),
-        ],
+            ],
+          ),
+        ),
       ),
       actions: [
         // Reset button (only show if has custom rate)
