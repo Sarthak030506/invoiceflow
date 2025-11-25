@@ -3,6 +3,7 @@ import 'package:sizer/sizer.dart';
 import '../widgets/skeleton_loader.dart';
 import '../../../services/inventory_service.dart';
 import '../../../services/firestore_service.dart';
+import '../../../models/inventory_item_model.dart';
 
 class InventoryAnalyticsSection extends StatefulWidget {
   final bool isLoading;
@@ -160,8 +161,8 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
           Builder(
             builder: (context) {
               final fastMoving = (widget.inventoryAnalytics['fastMovingItems'] as List<dynamic>?)
-                  ?.cast<Map<String, dynamic>>() ?? [];
-              
+                  ?.cast<InventoryItem>() ?? [];
+
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -205,8 +206,8 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
                     )
                   else
                     ...fastMoving.take(3).map((item) => _buildMovementItem(
-                      item['name'] ?? 'Unknown',
-                      '${item['saleCount']}x sold',
+                      item.name,
+                      '${item.currentStock.toInt()} in stock',
                       Colors.green[600]!,
                       () => _navigateToInventoryDetail(item),
                     )),
@@ -218,8 +219,10 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
           Builder(
             builder: (context) {
               final slowMoving = (widget.inventoryAnalytics['slowMovingItems'] as List<dynamic>?)
-                  ?.cast<Map<String, dynamic>>() ?? [];
-                  
+                  ?.cast<InventoryItem>() ?? [];
+
+              final now = DateTime.now();
+
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -262,12 +265,15 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
                       ),
                     )
                   else
-                    ...slowMoving.take(3).map((item) => _buildMovementItem(
-                      item['name'] ?? 'Unknown',
-                      '${item['daysInStock']}d old',
-                      Colors.orange[600]!,
-                      () => _navigateToInventoryDetail(item),
-                    )),
+                    ...slowMoving.take(3).map((item) {
+                      final daysOld = now.difference(item.lastUpdated).inDays;
+                      return _buildMovementItem(
+                        item.name,
+                        '${daysOld}d old',
+                        Colors.orange[600]!,
+                        () => _navigateToInventoryDetail(item),
+                      );
+                    }),
                 ],
               );
             }
@@ -896,11 +902,11 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
     );
   }
 
-  void _navigateToInventoryDetail(Map<String, dynamic> item) {
+  void _navigateToInventoryDetail(InventoryItem item) {
     Navigator.pushNamed(
       context,
       '/inventory_detail',
-      arguments: {'itemId': item['id']},
+      arguments: {'itemId': item.id},
     );
   }
 
