@@ -18,6 +18,8 @@ class DueRemindersSection extends StatefulWidget {
 }
 
 class _DueRemindersSectionState extends State<DueRemindersSection> {
+  bool _isCustomerView = true;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -26,257 +28,105 @@ class _DueRemindersSectionState extends State<DueRemindersSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Due Reminders',
-            style: TextStyle(
-              fontSize: 18.sp,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade800,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'Due Reminders',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ),
+              _buildTabSelector(),
+            ],
           ),
-          SizedBox(height: 12),
+          SizedBox(height: 16),
           widget.isLoading
               ? SkeletonLoader.dueReminderCard()
-              : _buildDueRemindersCard(),
+              : _buildContent(),
         ],
       ),
     );
   }
 
-  Widget _buildDueRemindersCard() {
+  Widget _buildTabSelector() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Icon(Icons.notifications_active, color: Colors.red, size: 20),
-              const SizedBox(width: 8),
-              const Text(
-                'Outstanding Payments',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: _showDueRemindersModal,
-                child: Icon(
-                  Icons.open_in_new,
-                  size: 16,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _buildDueSummary(),
-          const SizedBox(height: 20),
-          const Text(
-            'Aging Analysis',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _buildAgingBar(),
+          _buildTabButton('By Customer', true),
+          _buildTabButton('By Item', false),
         ],
       ),
     );
   }
 
-  Widget _buildDueSummary() {
-    final totalOutstanding = widget.outstandingPayments['totalOutstanding'] ?? 0.0;
-    final overdueCount = widget.outstandingPayments['overdueCount'] ?? 0;
-
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Total Due',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              Text(
-                _formatCurrency(totalOutstanding),
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.red,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            '$overdueCount overdue',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Colors.red[700],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAgingBar() {
-    final buckets = _getOverdueCustomerBuckets();
-    final totalAmount = buckets.fold<double>(0, (sum, item) => sum + (item['amount'] as double));
-
-    return Column(
-      children: [
-        Container(
-          height: 12,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            color: Colors.grey.shade100,
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: Row(
-              children: buckets.map((bucket) {
-                final amount = bucket['amount'] as double;
-                final percentage = totalAmount > 0 ? amount / totalAmount : 0.0;
-                if (percentage <= 0) return const SizedBox.shrink();
-
-                return Expanded(
-                  flex: (percentage * 100).round(),
-                  child: Container(
-                    color: bucket['color'],
+  Widget _buildTabButton(String text, bool isCustomer) {
+    final isSelected = _isCustomerView == isCustomer;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _isCustomerView = isCustomer;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
                   ),
-                );
-              }).toList(),
-            ),
-          ),
+                ]
+              : [],
         ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          children: buckets.map((bucket) {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: bucket['color'],
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  bucket['label'],
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-
-  void _showDueRemindersModal() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: DefaultTabController(
-          length: 2,
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.notifications_active, color: Colors.red, size: 24),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Outstanding Payments',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              TabBar(
-                labelColor: Colors.red,
-                unselectedLabelColor: Colors.grey.shade600,
-                indicatorColor: Colors.red,
-                tabs: const [
-                  Tab(text: 'By Customer'),
-                  Tab(text: 'By Item'),
-                ],
-              ),
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    _buildCustomerBucketsList(),
-                    _buildItemBucketsList(),
-                  ],
-                ),
-              ),
-            ],
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            color: isSelected ? Colors.red : Colors.grey.shade600,
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildContent() {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: _isCustomerView
+          ? _buildCustomerBucketsList()
+          : _buildItemBucketsList(),
     );
   }
 
   Widget _buildCustomerBucketsList() {
     final buckets = _getOverdueCustomerBuckets();
 
+    if (buckets.isEmpty) {
+      return _buildEmptyState();
+    }
+
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       itemCount: buckets.length,
       separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
@@ -350,8 +200,14 @@ class _DueRemindersSectionState extends State<DueRemindersSection> {
   Widget _buildItemBucketsList() {
     final buckets = _getOverdueItemBuckets();
 
+    if (buckets.isEmpty) {
+      return _buildEmptyState();
+    }
+
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       itemCount: buckets.length,
       separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
@@ -419,6 +275,39 @@ class _DueRemindersSectionState extends State<DueRemindersSection> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.check_circle_outline, size: 48, color: Colors.green.shade300),
+          const SizedBox(height: 16),
+          Text(
+            'No overdue payments',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          Text(
+            'Great job! Everything is on track.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -818,10 +707,27 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
     }
   }
 
-  void _viewLedger(Map<String, dynamic> customer) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Opening ledger for ${customer['name']}')),
-    );
+  Future<void> _viewLedger(Map<String, dynamic> customer) async {
+    try {
+      // Get customer ID by name
+      final customerService = CustomerService.instance;
+      final allCustomers = await customerService.getAllCustomers();
+      final customerData = allCustomers.firstWhere(
+        (c) => c.name == customer['name'],
+        orElse: () => throw Exception('Customer not found'),
+      );
+
+      // Navigate to customer detail screen
+      Navigator.pushNamed(
+        context,
+        '/customer-detail-screen',
+        arguments: customerData.id,
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error opening ledger: ${e.toString()}')),
+      );
+    }
   }
 
   String _formatCurrency(double amount) {
