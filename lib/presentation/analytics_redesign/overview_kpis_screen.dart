@@ -241,32 +241,43 @@ class _OverviewKpisScreenState extends State<OverviewKpisScreen> {
             ),
           ),
           SizedBox(height: 2.w),
-          Row(
-            children: [
-              Icon(
-                isPositive ? Icons.trending_up : Icons.trending_down,
-                color: isPositive ? Colors.green : Colors.red,
-                size: 4.w,
-              ),
-              SizedBox(width: 1.w),
-              Text(
-                '${isPositive ? '+' : ''}${change.toStringAsFixed(1)}%',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w600,
+          // Only show trend if there's actual change data
+          if (change != 0.0)
+            Row(
+              children: [
+                Icon(
+                  isPositive ? Icons.trending_up : Icons.trending_down,
                   color: isPositive ? Colors.green : Colors.red,
+                  size: 4.w,
                 ),
-              ),
-              SizedBox(width: 2.w),
-              Text(
-                'vs ${_getPreviousPeriodText()}',
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: Colors.grey.shade600,
+                SizedBox(width: 1.w),
+                Text(
+                  '${isPositive ? '+' : ''}${change.toStringAsFixed(1)}%',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                    color: isPositive ? Colors.green : Colors.red,
+                  ),
                 ),
+                SizedBox(width: 2.w),
+                Text(
+                  'vs ${_getPreviousPeriodText()}',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            )
+          else
+            Text(
+              'No comparison data available',
+              style: TextStyle(
+                fontSize: 12.sp,
+                color: Colors.grey.shade500,
+                fontStyle: FontStyle.italic,
               ),
-            ],
-          ),
+            ),
         ],
       ),
     );
