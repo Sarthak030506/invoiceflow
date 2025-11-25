@@ -292,6 +292,7 @@ class _RateEditDialogState extends State<RateEditDialog> {
           ),
         ),
       ),
+      actionsAlignment: MainAxisAlignment.spaceBetween,
       actions: [
         // Reset button (only show if has custom rate)
         if (_hasCustomRate)
@@ -302,9 +303,9 @@ class _RateEditDialogState extends State<RateEditDialog> {
             style: TextButton.styleFrom(
               foregroundColor: Colors.orange,
             ),
-          ),
-
-        const Spacer(),
+          )
+        else
+          const SizedBox.shrink(),
 
         // Cancel button
         TextButton(
