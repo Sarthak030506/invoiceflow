@@ -61,7 +61,7 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
 
   Future<void> _loadStockMap() async {
     try {
-      final stockMap = await _stockMapService.getStockMapSnapshot();
+      final stockMap = await _stockMapService.getCurrentStockMap();
       if (mounted) {
         setState(() {
           _stockMap = stockMap;
