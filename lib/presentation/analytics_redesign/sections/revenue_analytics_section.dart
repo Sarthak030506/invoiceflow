@@ -5,8 +5,8 @@ import '../widgets/sparkline_painter.dart';
 import '../../../services/analytics_service.dart';
 import '../../../services/firestore_service.dart';
 import '../../../services/inventory_service.dart';
-import '../item_wise_revenue_screen.dart';
-import '../customer_wise_revenue_screen.dart';
+import '../widgets/embedded_item_wise_revenue.dart';
+import '../widgets/embedded_customer_wise_revenue.dart';
 
 class RevenueAnalyticsSection extends StatefulWidget {
   final bool isLoading;
@@ -61,8 +61,8 @@ class _RevenueAnalyticsSectionState extends State<RevenueAnalyticsSection> {
               : Column(
                   children: [
                     _buildTodaysRevenueCard(),
-                    SizedBox(height: 12),
-                    _buildItemRevenueCard(),
+                    SizedBox(height: 24),
+                    _buildBreakdownSection(),
                   ],
                 ),
         ],
@@ -132,140 +132,131 @@ class _RevenueAnalyticsSectionState extends State<RevenueAnalyticsSection> {
     );
   }
 
-  Widget _buildItemRevenueCard() {
-    final topItems = _isCustomerWiseView ? [] : _getTopSellingItems();
-    final topCustomers = _isCustomerWiseView ? _getTopCustomers() : [];
-
-    return Container(
-      key: const Key('itemRevenueCard'),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                _isCustomerWiseView ? Icons.people : Icons.bar_chart,
-                color: _isCustomerWiseView ? Colors.green : Colors.blue,
-                size: 20,
+  Widget _buildBreakdownSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section Title
+        Row(
+          children: [
+            Icon(
+              Icons.pie_chart,
+              color: Colors.blue.shade700,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Revenue Breakdown',
+              style: TextStyle(
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade800,
               ),
-              const SizedBox(width: 8),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        
+        // Custom Tab Selector
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.all(4),
+          child: Row(
+            children: [
               Expanded(
-                child: Text(
-                  _isCustomerWiseView
-                      ? 'Customer-wise Revenue Breakdown'
-                      : 'Item-wise Revenue Breakdown',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _isCustomerWiseView = false;
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: !_isCustomerWiseView ? Colors.white : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: !_isCustomerWiseView
+                          ? [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: Text(
+                      'Item Wise',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: !_isCustomerWiseView ? FontWeight.w600 : FontWeight.w500,
+                        color: !_isCustomerWiseView ? Colors.blue.shade700 : Colors.grey.shade600,
+                      ),
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: _isCustomerWiseView
-                    ? _showFullCustomerBreakdown
-                    : _showFullItemBreakdown,
-                child: Icon(
-                  Icons.open_in_new,
-                  size: 16,
-                  color: Colors.grey.shade600,
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _isCustomerWiseView = true;
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _isCustomerWiseView ? Colors.white : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: _isCustomerWiseView
+                          ? [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: Text(
+                      'Customer Wise',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: _isCustomerWiseView ? FontWeight.w600 : FontWeight.w500,
+                        color: _isCustomerWiseView ? Colors.green.shade700 : Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          // Toggle between Item Wise and Customer Wise
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _isCustomerWiseView = false;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: !_isCustomerWiseView
-                            ? Colors.blue
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Item Wise',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: !_isCustomerWiseView
-                              ? Colors.white
-                              : Colors.grey.shade700,
-                        ),
-                      ),
-                    ),
-                  ),
+        ),
+        const SizedBox(height: 16),
+
+        // Content Area
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: _isCustomerWiseView
+              ? EmbeddedCustomerWiseRevenue(
+                  key: const ValueKey('customer_wise'),
+                  customers: _getTopCustomers(),
+                  dateRange: _getDateRangeLabel(),
+                )
+              : EmbeddedItemWiseRevenue(
+                  key: const ValueKey('item_wise'),
+                  items: _getTopSellingItems(),
+                  dateRange: _getDateRangeLabel(),
                 ),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _isCustomerWiseView = true;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: _isCustomerWiseView
-                            ? Colors.green
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Customer Wise',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: _isCustomerWiseView
-                              ? Colors.white
-                              : Colors.grey.shade700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (!_isCustomerWiseView)
-            ...topItems.take(5).map((item) => _buildHorizontalBar(item)),
-          if (_isCustomerWiseView)
-            ...topCustomers
-                .take(5)
-                .map((customer) => _buildCustomerHorizontalBar(customer)),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -275,169 +266,6 @@ class _RevenueAnalyticsSectionState extends State<RevenueAnalyticsSection> {
       height: 20,
       child: CustomPaint(
         painter: SparklinePainter(_getLast7DaysData()),
-      ),
-    );
-  }
-
-  Widget _buildHorizontalBar(Map<String, dynamic> item) {
-    final itemName = item['itemName'] as String? ?? 'Unknown';
-    final revenue = (item['revenue'] as double?) ?? 0.0;
-    final maxRevenue = _getMaxItemRevenue();
-    final barWidth = maxRevenue > 0 ? (revenue / maxRevenue) * 200 : 0.0;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  itemName,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Text(
-                _formatCurrency(revenue),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.blue,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Container(
-            height: 6,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(3),
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                height: 6,
-                width: barWidth,
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCustomerHorizontalBar(Map<String, dynamic> customer) {
-    final customerName = customer['customerName'] as String? ?? 'Unknown';
-    final revenue = (customer['totalRevenue'] as double?) ?? 0.0;
-    final invoiceCount = (customer['invoiceCount'] as int?) ?? 0;
-    final maxRevenue = _getMaxCustomerRevenue();
-    final barWidth = maxRevenue > 0 ? (revenue / maxRevenue) * 200 : 0.0;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      customerName,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      '$invoiceCount invoice${invoiceCount != 1 ? 's' : ''}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                _formatCurrency(revenue),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.green,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Container(
-            height: 6,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(3),
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                height: 6,
-                width: barWidth,
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHoldingBucket(String label, int count, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            count.toString(),
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: color,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -488,18 +316,6 @@ class _RevenueAnalyticsSectionState extends State<RevenueAnalyticsSection> {
     return widget.customerAnalyticsData;
   }
 
-  double _getMaxItemRevenue() {
-    final items = _getTopSellingItems();
-    if (items.isEmpty) return 1000.0;
-    return items.map((e) => (e['revenue'] as double?) ?? 0.0).reduce((a, b) => a > b ? a : b);
-  }
-
-  double _getMaxCustomerRevenue() {
-    final customers = _getTopCustomers();
-    if (customers.isEmpty) return 1000.0;
-    return customers.map((e) => (e['totalRevenue'] as double?) ?? 0.0).reduce((a, b) => a > b ? a : b);
-  }
-
   List<double> _getLast7DaysData() {
     final revenueTrend = widget.chartData['revenueTrend'] as List<dynamic>? ?? [];
     if (revenueTrend.isEmpty) return [0, 0, 0, 0, 0, 0, 0];
@@ -513,32 +329,6 @@ class _RevenueAnalyticsSectionState extends State<RevenueAnalyticsSection> {
     }
 
     return last7Days;
-  }
-
-  void _showFullItemBreakdown() {
-    String dateRangeLabel = _getDateRangeLabel();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ItemWiseRevenueScreen(
-          items: _getTopSellingItems(),
-          dateRange: dateRangeLabel,
-        ),
-      ),
-    );
-  }
-
-  void _showFullCustomerBreakdown() {
-    String dateRangeLabel = _getDateRangeLabel();
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CustomerWiseRevenueScreen(
-          customers: _getTopCustomers(),
-          dateRange: dateRangeLabel,
-        ),
-      ),
-    );
   }
 
   String _getDateRangeLabel() {

@@ -8,8 +8,6 @@ import '../../services/analytics_service.dart';
 import '../../services/inventory_service.dart';
 import '../../services/customer_service.dart';
 import '../../services/firestore_service.dart';
-import 'item_wise_revenue_screen.dart';
-import 'customer_wise_revenue_screen.dart';
 import 'sections/overview_kpis_section.dart';
 import 'sections/revenue_analytics_section.dart';
 import 'sections/items_insights_section.dart';
@@ -24,6 +22,7 @@ class AnalyticsRedesignScaffold extends StatefulWidget {
   
   final AnalyticsService? analyticsService;
   final InventoryService? inventoryService;
+  final FirestoreService? firestoreService;
   
   const AnalyticsRedesignScaffold({
     Key? key,
@@ -32,6 +31,7 @@ class AnalyticsRedesignScaffold extends StatefulWidget {
     this.customDateRange,
     this.analyticsService,
     this.inventoryService,
+    this.firestoreService,
   }) : super(key: key);
 
   @override
@@ -119,6 +119,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
             isLoading: _isLoading,
             inventoryAnalytics: inventoryAnalytics,
             inventoryService: widget.inventoryService,
+            firestoreService: widget.firestoreService,
           ),
           SizedBox(height: 16),
           DueRemindersSection(

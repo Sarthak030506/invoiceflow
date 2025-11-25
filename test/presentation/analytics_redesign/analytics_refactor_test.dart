@@ -3,6 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:invoiceflow/presentation/analytics_redesign/analytics_redesign_scaffold.dart';
 import 'package:invoiceflow/services/analytics_service.dart';
 import 'package:invoiceflow/services/inventory_service.dart';
+import 'package:invoiceflow/services/firestore_service.dart';
+import 'package:invoiceflow/models/invoice_model.dart';
+import 'package:invoiceflow/models/inventory_item_model.dart';
 import 'package:sizer/sizer.dart';
 
 // Mock Services
@@ -55,6 +58,21 @@ class MockInventoryService implements InventoryService {
   }
 
   @override
+  Future<List<InventoryItem>> getAllItems() async {
+    return [];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class MockFirestoreService implements FirestoreService {
+  @override
+  Future<List<InvoiceModel>> getAllInvoices() async {
+    return [];
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -83,6 +101,7 @@ void main() {
     // Arrange
     final mockAnalyticsService = MockAnalyticsService();
     final mockInventoryService = MockInventoryService();
+    final mockFirestoreService = MockFirestoreService();
 
     // Act
     await tester.pumpWidget(
@@ -92,6 +111,7 @@ void main() {
             home: AnalyticsRedesignScaffold(
               analyticsService: mockAnalyticsService,
               inventoryService: mockInventoryService,
+              firestoreService: mockFirestoreService,
             ),
           );
         },
@@ -115,5 +135,17 @@ void main() {
     // Verify Inventory Data
     expect(find.text('Inventory Summary'), findsOneWidget);
     expect(find.text('50'), findsOneWidget); // Total items
+
+    // Verify Revenue Tabs
+    expect(find.text('Item Wise'), findsOneWidget);
+    expect(find.text('Customer Wise'), findsOneWidget);
+
+    // Tap Customer Wise tab
+    await tester.tap(find.text('Customer Wise'));
+    await tester.pumpAndSettle();
+
+    // Verify Customer Wise view is active (we can check for specific widgets or just that no error occurred)
+    // Since we returned empty customer list, we expect "No customers found" or similar if we implemented it,
+    // or just the tab switch happened.
   });
 }

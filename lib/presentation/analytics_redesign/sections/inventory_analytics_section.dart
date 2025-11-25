@@ -8,12 +8,14 @@ class InventoryAnalyticsSection extends StatefulWidget {
   final bool isLoading;
   final Map<String, dynamic> inventoryAnalytics;
   final InventoryService? inventoryService;
+  final FirestoreService? firestoreService;
 
   const InventoryAnalyticsSection({
     Key? key,
     required this.isLoading,
     required this.inventoryAnalytics,
     this.inventoryService,
+    this.firestoreService,
   }) : super(key: key);
 
   @override
@@ -594,7 +596,7 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
   Future<List<Map<String, dynamic>>> _getUnsoldItems() async {
     try {
       final inventoryService = widget.inventoryService ?? InventoryService();
-      final fs = FirestoreService.instance;
+      final fs = widget.firestoreService ?? FirestoreService.instance;
 
       final allItems = await inventoryService.getAllItems();
       final itemsWithStock = allItems.where((item) => item.currentStock > 0).toList();
