@@ -82,7 +82,32 @@ class AnalyticsService {
         return DateTime(2000, 1, 1); // Very old date to include all
     }
   }
-  
+
+  DateTime _calculatePreviousPeriodStartDate(String dateRange, DateTime currentStartDate) {
+    final now = DateTime.now();
+    switch (dateRange) {
+      case 'Today':
+        // Previous day
+        return currentStartDate.subtract(Duration(days: 1));
+      case 'Last 7 days':
+        // Previous 7 days (8-14 days ago)
+        return now.subtract(Duration(days: 14));
+      case 'Last 30 days':
+        // Previous 30 days (31-60 days ago)
+        return now.subtract(Duration(days: 60));
+      case 'Last 90 days':
+        // Previous 90 days (91-180 days ago)
+        return now.subtract(Duration(days: 180));
+      case 'This year':
+        // Previous year
+        return DateTime(now.year - 1, 1, 1);
+      case 'All time':
+      default:
+        // No previous period for "All time"
+        return DateTime(2000, 1, 1);
+    }
+  }
+
   // Get customer purchase history and analytics
   // Add methods needed by analytics_screen.dart
   Future<List<Map<String, dynamic>>> getFilteredAnalytics(String dateRange, {bool salesOnly = true}) async {
@@ -421,6 +446,40 @@ class AnalyticsService {
     
     topClients.sort((a, b) => (b['totalRevenue'] as double).compareTo(a['totalRevenue'] as double));
 
+    // Calculate previous period revenue for comparison
+    final DateTime previousStartDate = _calculatePreviousPeriodStartDate(dateRange, startDate);
+    final previousInvoices = await _fs.getInvoicesByDateRange(
+      startDate: previousStartDate,
+      endDate: startDate,
+      limit: 5000,
+    );
+
+    double previousRevenue = 0.0;
+    int previousItemsSold = 0;
+    for (final invoice in previousInvoices) {
+      if (invoice.invoiceType == 'sales') {
+        previousRevenue += invoice.effectiveRevenue;
+        previousItemsSold += invoice.items.fold(0, (sum, item) => sum + item.quantity);
+      }
+    }
+
+    // Calculate percentage changes
+    double revenueChange = 0.0;
+    if (previousRevenue > 0) {
+      revenueChange = ((totalRevenue - previousRevenue) / previousRevenue) * 100;
+    } else if (totalRevenue > 0) {
+      revenueChange = 100.0; // If previous was 0 but current has revenue, it's 100% increase
+    }
+
+    final currentItemsSold = invoices.where((inv) => inv.invoiceType == 'sales')
+        .fold(0, (sum, inv) => sum + inv.items.fold(0, (s, item) => s + item.quantity));
+    double itemsSoldChange = 0.0;
+    if (previousItemsSold > 0) {
+      itemsSoldChange = ((currentItemsSold - previousItemsSold) / previousItemsSold) * 100;
+    } else if (currentItemsSold > 0) {
+      itemsSoldChange = 100.0;
+    }
+
     // Top revenue items (use same date range)
     final analytics = await getFilteredAnalytics(dateRange);
     final topRevenueItems = analytics.take(5).map((item) => {
@@ -429,7 +488,7 @@ class AnalyticsService {
       'quantitySold': item['quantitySold'],
       'category': ProductCategories.getCategoryForProduct(item['itemName']),
     }).toList();
-    
+
     return {
       'insights': {
         'totalUniqueItems': uniqueItems.length,
@@ -438,8 +497,8 @@ class AnalyticsService {
         'averageRevenuePerItem': uniqueItems.isNotEmpty ? totalRevenue / uniqueItems.length : 0.0
       },
       'trends': {
-        'revenueChange': 5.2, // Mock trend data
-        'itemsSoldChange': 3.8,
+        'revenueChange': revenueChange,
+        'itemsSoldChange': itemsSoldChange,
       },
       'topRevenueItems': topRevenueItems,
       'topClients': topClients.take(5).toList(),
