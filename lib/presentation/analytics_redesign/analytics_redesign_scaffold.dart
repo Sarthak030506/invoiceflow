@@ -397,6 +397,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
         analyticsService.fetchPerformanceInsights(serviceRange),
         analyticsService.getChartAnalytics(serviceRange),
         inventoryService.getInventoryAnalytics(),
+        analyticsService.getOverduePaymentsBuckets(),
       ]);
 
       setState(() {
@@ -405,7 +406,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
         performanceInsights = results[2] as Map<String, dynamic>;
         chartData = results[3] as Map<String, dynamic>;
         inventoryAnalytics = results[4] as Map<String, dynamic>;
-        outstandingPayments = {}; // Initialize to empty map
+        outstandingPayments = results[5] as Map<String, dynamic>;
         _isLoading = false;
       });
       

@@ -777,4 +777,177 @@ class AnalyticsService {
       return [];
     }
   }
+
+  /// Get overdue payments organized by aging buckets (customer and item view)
+  Future<Map<String, dynamic>> getOverduePaymentsBuckets() async {
+    try {
+      final invoices = await _fs.getAllInvoices();
+      final now = DateTime.now();
+
+      // Customer buckets data
+      Map<String, Map<String, dynamic>> customerBuckets = {
+        '1-7': {'count': 0, 'amount': 0.0},
+        '8-30': {'count': 0, 'amount': 0.0},
+        '31-60': {'count': 0, 'amount': 0.0},
+        '60+': {'count': 0, 'amount': 0.0},
+      };
+
+      // Item buckets data
+      Map<String, Map<String, dynamic>> itemBuckets = {
+        '1-7': {'count': 0, 'amount': 0.0},
+        '8-30': {'count': 0, 'amount': 0.0},
+        '31-60': {'count': 0, 'amount': 0.0},
+        '60+': {'count': 0, 'amount': 0.0},
+      };
+
+      // Track customer details
+      Map<String, Map<String, dynamic>> customerDetails = {};
+      // Track item details
+      Map<String, Map<String, dynamic>> itemDetails = {};
+
+      for (final invoice in invoices) {
+        // Only process sales invoices with balance due
+        if (invoice.invoiceType != 'sales' || invoice.paymentStatus != PaymentStatus.balanceDue) {
+          continue;
+        }
+
+        final remainingAmount = invoice.remainingAmount;
+        if (remainingAmount <= 0) continue;
+
+        // Calculate days overdue (use followUpDate if available, otherwise invoice date)
+        final dueDate = invoice.followUpDate ?? invoice.date;
+        final daysOverdue = now.difference(dueDate).inDays;
+
+        if (daysOverdue < 1) continue; // Not overdue yet
+
+        // Determine bucket
+        String bucket;
+        if (daysOverdue <= 7) {
+          bucket = '1-7';
+        } else if (daysOverdue <= 30) {
+          bucket = '8-30';
+        } else if (daysOverdue <= 60) {
+          bucket = '31-60';
+        } else {
+          bucket = '60+';
+        }
+
+        // Update customer buckets
+        final customerId = invoice.customerId ?? invoice.clientName; // fallback to name if no ID
+        final customerName = invoice.clientName;
+
+        if (!customerDetails.containsKey(customerId)) {
+          customerDetails[customerId] = {
+            'name': customerName,
+            'amount': 0.0,
+            'invoiceCount': 0,
+            'daysBucket': bucket,
+            'lastInvoiceDate': invoice.date,
+            'daysOverdue': daysOverdue,
+          };
+        }
+
+        customerDetails[customerId]!['amount'] =
+            (customerDetails[customerId]!['amount'] as double) + remainingAmount;
+        customerDetails[customerId]!['invoiceCount'] =
+            (customerDetails[customerId]!['invoiceCount'] as int) + 1;
+
+        // Use the oldest bucket for the customer
+        final existingBucket = customerDetails[customerId]!['daysBucket'] as String;
+        final bucketOrder = ['1-7', '8-30', '31-60', '60+'];
+        if (bucketOrder.indexOf(bucket) > bucketOrder.indexOf(existingBucket)) {
+          customerDetails[customerId]!['daysBucket'] = bucket;
+        }
+
+        // Update item buckets
+        for (final item in invoice.items) {
+          if (item.quantity <= 0) continue;
+
+          final itemName = item.name;
+          final itemAmount = (item.price * item.quantity) * (remainingAmount / invoice.total);
+
+          if (!itemDetails.containsKey(itemName)) {
+            itemDetails[itemName] = {
+              'name': itemName,
+              'amount': 0.0,
+              'debtorCount': <String>{}, // Set of customer IDs
+              'daysBucket': bucket,
+              'lastSoldDate': invoice.date,
+              'daysOverdue': daysOverdue,
+            };
+          }
+
+          itemDetails[itemName]!['amount'] =
+              (itemDetails[itemName]!['amount'] as double) + itemAmount;
+          (itemDetails[itemName]!['debtorCount'] as Set<String>).add(customerId ?? 'Unknown');
+
+          // Use the oldest bucket for the item
+          final existingBucket = itemDetails[itemName]!['daysBucket'] as String;
+          final bucketOrder = ['1-7', '8-30', '31-60', '60+'];
+          if (bucketOrder.indexOf(bucket) > bucketOrder.indexOf(existingBucket)) {
+            itemDetails[itemName]!['daysBucket'] = bucket;
+          }
+        }
+      }
+
+      // Aggregate customer buckets
+      for (final customer in customerDetails.values) {
+        final bucket = customer['daysBucket'] as String;
+        customerBuckets[bucket]!['count'] = (customerBuckets[bucket]!['count'] as int) + 1;
+        customerBuckets[bucket]!['amount'] =
+            (customerBuckets[bucket]!['amount'] as double) + (customer['amount'] as double);
+      }
+
+      // Aggregate item buckets
+      for (final item in itemDetails.values) {
+        final bucket = item['daysBucket'] as String;
+        itemBuckets[bucket]!['count'] = (itemBuckets[bucket]!['count'] as int) + 1;
+        itemBuckets[bucket]!['amount'] =
+            (itemBuckets[bucket]!['amount'] as double) + (item['amount'] as double);
+      }
+
+      // Convert customer details to list with formatted data
+      final customersList = customerDetails.values.map((c) {
+        return {
+          'name': c['name'],
+          'amount': c['amount'],
+          'invoiceCount': c['invoiceCount'],
+          'daysBucket': c['daysBucket'],
+          'lastInvoiceDate': _formatDate(c['lastInvoiceDate'] as DateTime),
+          'daysOverdue': c['daysOverdue'],
+        };
+      }).toList();
+
+      // Convert item details to list with formatted data
+      final itemsList = itemDetails.values.map((i) {
+        return {
+          'name': i['name'],
+          'amount': i['amount'],
+          'debtorCount': (i['debtorCount'] as Set<String>).length,
+          'daysBucket': i['daysBucket'],
+          'lastSoldDate': _formatDate(i['lastSoldDate'] as DateTime),
+          'daysOverdue': i['daysOverdue'],
+        };
+      }).toList();
+
+      return {
+        'customerBuckets': customerBuckets,
+        'itemBuckets': itemBuckets,
+        'customers': customersList,
+        'items': itemsList,
+      };
+    } catch (e) {
+      print('Error in getOverduePaymentsBuckets: $e');
+      return {
+        'customerBuckets': {},
+        'itemBuckets': {},
+        'customers': [],
+        'items': [],
+      };
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
 }
