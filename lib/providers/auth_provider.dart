@@ -126,8 +126,9 @@ class AuthProvider extends ChangeNotifier {
   Future<UserCredential?> signUpWithEmailAndPassword(String email, String password) async {
     try {
       _isLoading = true;
+      _error = null; // Clear any previous errors
       notifyListeners();
-      
+
       final userCredential = await _authService.signUpWithEmailAndPassword(
         email: email,
         password: password,
@@ -136,6 +137,8 @@ class AuthProvider extends ChangeNotifier {
       _user = userCredential?.user;
       await _handleNewlySignedInUser();
       notifyListeners();
+
+      return userCredential; // Return the credential on success
     } on FirebaseAuthException catch (e) {
       _setError(_getUserFriendlyErrorMessage(e));
       return null;
@@ -239,6 +242,10 @@ class AuthProvider extends ChangeNotifier {
 
   String _getUserFriendlyErrorMessage(FirebaseAuthException e) {
     switch (e.code) {
+      case 'weak-password':
+        return 'Password is too weak. Please use at least 6 characters.';
+      case 'email-already-in-use':
+        return 'An account with this email already exists. Please login instead.';
       case 'user-not-found':
         return 'No account found with this email. Please check and try again.';
       case 'wrong-password':

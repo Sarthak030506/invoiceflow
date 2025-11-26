@@ -122,40 +122,31 @@ class _SignupScreenState extends State<SignupScreen> {
                             ? null
                             : () async {
                                 if (_formKey.currentState!.validate()) {
-                                  try {
-                                    await authProvider.signUpWithEmailAndPassword(
-                                      _emailController.text,
-                                      _passwordController.text,
-                                    );
+                                  // Call signup and check return value
+                                  final userCredential = await authProvider.signUpWithEmailAndPassword(
+                                    _emailController.text,
+                                    _passwordController.text,
+                                  );
 
-                                    // Only navigate if signup was successful and there's no error
-                                    if (mounted && authProvider.error == null) {
-                                      Navigator.pushReplacement(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const ItemsSetupOnboardingScreen(
-                                            isFirstTimeSetup: true,
-                                          ),
+                                  // Only navigate if signup was successful (returns non-null)
+                                  if (mounted && userCredential != null) {
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const ItemsSetupOnboardingScreen(
+                                          isFirstTimeSetup: true,
                                         ),
-                                      );
-                                    } else if (mounted && authProvider.error != null) {
-                                      // Show error in snackbar as well
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(authProvider.error!),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(e.toString()),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
+                                      ),
+                                    );
+                                  } else if (mounted && authProvider.error != null) {
+                                    // Show error in snackbar as well
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(authProvider.error!),
+                                        backgroundColor: Colors.red,
+                                        duration: const Duration(seconds: 4),
+                                      ),
+                                    );
                                   }
                                 }
                               },
