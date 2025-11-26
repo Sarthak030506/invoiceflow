@@ -526,9 +526,9 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
 
   void _showMovementHealthModal() {
     final fastMoving = (widget.inventoryAnalytics['fastMovingItems'] as List<dynamic>?)
-        ?.cast<Map<String, dynamic>>() ?? [];
+        ?.cast<InventoryItem>() ?? [];
     final slowMoving = (widget.inventoryAnalytics['slowMovingItems'] as List<dynamic>?)
-        ?.cast<Map<String, dynamic>>() ?? [];
+        ?.cast<InventoryItem>() ?? [];
 
     showModalBottomSheet(
       context: context,
@@ -590,13 +590,16 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
     );
   }
 
-  Widget _buildMovementList(List<Map<String, dynamic>> items, bool isFastMoving) {
+  Widget _buildMovementList(List<InventoryItem> items, bool isFastMoving) {
+    final now = DateTime.now();
+
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: items.length,
       itemBuilder: (context, index) {
         final item = items[index];
         final color = isFastMoving ? Colors.green : Colors.orange;
+        final daysOld = now.difference(item.lastUpdated).inDays;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -610,7 +613,7 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                item['name'],
+                item.name,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -619,22 +622,20 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
               const SizedBox(height: 8),
               if (isFastMoving) ...[
                 Text(
-                  'Sales: ${item['saleCount']} times (${item['totalSold']} units)',
+                  'Current Stock: ${item.currentStock.toInt()} ${item.unit}',
                   style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                 ),
                 Text(
-                  'Turnover: ${item['turnoverRate'].toStringAsFixed(1)}x per week',
+                  'SKU: ${item.sku}',
                   style: TextStyle(fontSize: 14, color: color, fontWeight: FontWeight.w500),
                 ),
               ] else ...[
                 Text(
-                  'Stock: ${item['currentStock']} units • Sales: ${item['totalSold']} units',
+                  'Stock: ${item.currentStock.toInt()} ${item.unit}',
                   style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                 ),
                 Text(
-                  item['lastSoldDate'] != null
-                      ? 'Last sold: ${item['daysInStock']} days ago'
-                      : 'Never sold in last 30 days',
+                  'Last updated: $daysOld days ago',
                   style: TextStyle(fontSize: 14, color: color, fontWeight: FontWeight.w500),
                 ),
               ],
