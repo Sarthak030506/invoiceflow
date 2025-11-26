@@ -89,7 +89,23 @@ class ItemsService {
 
   // Batch add multiple items from maps (for template imports)
   Future<void> addMultipleItemsFromMaps(List<dynamic> itemMaps) async {
-    final uid = _requireUid();
+    // Retry logic for authentication
+    String? uid = _auth.currentUser?.uid;
+
+    if (uid == null) {
+      // Retry up to 5 times with increasing delays
+      for (int i = 0; i < 5; i++) {
+        await Future.delayed(Duration(milliseconds: 500 + (i * 200)));
+        uid = _auth.currentUser?.uid;
+        if (uid != null) break;
+      }
+
+      // Final check
+      if (uid == null) {
+        throw StateError('User must be signed in for items operations');
+      }
+    }
+
     final batch = _fs.batch();
 
     for (final itemMap in itemMaps) {

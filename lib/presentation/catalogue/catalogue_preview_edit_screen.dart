@@ -643,17 +643,26 @@ class _CataloguePreviewEditScreenState
     });
 
     try {
-      // Ensure user is authenticated
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) {
-        // Wait a moment for auth to initialize
-        await Future.delayed(const Duration(milliseconds: 500));
+      // Ensure user is authenticated with multiple retries
+      User? currentUser = FirebaseAuth.instance.currentUser;
 
-        // Check again
-        final retryUser = FirebaseAuth.instance.currentUser;
-        if (retryUser == null) {
-          throw Exception('Please sign in again to continue');
+      if (currentUser == null) {
+        // Try up to 5 times with increasing delays
+        for (int i = 0; i < 5; i++) {
+          await Future.delayed(Duration(milliseconds: 500 + (i * 200)));
+          currentUser = FirebaseAuth.instance.currentUser;
+          if (currentUser != null) break;
         }
+
+        // Final check
+        if (currentUser == null) {
+          throw Exception('Authentication session expired. Please sign in again.');
+        }
+      }
+
+      // Verify the user can access Firestore
+      if (currentUser.uid.isEmpty) {
+        throw Exception('Invalid user session. Please try again.');
       }
 
       // Get selected items
