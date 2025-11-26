@@ -48,6 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
                 TextFormField(
                   controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
                     labelText: 'Email',
                     border: OutlineInputBorder(),
@@ -55,6 +56,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your email';
+                    }
+                    // Basic email validation
+                    if (!value.contains('@') || !value.contains('.')) {
+                      return 'Please enter a valid email address';
                     }
                     return null;
                   },

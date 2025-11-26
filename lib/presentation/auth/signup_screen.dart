@@ -57,6 +57,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       const SizedBox(height: 20),
                       TextFormField(
                         controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
                           labelText: 'Email',
                           border: OutlineInputBorder(),
@@ -64,6 +65,10 @@ class _SignupScreenState extends State<SignupScreen> {
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Please enter your email';
+                          }
+                          // Basic email validation
+                          if (!value.contains('@') || !value.contains('.')) {
+                            return 'Please enter a valid email address';
                           }
                           return null;
                         },
@@ -75,10 +80,14 @@ class _SignupScreenState extends State<SignupScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Password',
                           border: OutlineInputBorder(),
+                          helperText: 'Password must be at least 8 characters',
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Please enter your password';
+                          }
+                          if (value.length < 8) {
+                            return 'Password must be at least 8 characters';
                           }
                           return null;
                         },
@@ -118,8 +127,9 @@ class _SignupScreenState extends State<SignupScreen> {
                                       _emailController.text,
                                       _passwordController.text,
                                     );
-                                    
-                                    if (mounted) {
+
+                                    // Only navigate if signup was successful and there's no error
+                                    if (mounted && authProvider.error == null) {
                                       Navigator.pushReplacement(
                                         context,
                                         MaterialPageRoute(
@@ -128,11 +138,22 @@ class _SignupScreenState extends State<SignupScreen> {
                                           ),
                                         ),
                                       );
+                                    } else if (mounted && authProvider.error != null) {
+                                      // Show error in snackbar as well
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(authProvider.error!),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
                                     }
                                   } catch (e) {
                                     if (mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text(e.toString())),
+                                        SnackBar(
+                                          content: Text(e.toString()),
+                                          backgroundColor: Colors.red,
+                                        ),
                                       );
                                     }
                                   }
