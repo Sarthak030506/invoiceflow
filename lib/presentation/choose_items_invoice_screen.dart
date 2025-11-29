@@ -9,6 +9,7 @@ import '../services/customer_service.dart';
 import '../services/stock_map_service.dart';
 import '../services/return_service.dart';
 import '../services/catalog_service.dart';
+import '../services/inventory_service.dart';
 import '../utils/app_logger.dart';
 import '../widgets/enhanced_payment_details_widget.dart';
 import '../widgets/rate_edit_dialog.dart';
@@ -37,6 +38,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
   late final StockMapService _stockMapService;
   late final ReturnService _returnService;
   late final CatalogService _catalogService;
+  late final InventoryService _inventoryService;
   StreamSubscription<void>? _inventorySubscription;
 
   // Dynamic catalog with custom rates and live stock
@@ -66,9 +68,16 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     _stockMapService = StockMapService();
     _returnService = ReturnService.instance;
     _catalogService = CatalogService.instance;
+    _inventoryService = InventoryService();
     _loadCatalog();
     _loadStockMap();
-    _inventorySubscription = _stockMapService.inventoryUpdates.listen((_) => _loadStockMap());
+    _inventorySubscription = _stockMapService.inventoryUpdates.listen((_) {
+      _loadStockMap();
+      // For sales invoices, also reload catalog when inventory changes
+      if (widget.invoiceType == 'sales') {
+        _loadCatalog();
+      }
+    });
   }
   
   @override
@@ -88,24 +97,47 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
   
   Future<void> _loadCatalog() async {
     try {
-      final catalog = await _catalogService.getAllItems();
+      List<CatalogItem> catalog;
+
+      if (widget.invoiceType == 'sales') {
+        // For SALES: Load only items from inventory (items with stock > 0)
+        final sellableItems = await _inventoryService.getSellableItems();
+        catalog = sellableItems.map((item) => CatalogItem(
+          id: int.tryParse(item['id']?.toString() ?? '0') ?? 0,
+          name: item['name'] ?? '',
+          rate: (item['avgCost'] as num?)?.toDouble() ?? 0.0,
+        )).toList();
+      } else {
+        // For PURCHASE: Load all items from catalogue
+        catalog = await _catalogService.getAllItems();
+      }
+
       if (mounted) {
         setState(() {
           _itemCatalog = catalog;
           _catalogLoading = false;
         });
 
-        // If catalogue is empty, prompt user to set it up
+        // If no items available, show appropriate prompt
         if (catalog.isEmpty) {
-          _promptCatalogueSetup();
+          if (widget.invoiceType == 'sales') {
+            _promptNoInventory();
+          } else {
+            _promptCatalogueSetup();
+          }
         }
       }
     } catch (e) {
       AppLogger.error('Error loading catalog', 'ChooseItemsInvoice', e);
-      // Fallback to static catalog
-      if (mounted) {
+      // Fallback to static catalog only for purchase invoices
+      if (mounted && widget.invoiceType == 'purchase') {
         setState(() {
           _itemCatalog = ItemCatalog.items;
+          _catalogLoading = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _itemCatalog = [];
           _catalogLoading = false;
         });
       }
@@ -221,6 +253,86 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               child: Text('Set Up Catalogue', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  void _promptNoInventory() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.inventory_2_outlined, color: Colors.orange, size: 7.w),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: Text(
+                  'No Items in Inventory',
+                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You don\'t have any items in your inventory to sell. Add inventory first before creating sales invoices.',
+                style: TextStyle(fontSize: 12.sp, height: 1.4),
+              ),
+              SizedBox(height: 2.h),
+              Container(
+                padding: EdgeInsets.all(3.w),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.lightbulb_outline, color: Colors.orange[700], size: 5.w),
+                    SizedBox(width: 2.w),
+                    Expanded(
+                      child: Text(
+                        'Create a purchase invoice to add items to your inventory',
+                        style: TextStyle(fontSize: 10.sp, color: Colors.orange[900]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // Also pop the invoice screen
+              },
+              child: Text('Cancel', style: TextStyle(fontSize: 12.sp)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog
+                Navigator.of(context).pop(); // Close sales invoice screen
+                // User should navigate to Inventory or create Purchase Invoice
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text('OK', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600)),
             ),
           ],
         ),
