@@ -875,25 +875,27 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                                 ),
                               ],
                             ),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: InkWell(
-                                onTap: () => _editItem(item),
-                                borderRadius: BorderRadius.circular(20),
-                                child: Container(
-                                  padding: EdgeInsets.all(2.w),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.withOpacity(0.1),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    Icons.edit,
-                                    size: 4.5.w,
-                                    color: Colors.blue.shade700,
+                            // Only show edit button for sales invoices (inventory items)
+                            if (widget.invoiceType == 'sales')
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: InkWell(
+                                  onTap: () => _editItem(item),
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Container(
+                                    padding: EdgeInsets.all(2.w),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.edit,
+                                      size: 4.5.w,
+                                      color: Colors.blue.shade700,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
                             SizedBox(height: 1.h),
 
                             // Quantity controls (only show if selected)

@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "661974956527-rcb0lq9q6vrj87i2jrfglghppjv362ud.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.invoiceflow.app",
+            "certificate_hash": "2937c8721fca590954475c7cc0ee6bce68b765c4"
+          }
+        },
+        {
           "client_id": "661974956527-7o9klctap9art18m4entlj1cokd9ojl0.apps.googleusercontent.com",
           "client_type": 3
         }
