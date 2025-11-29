@@ -295,7 +295,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   @override
-  Widget build(BuildContext context) {
+   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     // Get the height after the widget is built

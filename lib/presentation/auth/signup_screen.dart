@@ -80,14 +80,14 @@ class _SignupScreenState extends State<SignupScreen> {
                         decoration: const InputDecoration(
                           labelText: 'Password',
                           border: OutlineInputBorder(),
-                          helperText: 'Password must be at least 8 characters',
+                          helperText: 'Password must be at least 4 characters',
                         ),
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Please enter your password';
                           }
-                          if (value.length < 8) {
-                            return 'Password must be at least 8 characters';
+                          if (value.length < 4) {
+                            return 'Password must be at least 4 characters';
                           }
                           return null;
                         },
