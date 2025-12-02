@@ -129,39 +129,86 @@ class _ItemsScreenState extends State<ItemsScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _filteredItems.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+          : Column(
+              children: [
+                // Item count display
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey.shade200),
+                    ),
+                  ),
+                  child: Row(
                     children: [
-                      Icon(Icons.search_off, size: 64, color: Colors.grey.shade300),
-                      SizedBox(height: 2.h),
+                      Icon(
+                        Icons.inventory_2,
+                        size: 5.w,
+                        color: Colors.blue,
+                      ),
+                      SizedBox(width: 2.w),
                       Text(
                         _searchQuery.isEmpty
-                            ? 'No items found'
-                            : 'No items match "$_searchQuery"',
+                            ? '${_filteredItems.length} ${_filteredItems.length == 1 ? 'item' : 'items'}'
+                            : '${_filteredItems.length} of ${_allItems.length} items',
                         style: TextStyle(
-                          fontSize: 16.sp,
-                          color: Colors.grey.shade600,
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
                         ),
                       ),
+                      if (_searchQuery.isNotEmpty) ...[
+                        SizedBox(width: 2.w),
+                        Expanded(
+                          child: Text(
+                            'found',
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadItems,
-                  child: ListView.builder(
-                    padding: EdgeInsets.all(3.w),
-                    itemCount: _filteredItems.length,
-                    itemBuilder: (context, index) {
-                      final item = _filteredItems[index];
-                      return _ItemCard(
-                        item: item,
-                        onEditRate: () => _editItemRate(item),
-                      );
-                    },
-                  ),
                 ),
+                // List
+                Expanded(
+                  child: _filteredItems.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.search_off, size: 64, color: Colors.grey.shade300),
+                              SizedBox(height: 2.h),
+                              Text(
+                                'No items match "$_searchQuery"',
+                                style: TextStyle(
+                                  fontSize: 16.sp,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadItems,
+                          child: ListView.builder(
+                            padding: EdgeInsets.all(3.w),
+                            itemCount: _filteredItems.length,
+                            itemBuilder: (context, index) {
+                              final item = _filteredItems[index];
+                              return _ItemCard(
+                                item: item,
+                                onEditRate: () => _editItemRate(item),
+                              );
+                            },
+                          ),
+                        ),
+                ),
+              ],
+            ),
     );
   }
 }
