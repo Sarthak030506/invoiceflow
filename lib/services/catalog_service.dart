@@ -22,6 +22,9 @@ class CatalogService {
   DateTime? _lastCacheUpdate;
   static const _cacheValidityDuration = Duration(minutes: 5);
 
+  // ID mapping: integer ID (hash) -> string ID (Firestore)
+  final Map<int, String> _idMapping = {};
+
   // Get all catalog items (loads from ItemsService or falls back to default catalog)
   Future<List<CatalogItem>> getAllItems() async {
     try {
@@ -38,14 +41,20 @@ class CatalogService {
 
         if (productCatalogItems.isNotEmpty) {
           // Convert ProductCatalogItem to CatalogItem
+          // Use a hash of the ID to generate a consistent integer ID
           final catalogMap = <int, CatalogItem>{};
-          for (int i = 0; i < productCatalogItems.length; i++) {
-            final product = productCatalogItems[i];
-            catalogMap[i + 1] = CatalogItem(
-              id: i + 1,
+          _idMapping.clear(); // Clear old mappings
+
+          for (final product in productCatalogItems) {
+            // Use a hash of the string ID to create a consistent integer ID
+            final intId = product.id.hashCode.abs();
+            catalogMap[intId] = CatalogItem(
+              id: intId,
               name: product.name,
               rate: product.rate,
             );
+            // Store the mapping from int ID to string ID for updates
+            _idMapping[intId] = product.id;
           }
 
           // Update cache
@@ -140,12 +149,18 @@ class CatalogService {
         throw Exception('Rate must be positive');
       }
 
+      // Get the Firestore string ID from the mapping
+      final firestoreId = _idMapping[itemId];
+      if (firestoreId == null) {
+        throw Exception('Item not found in ID mapping');
+      }
+
       // Get all items from ItemsService
       final allItems = await _itemsService.getAllItems();
 
-      // Find the item to update
+      // Find the item to update using the Firestore ID
       final itemToUpdate = allItems.firstWhere(
-        (item) => item.id == itemId.toString(),
+        (item) => item.id == firestoreId,
         orElse: () => throw Exception('Item not found'),
       );
 
