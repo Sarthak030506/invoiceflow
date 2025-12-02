@@ -224,6 +224,7 @@ class CatalogService {
   void clearCache() {
     _catalogCache = null;
     _lastCacheUpdate = null;
+    _idMapping.clear(); // Clear ID mapping when clearing cache
   }
 
   // Search items by name
