@@ -130,32 +130,6 @@ class ProfileHeaderWidget extends StatelessWidget {
             ],
           ),
           SizedBox(height: 2.h),
-          // Member since info
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
-            decoration: BoxDecoration(
-              color: AppTheme.lightTheme.primaryColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CustomIconWidget(
-                  iconName: 'calendar_today',
-                  color: AppTheme.lightTheme.primaryColor,
-                  size: 14,
-                ),
-                SizedBox(width: 1.w),
-                Text(
-                  'Member since March 2024',
-                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                    color: AppTheme.lightTheme.primaryColor,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
