@@ -127,7 +127,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
             outstandingPayments: outstandingPayments,
           ),
           SizedBox(height: 16),
-          _buildAnalyticsTableCard(),
+          _buildAnalyticsTableSection(),
           SizedBox(height: 16),
         ],
       );
@@ -182,10 +182,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
           ),
         );
       case 'table':
-        return Padding(
-          padding: EdgeInsets.all(4.w),
-          child: _buildAnalyticsTableCard(),
-        );
+        return _buildAnalyticsTableSection();
       case 'charts':
         return Padding(
           padding: EdgeInsets.all(4.w),
@@ -392,7 +389,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
       final inventoryService = widget.inventoryService ?? InventoryService();
 
       final results = await Future.wait([
-        analyticsService.getFilteredAnalytics(serviceRange),
+        analyticsService.getFilteredAnalytics(serviceRange, salesOnly: false), // Get all types for table filtering
         analyticsService.getCustomerWiseRevenue(serviceRange),
         analyticsService.fetchPerformanceInsights(serviceRange),
         analyticsService.getChartAnalytics(serviceRange),
@@ -466,113 +463,63 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   
 
 
-  Widget _buildAnalyticsTableCard() {
+  Widget _buildAnalyticsTableSection() {
     return Container(
-      key: const Key('analyticsTableCard'),
+      key: const Key('analyticsTableSection'),
       margin: EdgeInsets.symmetric(horizontal: 4.w),
-      child: GestureDetector(
-        onTap: _showAnalyticsTableModal,
-        child: Container(
-          height: 88,
-          padding: EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.white,
-                Colors.blue.withOpacity(0.02),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-          child: Row(
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+              Icon(Icons.table_chart, color: Colors.blue, size: 24),
+              SizedBox(width: 12),
+              Text(
+                'Analytics Table',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
                 ),
-                child: Icon(
-                  Icons.table_chart,
-                  color: Colors.blue,
-                  size: 24,
-                ),
-              ),
-              SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Analytics Table',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Open full table with search & filters',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: Colors.grey.shade400,
               ),
             ],
           ),
-        ),
+          SizedBox(height: 16),
+          SizedBox(
+            height: 600,
+            child: _isLoading
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text(
+                          'Loading analytics...',
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  )
+                : _buildAnalyticsTableWidget(),
+          ),
+        ],
       ),
     );
   }
-  
-  void _showAnalyticsTableModal() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: Colors.white,
-          appBar: AppBar(
-            title: const Text(
-              'Analytics Table',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87,
-                letterSpacing: -0.5,
-              ),
-            ),
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black87,
-            elevation: 0,
-            centerTitle: true,
-            toolbarHeight: 64,
-          ),
-          body: Container(
-            child: _buildAnalyticsTableWidget(),
-          ),
-        ),
-      ),
-    );
-  }
-  
+
   Widget _buildAnalyticsTableWidget() {
     return AnalyticsTableWidget(
       data: _getAnalyticsTableData(),
@@ -614,6 +561,10 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   }
   
   List<Map<String, dynamic>> _getAnalyticsTableData() {
+    print('Analytics Table Data: ${analyticsData.length} items');
+    if (analyticsData.isNotEmpty) {
+      print('Sample item: ${analyticsData.first}');
+    }
     return analyticsData;
   }
   

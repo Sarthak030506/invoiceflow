@@ -141,57 +141,61 @@ class AnalyticsService {
         return [];
       }
       
-      // Track items by name
+      // Track items by name AND invoice type (so same item in sales and purchase is tracked separately)
       final Map<String, Map<String, dynamic>> itemAnalytics = {};
-      
+
       for (final invoice in invoices) {
         if (invoice.items.isEmpty) {
           print('Invoice ${invoice.id} has no items');
           continue;
         }
-        
+
         // Skip non-sales invoices when salesOnly is true (should be handled by the filter above)
         if (salesOnly && invoice.invoiceType.toLowerCase() != 'sales') {
           continue;
         }
-        
+
         for (final item in invoice.items) {
           final quantity = item.quantity;
           final price = item.price;
-          
+
           // Skip items with zero or negative quantity
           if (quantity <= 0) {
             continue;
           }
-           
+
           final itemName = item.name.trim();
           if (itemName.isEmpty) {
             print('Skipping empty item name');
             continue;
           }
-          
+
           final itemTotal = price * quantity;
-          
+
+          // Use composite key: itemName + invoiceType to track sales and purchases separately
+          final itemKey = '${itemName}_${invoice.invoiceType}';
+
           print('Processing item: $itemName, Qty: $quantity, Price: $price, Total: $itemTotal');
-          
-          if (!itemAnalytics.containsKey(itemName)) {
-            itemAnalytics[itemName] = {
+
+          if (!itemAnalytics.containsKey(itemKey)) {
+            itemAnalytics[itemKey] = {
               'itemName': itemName,
               'quantitySold': 0,
               'revenue': 0.0,
               'averagePrice': 0.0,
+              'invoiceType': invoice.invoiceType, // Add invoice type for table filtering
             };
           }
-          
-          itemAnalytics[itemName]!['quantitySold'] = (itemAnalytics[itemName]!['quantitySold'] as int) + quantity;
-          itemAnalytics[itemName]!['revenue'] = (itemAnalytics[itemName]!['revenue'] as double) + itemTotal;
-          
+
+          itemAnalytics[itemKey]!['quantitySold'] = (itemAnalytics[itemKey]!['quantitySold'] as int) + quantity;
+          itemAnalytics[itemKey]!['revenue'] = (itemAnalytics[itemKey]!['revenue'] as double) + itemTotal;
+
           // Recalculate average price
-          final totalQuantity = itemAnalytics[itemName]!['quantitySold'] as int;
-          final totalRevenue = itemAnalytics[itemName]!['revenue'] as double;
+          final totalQuantity = itemAnalytics[itemKey]!['quantitySold'] as int;
+          final totalRevenue = itemAnalytics[itemKey]!['revenue'] as double;
           final avgPrice = (totalQuantity > 0 && totalRevenue > 0) ? (totalRevenue / totalQuantity) : 0.0;
-          itemAnalytics[itemName]!['averagePrice'] = double.parse(avgPrice.toStringAsFixed(2));
-          
+          itemAnalytics[itemKey]!['averagePrice'] = double.parse(avgPrice.toStringAsFixed(2));
+
           print('Item: $itemName, Qty: $totalQuantity, Revenue: $totalRevenue, AvgPrice: $avgPrice');
         }
       }
@@ -818,7 +822,7 @@ class AnalyticsService {
         final dueDate = invoice.followUpDate ?? invoice.date;
         final daysOverdue = now.difference(dueDate).inDays;
 
-        if (daysOverdue < 1) continue; // Not overdue yet
+        if (daysOverdue < 0) continue; // Only show from due date onwards
 
         // Determine bucket
         String bucket;

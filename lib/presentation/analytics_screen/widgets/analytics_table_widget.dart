@@ -203,19 +203,24 @@ class _AnalyticsTableWidgetState extends State<AnalyticsTableWidget>
                       ),
                       SizedBox(height: 2.h),
                       Text(
-                        'No ${_currentFilter.toLowerCase()} data available',
+                        _currentFilter == 'All'
+                            ? 'No data available'
+                            : 'No ${_currentFilter.toLowerCase()} data available',
                         style: theme.textTheme.titleMedium,
                       ),
-                      if (_currentFilter != 'All') ...[
-                        SizedBox(height: 1.h),
-                        Text(
-                          'Try switching to a different tab or check your invoice data',
+                      SizedBox(height: 1.h),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8.w),
+                        child: Text(
+                          _currentFilter == 'All'
+                              ? 'Create invoices to see analytics data here'
+                              : 'Try switching to a different tab or check your invoice data',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 )
