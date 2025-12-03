@@ -160,8 +160,11 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
           const SizedBox(height: 20),
           Builder(
             builder: (context) {
-              final fastMoving = (widget.inventoryAnalytics['fastMovingItems'] as List<dynamic>?)
-                  ?.cast<InventoryItem>() ?? [];
+              final fastMovingData = (widget.inventoryAnalytics['fastMovingItems'] as List<dynamic>?) ?? [];
+              final fastMoving = fastMovingData.map((data) {
+                final itemData = data as Map<String, dynamic>;
+                return itemData['item'] as InventoryItem;
+              }).toList();
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -525,8 +528,12 @@ class _InventoryAnalyticsSectionState extends State<InventoryAnalyticsSection> {
   }
 
   void _showMovementHealthModal() {
-    final fastMoving = (widget.inventoryAnalytics['fastMovingItems'] as List<dynamic>?)
-        ?.cast<InventoryItem>() ?? [];
+    final fastMovingData = (widget.inventoryAnalytics['fastMovingItems'] as List<dynamic>?) ?? [];
+    final fastMoving = fastMovingData.map((data) {
+      final itemData = data as Map<String, dynamic>;
+      return itemData['item'] as InventoryItem;
+    }).toList();
+
     final slowMoving = (widget.inventoryAnalytics['slowMovingItems'] as List<dynamic>?)
         ?.cast<InventoryItem>() ?? [];
 

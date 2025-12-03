@@ -459,8 +459,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
               elevation: 0,
               leading: Builder(
                 builder: (context) => Container(
-                  margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.5.h),
-                  padding: EdgeInsets.all(2.w),
+                  margin: EdgeInsets.only(left: 1.w, top: 0.5.h),
+                  padding: EdgeInsets.all(1.5.w),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),

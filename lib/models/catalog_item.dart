@@ -2,11 +2,13 @@ class CatalogItem {
   final int id;
   final String name;
   final double rate;
+  final String? category;
 
   const CatalogItem({
     required this.id,
     required this.name,
     required this.rate,
+    this.category,
   });
 }
 

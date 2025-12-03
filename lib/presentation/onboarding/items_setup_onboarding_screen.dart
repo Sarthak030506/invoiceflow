@@ -4,10 +4,6 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 
 import '../catalogue/business_type_selection_screen.dart';
-import 'import_methods/csv_upload_screen.dart';
-import 'import_methods/manual_entry_screen.dart';
-import 'import_methods/demo_items_screen.dart';
-import 'import_methods/template_download_screen.dart';
 
 class ItemsSetupOnboardingScreen extends StatefulWidget {
   final bool isFirstTimeSetup;
@@ -35,7 +31,7 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
         elevation: 0,
         centerTitle: true,
       ),
-      body: _isLoading 
+      body: _isLoading
         ? const Center(child: CircularProgressIndicator())
         : SingleChildScrollView(
           padding: EdgeInsets.all(4.w),
@@ -45,14 +41,9 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
               // Header
               _buildHeader(),
               SizedBox(height: 4.h),
-              
+
               // Import Options
               _buildImportOptions(),
-              
-              SizedBox(height: 4.h),
-              
-              // Skip option
-              if (widget.isFirstTimeSetup) _buildSkipOption(),
             ],
           ),
         ),
@@ -113,16 +104,6 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Choose an import method:',
-          style: TextStyle(
-            fontSize: 14.sp,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[800],
-          ),
-        ),
-        SizedBox(height: 2.h),
-
         // Business Type Selection (RECOMMENDED)
         _buildOptionCard(
           icon: Icons.store,
@@ -131,33 +112,6 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
           color: Colors.purple,
           onTap: () => _navigateToImportMethod(const BusinessTypeSelectionScreen(isFirstTimeSetup: true)),
           isRecommended: true,
-        ),
-
-        // CSV/Excel Upload
-        _buildOptionCard(
-          icon: Icons.upload_file_rounded,
-          title: 'Upload Excel/CSV',
-          subtitle: 'Import your items from a spreadsheet file.',
-          color: Colors.green,
-          onTap: () => _navigateToImportMethod(const CsvUploadScreen()),
-        ),
-
-        // Manual Entry
-        _buildOptionCard(
-          icon: Icons.edit_note_rounded,
-          title: 'Manual Entry',
-          subtitle: 'Type items in one at a time or in bulk.',
-          color: Colors.orange,
-          onTap: () => _navigateToImportMethod(const ManualEntryScreen()),
-        ),
-
-        // Demo List
-        _buildOptionCard(
-          icon: Icons.inventory_2_rounded,
-          title: 'Demo Catalogue',
-          subtitle: 'Restaurant & hotel supplies catalogue with 133 items',
-          color: Colors.teal,
-          onTap: () => _navigateToImportMethod(const DemoItemsScreen()),
         ),
       ],
     );
@@ -292,82 +246,15 @@ class _ItemsSetupOnboardingScreenState extends State<ItemsSetupOnboardingScreen>
     );
   }
 
-  Widget _buildSkipOption() {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(4.w),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.skip_next_rounded,
-            size: 6.w,
-            color: Colors.grey[600],
-          ),
-          SizedBox(height: 1.h),
-          Text(
-            'Skip for now',
-            style: TextStyle(
-              fontSize: 12.sp,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[700],
-            ),
-          ),
-          SizedBox(height: 0.5.h),
-          Text(
-            'You can set up your items later from the settings',
-            style: TextStyle(
-              fontSize: 10.sp,
-              color: Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 2.h),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => _skipSetup(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.grey[300],
-                foregroundColor: Colors.grey[700],
-                elevation: 0,
-                padding: EdgeInsets.symmetric(vertical: 2.h),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: Text(
-                'Skip Setup',
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _navigateToImportMethod(Widget screen) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => screen),
     );
-    
+
     if (result == true) {
       // Import was successful, mark onboarding as complete
       context.read<AuthProvider>().completeOnboarding();
     }
-  }
-
-  void _skipSetup() {
-    // Mark onboarding as complete even if skipped
-    context.read<AuthProvider>().completeOnboarding();
   }
 }

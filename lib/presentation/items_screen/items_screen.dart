@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import '../../models/catalog_item.dart';
 import '../../services/catalog_service.dart';
+import '../../services/items_service.dart';
 import '../../widgets/rate_edit_dialog.dart';
 
 class ItemsScreen extends StatefulWidget {
@@ -13,6 +14,7 @@ class ItemsScreen extends StatefulWidget {
 
 class _ItemsScreenState extends State<ItemsScreen> {
   final CatalogService _catalogService = CatalogService.instance;
+  final ItemsService _itemsService = ItemsService();
   final TextEditingController _searchController = TextEditingController();
 
   List<CatalogItem> _allItems = [];
@@ -209,7 +211,199 @@ class _ItemsScreenState extends State<ItemsScreen> {
                 ),
               ],
             ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddItemDialog,
+        child: const Icon(Icons.add),
+        tooltip: 'Add Item',
+      ),
     );
+  }
+
+  Future<void> _showAddItemDialog() async {
+    final nameController = TextEditingController();
+    final skuController = TextEditingController();
+    final categoryController = TextEditingController(text: 'General');
+    final unitController = TextEditingController(text: 'pcs');
+    final rateController = TextEditingController();
+    final barcodeController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add New Item'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Item Name *',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Item name is required';
+                    }
+                    return null;
+                  },
+                ),
+                SizedBox(height: 2.h),
+                TextFormField(
+                  controller: skuController,
+                  decoration: const InputDecoration(
+                    labelText: 'SKU',
+                    border: OutlineInputBorder(),
+                    hintText: 'Optional',
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                TextFormField(
+                  controller: categoryController,
+                  decoration: const InputDecoration(
+                    labelText: 'Category *',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Category is required';
+                    }
+                    return null;
+                  },
+                ),
+                SizedBox(height: 2.h),
+                TextFormField(
+                  controller: unitController,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit *',
+                    border: OutlineInputBorder(),
+                    hintText: 'e.g., pcs, kg, ltr',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Unit is required';
+                    }
+                    return null;
+                  },
+                ),
+                SizedBox(height: 2.h),
+                TextFormField(
+                  controller: rateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Rate *',
+                    border: OutlineInputBorder(),
+                    prefixText: '₹',
+                  ),
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Rate is required';
+                    }
+                    final rate = double.tryParse(value);
+                    if (rate == null || rate <= 0) {
+                      return 'Enter a valid rate';
+                    }
+                    return null;
+                  },
+                ),
+                SizedBox(height: 2.h),
+                TextFormField(
+                  controller: barcodeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Barcode',
+                    border: OutlineInputBorder(),
+                    hintText: 'Optional',
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                TextFormField(
+                  controller: descriptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    border: OutlineInputBorder(),
+                    hintText: 'Optional',
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context, true);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      try {
+        // Create new item
+        final now = DateTime.now();
+        final newItem = ProductCatalogItem(
+          id: now.millisecondsSinceEpoch.toString(),
+          name: nameController.text.trim(),
+          sku: skuController.text.trim().isEmpty
+              ? nameController.text.trim().toUpperCase().replaceAll(' ', '_')
+              : skuController.text.trim(),
+          category: categoryController.text.trim(),
+          unit: unitController.text.trim(),
+          rate: double.parse(rateController.text.trim()),
+          barcode: barcodeController.text.trim().isEmpty ? null : barcodeController.text.trim(),
+          description: descriptionController.text.trim().isEmpty ? null : descriptionController.text.trim(),
+          createdAt: now,
+          updatedAt: now,
+        );
+
+        // Add to Firestore
+        await _itemsService.addItem(newItem);
+
+        // Clear cache and reload
+        _catalogService.clearCache();
+        await _loadItems();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Item "${newItem.name}" added successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error adding item: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+
+    // Dispose controllers
+    nameController.dispose();
+    skuController.dispose();
+    categoryController.dispose();
+    unitController.dispose();
+    rateController.dispose();
+    barcodeController.dispose();
+    descriptionController.dispose();
   }
 }
 

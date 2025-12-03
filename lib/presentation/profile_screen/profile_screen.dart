@@ -53,12 +53,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final user = authProvider.user;
 
-      // Load user data from SharedPreferences or use mock data
-      _userName =
-          prefs.getString('user_name') ?? (_mockUserData['fullName'] as String);
-      _userEmail =
-          prefs.getString('user_email') ?? (_mockUserData['email'] as String);
+      // Load user data from Firebase Auth if available
+      if (user != null) {
+        _userName = user.displayName ?? user.email?.split('@').first ?? 'User';
+        _userEmail = user.email ?? '';
+      } else {
+        // Fallback to SharedPreferences or mock data
+        _userName = prefs.getString('user_name') ?? (_mockUserData['fullName'] as String);
+        _userEmail = prefs.getString('user_email') ?? (_mockUserData['email'] as String);
+      }
+
       _lastSyncTime = prefs.getString('last_sync_time') ??
           (_mockUserData['lastSyncTime'] as String);
       _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;

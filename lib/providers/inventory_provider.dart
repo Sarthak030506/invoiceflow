@@ -86,7 +86,8 @@ class InventoryProvider extends ChangeNotifier {
     if (cost < 0) throw Exception('Cost cannot be negative');
 
     try {
-      await _inventoryService.receiveStock(_id, qty, cost, note ?? 'manual:receive');
+      final sourceRef = (note == null || note.isEmpty) ? 'manual:receive' : note;
+      await _inventoryService.receiveStock(_id, qty, cost, sourceRef);
       await _refreshData();
     } catch (e) {
       debugPrint('Error receiving stock: $e');
@@ -99,7 +100,8 @@ class InventoryProvider extends ChangeNotifier {
     if (qty <= 0) throw Exception('Quantity must be positive');
 
     try {
-      await _inventoryService.issueStock(_id, qty, note ?? 'manual:issue');
+      final sourceRef = (note == null || note.isEmpty) ? 'manual:issue' : note;
+      await _inventoryService.issueStock(_id, qty, sourceRef);
       await _refreshData();
     } catch (e) {
       debugPrint('Error issuing stock: $e');

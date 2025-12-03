@@ -52,6 +52,7 @@ class CatalogService {
               id: intId,
               name: product.name,
               rate: product.rate,
+              category: product.category,
             );
             // Store the mapping from int ID to string ID for updates
             _idMapping[intId] = product.id;

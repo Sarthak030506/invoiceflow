@@ -98,23 +98,44 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
   Future<void> _loadCatalog() async {
     try {
       List<CatalogItem> catalog;
+      Map<int, int> stockMap = {};
 
       if (widget.invoiceType == 'sales') {
         // For SALES: Load only items from inventory (items with stock > 0)
         final sellableItems = await _inventoryService.getSellableItems();
-        catalog = sellableItems.map((item) => CatalogItem(
-          id: int.tryParse(item['id']?.toString() ?? '0') ?? 0,
-          name: item['name'] ?? '',
-          rate: (item['avgCost'] as num?)?.toDouble() ?? 0.0,
-        )).toList();
+        catalog = sellableItems.map((item) {
+          final itemId = item['id']?.toString().hashCode.abs() ?? 0;
+          // Store stock information for this item
+          stockMap[itemId] = (item['currentStock'] as num?)?.toInt() ?? 0;
+          return CatalogItem(
+            id: itemId,
+            name: item['name'] ?? '',
+            rate: (item['rate'] as num?)?.toDouble() ?? 0.0,
+            category: item['category'] as String?,
+          );
+        }).toList();
       } else {
         // For PURCHASE: Load all items from catalogue
         catalog = await _catalogService.getAllItems();
+
+        // Load inventory to get stock levels for catalog items
+        final inventoryItems = await _inventoryService.getAllItems();
+        final inventoryMap = <String, int>{};
+        for (final inv in inventoryItems) {
+          inventoryMap[inv.name.toLowerCase()] = inv.currentStock.toInt();
+        }
+
+        // Match catalog items with inventory by name
+        for (final item in catalog) {
+          final stock = inventoryMap[item.name.toLowerCase()] ?? 0;
+          stockMap[item.id] = stock;
+        }
       }
 
       if (mounted) {
         setState(() {
           _itemCatalog = catalog;
+          _stockMap = stockMap;
           _catalogLoading = false;
         });
 
@@ -525,34 +546,23 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
 
   /// Get count of available items (respecting inventory filter for sales)
   int _getAvailableItemsCount() {
-    if (widget.invoiceType == 'sales') {
-      // Only count items that exist in inventory
-      return _itemCatalog.where((item) => _stockMap.containsKey(item.id)).length;
-    }
     return _itemCatalog.length;
   }
 
-  /// Get count of items in a category (respecting inventory filter for sales)
-  int _getCategoryItemCount(String keyword) {
-    var items = _itemCatalog;
-
-    // For sales invoices, only count items in inventory
-    if (widget.invoiceType == 'sales') {
-      items = items.where((item) => _stockMap.containsKey(item.id)).toList();
+  /// Get unique categories from items
+  List<String> _getUniqueCategories() {
+    final categories = <String>{};
+    for (final item in _itemCatalog) {
+      if (item.category != null && item.category!.isNotEmpty) {
+        categories.add(item.category!);
+      }
     }
+    return categories.toList()..sort();
+  }
 
-    // Apply category filter
-    switch (keyword) {
-      case 'clean':
-        return items.where((item) {
-          final name = item.name.toLowerCase();
-          return name.contains('clean') ||
-                 name.contains('phenyl') ||
-                 name.contains('mop');
-        }).length;
-      default:
-        return items.where((item) => item.name.toLowerCase().contains(keyword)).length;
-    }
+  /// Get count of items in a category
+  int _getCategoryItemCount(String category) {
+    return _itemCatalog.where((item) => item.category == category).length;
   }
 
   Widget _buildFilterChip(String label, int count) {
@@ -657,12 +667,8 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
 
     List<CatalogItem> filteredItems = _itemCatalog;
 
-    // For sales invoices, only show items that exist in inventory
-    if (widget.invoiceType == 'sales') {
-      filteredItems = filteredItems
-          .where((item) => _stockMap.containsKey(item.id))
-          .toList();
-    }
+    // Note: For sales invoices, _itemCatalog is already filtered to inventory items
+    // in _loadCatalog(), so no additional filtering needed here
 
     // Apply search filter
     if (_search.isNotEmpty) {
@@ -674,21 +680,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     // Apply category filter
     if (_selectedCategory != 'All') {
       filteredItems = filteredItems.where((item) {
-        final name = item.name.toLowerCase();
-        switch (_selectedCategory) {
-          case 'Kitchen':
-            return name.contains('kitchen');
-          case 'Cleaning':
-            return name.contains('clean') ||
-                   name.contains('phenyl') ||
-                   name.contains('mop');
-          case 'Containers':
-            return name.contains('container');
-          case 'Bags':
-            return name.contains('bag');
-          default:
-            return true;
-        }
+        return item.category == _selectedCategory;
       }).toList();
     }
     final total = _selectedItems.values.fold<double>(0, (sum, si) => sum + si.amount);
@@ -729,10 +721,9 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
               scrollDirection: Axis.horizontal,
               children: [
                 _buildFilterChip('All', _getAvailableItemsCount()),
-                _buildFilterChip('Kitchen', _getCategoryItemCount('kitchen')),
-                _buildFilterChip('Cleaning', _getCategoryItemCount('clean')),
-                _buildFilterChip('Containers', _getCategoryItemCount('container')),
-                _buildFilterChip('Bags', _getCategoryItemCount('bag')),
+                ..._getUniqueCategories().map((category) =>
+                  _buildFilterChip(category, _getCategoryItemCount(category))
+                ),
               ],
             ),
           ),

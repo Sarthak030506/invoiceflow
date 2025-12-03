@@ -242,27 +242,67 @@ class InventoryService {
     return items.fold<double>(0, (sum, item) => sum + (item.currentStock * item.avgCost));
   }
 
-  Future<List<Map<String, dynamic>>> getFastMovingItems({int limit = 10}) async {
+  Future<List<Map<String, dynamic>>> getFastMovingItems({int limit = 10, int days = 30}) async {
     final items = await getAllItems();
-    // Simulate fast-moving calculation based on current stock vs opening stock
-    final fastMoving = items.map((item) {
-      final movement = item.openingStock - item.currentStock;
-      return {
-        'item': item,
-        'movement': movement,
-        'turnoverRate': item.openingStock > 0 ? movement / item.openingStock : 0.0,
-      };
-    }).where((data) => (data['movement'] as double) > 0).toList();
-    
-    fastMoving.sort((a, b) => (b['turnoverRate'] as double).compareTo(a['turnoverRate'] as double));
-    return fastMoving.take(limit).toList();
+    final cutoffDate = DateTime.now().subtract(Duration(days: days));
+
+    // Calculate fast-moving items based on actual OUT movements
+    final fastMovingData = <Map<String, dynamic>>[];
+
+    for (final item in items) {
+      // Get all OUT movements for this item
+      final movements = await getMovementsByItem(item.id);
+      final outMovements = movements.where((m) =>
+        (m.type == StockMovementType.OUT || m.type == StockMovementType.RETURN_OUT) &&
+        m.createdAt.isAfter(cutoffDate)
+      );
+
+      final totalSold = outMovements.fold<double>(0, (sum, m) => sum + m.quantity);
+
+      // Only include items that have been sold
+      if (totalSold > 0) {
+        // Calculate turnover rate: total sold / average stock
+        // Average stock approximation: (opening + current) / 2, or current if opening is 0
+        final avgStock = item.openingStock > 0
+            ? (item.openingStock + item.currentStock) / 2
+            : item.currentStock;
+
+        final turnoverRate = avgStock > 0 ? totalSold / avgStock : totalSold;
+
+        fastMovingData.add({
+          'item': item,
+          'movement': totalSold,
+          'turnoverRate': turnoverRate,
+          'daysTracked': days,
+        });
+      }
+    }
+
+    // Sort by turnover rate (highest first)
+    fastMovingData.sort((a, b) => (b['turnoverRate'] as double).compareTo(a['turnoverRate'] as double));
+    return fastMovingData.take(limit).toList();
   }
 
   Future<List<InventoryItem>> getSlowMovingItems({int daysSinceLastMovement = 30}) async {
     final items = await getAllItems();
     final cutoffDate = DateTime.now().subtract(Duration(days: daysSinceLastMovement));
-    
-    return items.where((item) => item.lastUpdated.isBefore(cutoffDate)).toList();
+    final slowMoving = <InventoryItem>[];
+
+    for (final item in items) {
+      // Get all OUT movements for this item in the period
+      final movements = await getMovementsByItem(item.id);
+      final recentOutMovements = movements.where((m) =>
+        (m.type == StockMovementType.OUT || m.type == StockMovementType.RETURN_OUT) &&
+        m.createdAt.isAfter(cutoffDate)
+      );
+
+      // Item is slow-moving if it has no OUT movements in the period and has stock
+      if (recentOutMovements.isEmpty && item.currentStock > 0) {
+        slowMoving.add(item);
+      }
+    }
+
+    return slowMoving;
   }
 
   Future<Map<String, dynamic>> getInventoryAnalytics() async {
