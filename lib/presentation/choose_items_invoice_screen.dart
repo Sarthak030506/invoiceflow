@@ -70,11 +70,18 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     _catalogService = CatalogService.instance;
     _inventoryService = InventoryService();
     _loadCatalog();
-    _loadStockMap();
-    _inventorySubscription = _stockMapService.inventoryUpdates.listen((_) {
+    // Only load stock map separately for purchase invoices
+    // For sales invoices, stock map is built during _loadCatalog()
+    if (widget.invoiceType != 'sales') {
       _loadStockMap();
-      // For sales invoices, also reload catalog when inventory changes
+    }
+    _inventorySubscription = _stockMapService.inventoryUpdates.listen((_) {
+      // For sales invoices, reload catalog (which rebuilds stock map)
+      // For purchase invoices, reload both catalog and stock map
       if (widget.invoiceType == 'sales') {
+        _loadCatalog();
+      } else {
+        _loadStockMap();
         _loadCatalog();
       }
     });
@@ -91,7 +98,13 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _loadStockMap();
+      // For sales invoices, reload catalog (which rebuilds stock map)
+      // For purchase invoices, reload stock map
+      if (widget.invoiceType == 'sales') {
+        _loadCatalog();
+      } else {
+        _loadStockMap();
+      }
     }
   }
   
@@ -139,6 +152,11 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
           _catalogLoading = false;
         });
 
+        AppLogger.info(
+          'Catalog loaded: ${catalog.length} items, Stock map: ${stockMap.length} entries',
+          'ChooseItemsInvoice',
+        );
+
         // If no items available, show appropriate prompt
         if (catalog.isEmpty) {
           if (widget.invoiceType == 'sales') {
@@ -182,6 +200,10 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
         setState(() {
           _stockMap = stockMap;
         });
+        AppLogger.info(
+          'Stock map loaded separately: ${stockMap.length} entries (${widget.invoiceType})',
+          'ChooseItemsInvoice',
+        );
       }
     } catch (e) {
       AppLogger.error('Error loading stock map', 'ChooseItemsInvoice', e);

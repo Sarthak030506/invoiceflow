@@ -44,9 +44,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _passwordController.text.trim(),
       );
       if (cred != null) {
-        // Account created successfully - AuthWrapper will handle navigation
+        // Account created successfully
         print('Account created successfully for: ${cred.user?.email}');
-        // No manual navigation needed - AuthWrapper will detect auth state change
+
+        // Navigate immediately to avoid confusion
+        if (!mounted) return;
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/onboarding',
+          (route) => false,
+        );
       } else {
         if (!mounted) return;
         setState(() => _errorMessage = authProvider.error ?? 'Failed to create account');
