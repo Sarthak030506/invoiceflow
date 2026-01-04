@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
 import 'package:responsive_framework/responsive_framework.dart';
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:invoiceflow/providers/auth_provider.dart';
 import 'package:invoiceflow/providers/inventory_provider.dart';
 
@@ -24,6 +25,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
+    debugPrint('InvoiceFlow Web Version: 1.0.2 (Mobile Frame Fix Setup)');
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
@@ -37,13 +39,30 @@ void main() async {
     AppLogger.error('Initialization error', 'App', e);
   }
 
-  runApp(
-    Sizer(
-      builder: (context, orientation, deviceType) {
-        return const MyApp();
-      },
-    ),
+  Widget app = Sizer(
+    builder: (context, orientation, deviceType) {
+      return const MyApp();
+    },
   );
+
+  // WEB-ONLY: Center the app and limit width to simulate mobile device
+  if (kIsWeb) {
+    debugPrint('Applying Web Mobile Frame Constraints');
+    app = Container(
+      color: Colors.grey.shade400, // Darker gray to be more visible
+      alignment: Alignment.center,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: ClipRect( // Ensure content doesn't bleed out
+            child: app,
+          ),
+        ),
+      ),
+    );
+  }
+
+  runApp(app);
 }
 
 class MyApp extends StatelessWidget {
@@ -67,10 +86,24 @@ class MyApp extends StatelessWidget {
             ],
           );
 
-          // Force textScaleFactor to 1.0
+          // Force textScaleFactor to 1.0 for consistent sizing
+          final mediaQuery = MediaQuery.of(context);
+
+          // WEB-ONLY: Override MediaQuery size to match our fake mobile frame (500px)
+          // This forces ResponsiveHelper.isMobile() to return true, showing Bottom Nav instead of Drawer.
+          if (kIsWeb) {
+            return MediaQuery(
+              data: mediaQuery.copyWith(
+                size: Size(500, mediaQuery.size.height),
+                textScaleFactor: 1.0,
+              ),
+              child: child!,
+            );
+          }
+
           return MediaQuery(
-            data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
-            child: child,
+            data: mediaQuery.copyWith(textScaleFactor: 1.0),
+            child: child!,
           );
         },
         // Apply the modern blue/green application theme

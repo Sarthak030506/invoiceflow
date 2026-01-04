@@ -21,8 +21,17 @@ class AuthService {
   }
 
   Future<UserCredential?> signInWithGoogle() async {
-    // Google Sign-In not configured for Web in this build; return null
-    return null;
+    try {
+      GoogleAuthProvider googleProvider = GoogleAuthProvider();
+      
+      // Force account selection to ensure the user can switch accounts if needed
+      googleProvider.setCustomParameters({'prompt': 'select_account'});
+      
+      return await _auth.signInWithPopup(googleProvider);
+    } catch (e) {
+      print('Error signing in with Google: $e');
+      rethrow;
+    }
   }
 
   Future<void> signOut() async {

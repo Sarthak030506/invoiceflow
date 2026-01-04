@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "661974956527-3osc3m76ir6ftl6j9olcpmg108l1coi2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.invoiceflow.app",
+            "certificate_hash": "258487b58c9094f397756ffce5150975b3a6c8a3"
+          }
+        },
+        {
           "client_id": "661974956527-gfi5o52vtqor8krbd3e5aolh3mh8ddjo.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

@@ -8,6 +8,9 @@ import '../../core/app_export.dart';
 import './widgets/logout_button_widget.dart';
 import './widgets/profile_header_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
+import '../../widgets/adaptive_scaffold.dart';
+import '../../config/navigation_config.dart';
+import '../../utils/responsive_helper.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -17,6 +20,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  int _currentIndex = 4; // Profile is index 4
   String _userName = '';
   String _userEmail = '';
   bool _isLoading = false;
@@ -143,66 +147,79 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _onNavigationTap(int index) {
+    if (index == 4) return; // Already on Profile screen
+
+    switch (index) {
+      case 0:
+        Navigator.pushReplacementNamed(context, AppRoutes.homeDashboard);
+        break;
+      case 1:
+        Navigator.pushReplacementNamed(context, AppRoutes.invoicesListScreen);
+        break;
+      case 2:
+        Navigator.pushReplacementNamed(context, AppRoutes.analyticsScreen);
+        break;
+      case 3:
+        Navigator.pushReplacementNamed(context, AppRoutes.customersScreen);
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
+    return AdaptiveScaffold(
+      currentIndex: _currentIndex,
+      onNavigationChanged: _onNavigationTap,
+      items: NavigationConfig.mainNavigationItems,
       appBar: AppBar(
+        automaticallyImplyLeading: ResponsiveHelper.isMobile(context),
         title: Text(
           'Profile',
           style: AppTheme.lightTheme.appBarTheme.titleTextStyle,
         ),
         backgroundColor: AppTheme.lightTheme.appBarTheme.backgroundColor,
         elevation: AppTheme.lightTheme.appBarTheme.elevation,
-        automaticallyImplyLeading: false,
       ),
-      body: _isLoading
-          ? Center(
-              child: CircularProgressIndicator(
-                color: AppTheme.lightTheme.primaryColor,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = ResponsiveHelper.isMobile(context) ? constraints.maxWidth : 600.0;
+          return Center(
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                size: Size(maxWidth, MediaQuery.of(context).size.height),
               ),
-            )
-          : SingleChildScrollView(
-              child: Column(
-                children: [
-                  ProfileHeaderWidget(
-                    userName: _userName,
-                    userEmail: _userEmail,
-                    profileImageUrl: _mockUserData['profileImage'] as String?,
-                    isEmailVerified: _mockUserData['isEmailVerified'] as bool,
-                  ),
-                  SizedBox(height: 4.h),
-                  LogoutButtonWidget(
-                    onPressed: _showLogoutDialog,
-                  ),
-                  SizedBox(height: 4.h),
-                ],
+              child: Container(
+                width: maxWidth,
+                child: _isLoading
+                    ? Center(
+                        child: CircularProgressIndicator(
+                          color: AppTheme.lightTheme.primaryColor,
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            ProfileHeaderWidget(
+                              userName: _userName,
+                              userEmail: _userEmail,
+                              profileImageUrl: _mockUserData['profileImage'] as String?,
+                              isEmailVerified: _mockUserData['isEmailVerified'] as bool,
+                            ),
+                            SizedBox(height: 4.h),
+                            LogoutButtonWidget(
+                              onPressed: _showLogoutDialog,
+                            ),
+                            SizedBox(height: 4.h),
+                          ],
+                        ),
+                      ),
               ),
             ),
-      bottomNavigationBar: EnhancedBottomNav(
-        currentIndex: 4,
-        onTap: (index) {
-          if (index == 4) return;
-          
-          switch (index) {
-            case 0:
-              Navigator.pushReplacementNamed(context, '/');
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, '/invoices-list-screen');
-              break;
-            case 2:
-              Navigator.pushReplacementNamed(context, '/analytics-screen');
-              break;
-            case 3:
-              Navigator.pushReplacementNamed(context, '/customers-screen');
-              break;
-            case 4:
-              break;
-          }
+          );
         },
       ),
+      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
     );
   }
 }

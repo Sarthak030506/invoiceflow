@@ -23,6 +23,8 @@ import './widgets/metric_card_widget.dart';
 import './widgets/recent_invoice_item_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
 import '../../widgets/adaptive_scaffold.dart';
+import '../../config/navigation_config.dart';
+import '../../utils/responsive_helper.dart';
 import '../../widgets/app_loading_indicator.dart';
 import '../../widgets/primary_button.dart';
 import '../../widgets/customer_due_edit_dialog.dart';
@@ -270,20 +272,20 @@ class _HomeDashboardState extends State<HomeDashboard> {
 
   void _onBottomNavTap(int index) {
     if (index == 0) return; // Already on home
-    
-    // Navigate immediately without setState
+
+    // Navigate with replacement to avoid stack buildup
     switch (index) {
       case 1:
-        Navigator.pushNamed(context, AppRoutes.invoicesListScreen);
+        Navigator.pushReplacementNamed(context, AppRoutes.invoicesListScreen);
         break;
       case 2:
-        Navigator.pushNamed(context, AppRoutes.analyticsScreen);
+        Navigator.pushReplacementNamed(context, AppRoutes.analyticsScreen);
         break;
       case 3:
-        Navigator.pushNamed(context, AppRoutes.customersScreen);
+        Navigator.pushReplacementNamed(context, AppRoutes.customersScreen);
         break;
       case 4:
-        Navigator.pushNamed(context, AppRoutes.profileScreen);
+        Navigator.pushReplacementNamed(context, AppRoutes.profileScreen);
         break;
     }
   }
@@ -304,33 +306,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     return AdaptiveScaffold(
       currentIndex: _selectedIndex,
       onNavigationChanged: _onBottomNavTap,
-      items: const [
-        NavigationItem(
-          icon: Icon(Icons.home_outlined),
-          activeIcon: Icon(Icons.home),
-          label: 'Home',
-        ),
-        NavigationItem(
-          icon: Icon(Icons.receipt_long_outlined),
-          activeIcon: Icon(Icons.receipt),
-          label: 'Invoices',
-        ),
-        NavigationItem(
-          icon: Icon(Icons.bar_chart_outlined),
-          activeIcon: Icon(Icons.bar_chart),
-          label: 'Analytics',
-        ),
-        NavigationItem(
-          icon: Icon(Icons.people_outline),
-          activeIcon: Icon(Icons.people),
-          label: 'Customers',
-        ),
-        NavigationItem(
-          icon: Icon(Icons.person_outline),
-          activeIcon: Icon(Icons.person),
-          label: 'Profile',
-        ),
-      ],
+      items: NavigationConfig.mainNavigationItems,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       drawer: Drawer(
         child: ListView(
@@ -446,9 +422,20 @@ class _HomeDashboardState extends State<HomeDashboard> {
           ],
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: _refreshData,
-        child: CustomScrollView(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // Use 600px width for Sizer calculations on desktop (matches old mobile constraint)
+          final maxWidth = ResponsiveHelper.isMobile(context) ? constraints.maxWidth : 600.0;
+          return Center(
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                size: Size(maxWidth, MediaQuery.of(context).size.height),
+              ),
+              child: Container(
+                width: maxWidth,
+                child: RefreshIndicator(
+            onRefresh: _refreshData,
+            child: CustomScrollView(
           physics: AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverAppBar(
@@ -637,6 +624,11 @@ class _HomeDashboardState extends State<HomeDashboard> {
             ),
           ],
         ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
       floatingActionButton: TweenAnimationBuilder<double>(
         duration: Duration(milliseconds: 800),

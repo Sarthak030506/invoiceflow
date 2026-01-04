@@ -10,6 +10,9 @@ import './widgets/filter_bottom_sheet_widget.dart';
 import './widgets/invoice_card_widget.dart';
 import './widgets/search_bar_widget.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
+import '../../widgets/adaptive_scaffold.dart';
+import '../../config/navigation_config.dart';
+import '../../utils/responsive_helper.dart';
 import '../../widgets/app_loading_indicator.dart';
 
 class InvoicesListScreen extends StatefulWidget {
@@ -27,6 +30,7 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
 
+  int _currentIndex = 1; // Invoices is index 1
   bool _isLoading = false;
   bool _isLoadingMore = false;
   bool _hasMore = true;
@@ -359,13 +363,49 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
     }
   }
 
+  void _onNavigationTap(int index) {
+    if (index == 1) return; // Already on Invoices screen
+
+    switch (index) {
+      case 0:
+        Navigator.pushReplacementNamed(context, AppRoutes.homeDashboard);
+        break;
+      case 2:
+        Navigator.pushReplacementNamed(context, AppRoutes.analyticsScreen);
+        break;
+      case 3:
+        Navigator.pushReplacementNamed(context, AppRoutes.customersScreen);
+        break;
+      case 4:
+        Navigator.pushReplacementNamed(context, AppRoutes.profileScreen);
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
+    return AdaptiveScaffold(
+      currentIndex: _currentIndex,
+      onNavigationChanged: _onNavigationTap,
+      items: NavigationConfig.mainNavigationItems,
       appBar: _buildAppBar(),
-      body: _buildBody(),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = ResponsiveHelper.isMobile(context) ? constraints.maxWidth : 600.0;
+          return Center(
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                size: Size(maxWidth, MediaQuery.of(context).size.height),
+              ),
+              child: Container(
+                width: maxWidth,
+                child: _buildBody(),
+              ),
+            ),
+          );
+        },
+      ),
+      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
     );
   }
 
@@ -376,6 +416,7 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
     final purchaseCount = _allInvoices.where((invoice) => invoice.invoiceType == 'purchase').length;
     
     return AppBar(
+      automaticallyImplyLeading: ResponsiveHelper.isMobile(context),
       backgroundColor: AppTheme.lightTheme.appBarTheme.backgroundColor,
       elevation: AppTheme.lightTheme.appBarTheme.elevation,
       bottom: !_isMultiSelectMode ? TabBar(
@@ -532,29 +573,4 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
     );
   }
 
-  Widget _buildBottomNavigationBar() {
-    return EnhancedBottomNav(
-      currentIndex: 1,
-      onTap: (index) {
-        if (index == 1) return;
-        
-        switch (index) {
-          case 0:
-            Navigator.pushReplacementNamed(context, '/');
-            break;
-          case 1:
-            break;
-          case 2:
-            Navigator.pushReplacementNamed(context, '/analytics-screen');
-            break;
-          case 3:
-            Navigator.pushReplacementNamed(context, '/customers-screen');
-            break;
-          case 4:
-            Navigator.pushReplacementNamed(context, '/profile-screen');
-            break;
-        }
-      },
-    );
-  }
 }

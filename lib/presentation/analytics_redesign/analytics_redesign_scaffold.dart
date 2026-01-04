@@ -14,6 +14,10 @@ import 'sections/items_insights_section.dart';
 import 'sections/inventory_analytics_section.dart';
 import 'sections/due_reminders_section.dart';
 import 'sections/charts_section.dart';
+import '../../widgets/adaptive_scaffold.dart';
+import '../../config/navigation_config.dart';
+import '../../utils/responsive_helper.dart';
+import '../../routes/app_routes.dart';
 
 class AnalyticsRedesignScaffold extends StatefulWidget {
   final String? initialSection;
@@ -55,12 +59,15 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
   // Revenue breakdown toggle state
   bool _isCustomerWiseView = false;
 
+  // Navigation state
+  int _currentIndex = 2; // Analytics is index 2
+
   // Table modal state
   String _searchQuery = '';
   String _sortColumn = 'revenue';
   bool _sortAscending = false;
   String _invoiceTypeFilter = 'All';
-  
+
   @override
   void initState() {
     super.initState();
@@ -69,23 +76,60 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
     refreshAnalytics();
   }
 
+  void _onNavigationTap(int index) {
+    if (index == 2) return; // Already on Analytics screen
+
+    switch (index) {
+      case 0:
+        Navigator.pushReplacementNamed(context, AppRoutes.homeDashboard);
+        break;
+      case 1:
+        Navigator.pushReplacementNamed(context, AppRoutes.invoicesListScreen);
+        break;
+      case 3:
+        Navigator.pushReplacementNamed(context, AppRoutes.customersScreen);
+        break;
+      case 4:
+        Navigator.pushReplacementNamed(context, AppRoutes.profileScreen);
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+    return AdaptiveScaffold(
+      currentIndex: _currentIndex,
+      onNavigationChanged: _onNavigationTap,
+      items: NavigationConfig.mainNavigationItems,
       appBar: _buildAnalyticsAppBar(),
-      body: SafeArea(
-        child: Column(
-          children: [
-            if (widget.initialSection == null) _buildDateChipsBar(),
-            Expanded(
-              child: SingleChildScrollView(
-                child: _buildSectionContent(),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = ResponsiveHelper.isMobile(context) ? constraints.maxWidth : 600.0;
+          return Center(
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                size: Size(maxWidth, MediaQuery.of(context).size.height),
+              ),
+              child: Container(
+                width: maxWidth,
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      if (widget.initialSection == null) _buildDateChipsBar(),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: _buildSectionContent(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          );
+        },
       ),
+      backgroundColor: Colors.grey.shade50,
     );
   }
   
@@ -218,6 +262,7 @@ class _AnalyticsRedesignScaffoldState extends State<AnalyticsRedesignScaffold> {
     };
     
     return AppBar(
+      automaticallyImplyLeading: ResponsiveHelper.isMobile(context),
       key: const Key('analyticsAppBar'),
       title: Text(
         widget.initialSection != null 

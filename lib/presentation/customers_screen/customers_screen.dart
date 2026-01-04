@@ -8,6 +8,9 @@ import '../../services/customer_service.dart';
 import './widgets/customer_card_widget.dart';
 import './widgets/enhanced_customer_card.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
+import '../../widgets/adaptive_scaffold.dart';
+import '../../config/navigation_config.dart';
+import '../../utils/responsive_helper.dart';
 import '../../widgets/app_loading_indicator.dart';
 
 class CustomersScreen extends StatefulWidget {
@@ -22,6 +25,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
 
+  int _currentIndex = 3; // Customers is index 3
   List<CustomerModel> _allCustomers = [];
   List<CustomerModel> _filteredCustomers = [];
   Map<String, double> _outstandingBalances = {};
@@ -268,12 +272,34 @@ class _CustomersScreenState extends State<CustomersScreen> {
       ),
     );
   }
-  
+
+  void _onNavigationTap(int index) {
+    if (index == 3) return; // Already on Customers screen
+
+    switch (index) {
+      case 0:
+        Navigator.pushReplacementNamed(context, AppRoutes.homeDashboard);
+        break;
+      case 1:
+        Navigator.pushReplacementNamed(context, AppRoutes.invoicesListScreen);
+        break;
+      case 2:
+        Navigator.pushReplacementNamed(context, AppRoutes.analyticsScreen);
+        break;
+      case 4:
+        Navigator.pushReplacementNamed(context, AppRoutes.profileScreen);
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
+    return AdaptiveScaffold(
+      currentIndex: _currentIndex,
+      onNavigationChanged: _onNavigationTap,
+      items: NavigationConfig.mainNavigationItems,
       appBar: AppBar(
+        automaticallyImplyLeading: ResponsiveHelper.isMobile(context),
         backgroundColor: AppTheme.lightTheme.appBarTheme.backgroundColor,
         elevation: AppTheme.lightTheme.appBarTheme.elevation,
         title: Text(
@@ -281,10 +307,20 @@ class _CustomersScreenState extends State<CustomersScreen> {
           style: AppTheme.lightTheme.appBarTheme.titleTextStyle,
         ),
       ),
-      body: Column(
-        children: [
-          // Enhanced Search Bar
-          Container(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = ResponsiveHelper.isMobile(context) ? constraints.maxWidth : 600.0;
+          return Center(
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                size: Size(maxWidth, MediaQuery.of(context).size.height),
+              ),
+              child: Container(
+                width: maxWidth,
+                child: Column(
+                  children: [
+              // Enhanced Search Bar
+              Container(
             margin: EdgeInsets.all(4.w),
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
@@ -389,7 +425,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         ),
                       ),
           ),
-        ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddCustomerDialog,
@@ -399,29 +440,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
           color: Colors.white,
         ),
       ),
-      bottomNavigationBar: EnhancedBottomNav(
-        currentIndex: 3,
-        onTap: (index) {
-          if (index == 3) return;
-          
-          switch (index) {
-            case 0:
-              Navigator.pushReplacementNamed(context, '/');
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, '/invoices-list-screen');
-              break;
-            case 2:
-              Navigator.pushReplacementNamed(context, '/analytics-screen');
-              break;
-            case 3:
-              break;
-            case 4:
-              Navigator.pushReplacementNamed(context, '/profile-screen');
-              break;
-          }
-        },
-      ),
+      backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
     );
   }
   
