@@ -970,6 +970,29 @@ class PdfService {
     }
   }
 
+  /// Web-specific: Download invoice PDF
+  Future<void> downloadInvoicePdfWeb(InvoiceModel invoice) async {
+    try {
+      AppLogger.info('Generating PDF for web download: ${invoice.invoiceNumber}', 'PdfService');
+
+      // Generate PDF
+      // Note: On web, compute might be limited, but should work. 
+      // If compute fails, we can call _generatePdfInIsolate directly, but let's try standard flow.
+      final pdfBytes = await generateInvoicePdf(invoice);
+
+      // Trigger download using Printing package (works as share/download on web)
+      await Printing.sharePdf(
+        bytes: pdfBytes,
+        filename: 'Invoice_${invoice.invoiceNumber}.pdf',
+      );
+
+      AppLogger.info('Web download triggered', 'PdfService');
+    } catch (e, stackTrace) {
+      AppLogger.error('Failed to download PDF on web', 'PdfService', e, stackTrace);
+      rethrow;
+    }
+  }
+
   /// Download invoice PDF to device storage
   Future<String> downloadInvoicePdf(InvoiceModel invoice) async {
     try {

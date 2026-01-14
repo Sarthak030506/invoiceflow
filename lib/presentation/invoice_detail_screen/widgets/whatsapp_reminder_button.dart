@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
@@ -42,6 +43,37 @@ class _WhatsAppReminderButtonState extends State<WhatsAppReminderButton> {
     });
 
     try {
+      // WEB-SPECIFIC: Skip PDF generation and open WhatsApp directly
+      if (kIsWeb) {
+        // 1. Download PDF
+        try {
+           FeedbackAnimations.showSuccess(context, message: 'Downloading PDF...');
+           final PdfService pdfService = PdfService.instance;
+           await pdfService.downloadInvoicePdfWeb(widget.invoice);
+        } catch (e) {
+           print('Web PDF download failed: $e');
+        }
+
+        // 2. Open WhatsApp Web
+        final CustomerService customerService = CustomerService.instance;
+        final String whatsappUrl = customerService.generateWhatsAppReminderLink(
+          widget.invoice,
+          widget.shopName,
+          widget.shopContact
+        );
+        
+        if (await canLaunchUrl(Uri.parse(whatsappUrl))) {
+          await launchUrl(Uri.parse(whatsappUrl), mode: LaunchMode.externalApplication);
+          if (mounted) {
+            setState(() => _isGenerating = false);
+            FeedbackAnimations.showSuccess(context, message: 'Opening WhatsApp Web...');
+          }
+        } else {
+          throw 'Could not launch WhatsApp';
+        }
+        return;
+      }
+
       print('Generating PDF for invoice: ${widget.invoice.invoiceNumber}');
 
       // Generate PDF
