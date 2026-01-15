@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:invoiceflow/providers/subscription_provider.dart';
 import 'package:invoiceflow/models/subscription_model.dart';
 import 'package:invoiceflow/widgets/premium_badge.dart';
+import 'package:invoiceflow/widgets/coming_soon_dialog.dart';
 import 'package:invoiceflow/presentation/subscription/upgrade_dialog.dart';
 
 class SubscriptionScreen extends StatelessWidget {
@@ -268,9 +269,9 @@ class SubscriptionScreen extends StatelessWidget {
                 freeDetail: '5 scans/month',
                 premiumDetail: 'Unlimited',
               ),
-              _buildFeatureRow('AI Business Insights', false, true),
-              _buildFeatureRow('Payment Risk Prediction', false, true),
-              _buildFeatureRow('Inventory Forecasting', false, true),
+              _buildFeatureRow('AI Business Insights', false, true, comingSoon: true),
+              _buildFeatureRow('Payment Risk Prediction', false, true, comingSoon: true),
+              _buildFeatureRow('Inventory Forecasting', false, true, comingSoon: true),
               _buildFeatureRow('Priority Support', false, true),
             ],
           ),
@@ -285,6 +286,7 @@ class SubscriptionScreen extends StatelessWidget {
     bool premium, {
     String? freeDetail,
     String? premiumDetail,
+    bool comingSoon = false,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -292,7 +294,29 @@ class SubscriptionScreen extends StatelessWidget {
         children: [
           Expanded(
             flex: 2,
-            child: Text(feature),
+            child: Row(
+              children: [
+                Expanded(child: Text(feature)),
+                if (comingSoon) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[100],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'SOON',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
           Expanded(
             child: Row(

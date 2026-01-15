@@ -356,10 +356,11 @@ class _UpgradeDialogState extends State<UpgradeDialog> {
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
-          _buildFeatureItem('Unlimited OCR scanning'),
-          _buildFeatureItem('AI Business Insights'),
-          _buildFeatureItem('Payment Risk Prediction'),
-          _buildFeatureItem('Inventory Forecasting'),
+          _buildFeatureItem('✨ Unlimited OCR scanning', highlight: true),
+          _buildFeatureItem('✨ Smart fuzzy item matching', highlight: true),
+          _buildFeatureItem('AI Business Insights', comingSoon: true),
+          _buildFeatureItem('Payment Risk Prediction', comingSoon: true),
+          _buildFeatureItem('Inventory Forecasting', comingSoon: true),
           _buildFeatureItem('Priority Support'),
           _buildFeatureItem('All future AI features'),
         ],
@@ -367,14 +368,48 @@ class _UpgradeDialogState extends State<UpgradeDialog> {
     );
   }
 
-  Widget _buildFeatureItem(String text) {
+  Widget _buildFeatureItem(String text, {bool comingSoon = false, bool highlight = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         children: [
-          const Icon(Icons.check_circle, size: 20, color: Color(0xFF4CAF50)),
+          Icon(
+            comingSoon ? Icons.upcoming : Icons.check_circle,
+            size: 20,
+            color: highlight
+                ? const Color(0xFFFFD700)
+                : comingSoon
+                    ? Colors.orange
+                    : const Color(0xFF4CAF50),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: Text(text)),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontWeight: highlight ? FontWeight.bold : FontWeight.normal,
+                color: highlight ? Colors.black : null,
+              ),
+            ),
+          ),
+          if (comingSoon) ...[
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.orange[100],
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'SOON',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange[900],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

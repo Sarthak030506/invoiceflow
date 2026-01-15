@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:invoiceflow/models/subscription_model.dart';
 import 'package:invoiceflow/services/subscription_service.dart';
+import 'package:invoiceflow/widgets/coming_soon_dialog.dart';
 import 'dart:async';
 
 class SubscriptionProvider extends ChangeNotifier {
@@ -146,6 +147,16 @@ class SubscriptionProvider extends ChangeNotifier {
     BuildContext? context,
     bool showDialog = true,
   }) async {
+    // Check if feature is coming soon (not implemented yet)
+    final comingSoonFeatures = ['ai_insights', 'insights', 'risk_prediction', 'payment_risk', 'forecast', 'inventory_forecast'];
+
+    if (comingSoonFeatures.contains(featureName.toLowerCase())) {
+      if (showDialog && context != null && context.mounted) {
+        _showComingSoonDialog(context, featureName);
+      }
+      return false;
+    }
+
     try {
       final hasAccess =
           await SubscriptionService.instance.canAccessFeature(featureName);
@@ -157,6 +168,30 @@ class SubscriptionProvider extends ChangeNotifier {
       return hasAccess;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Show coming soon dialog for unimplemented features
+  void _showComingSoonDialog(BuildContext context, String featureName) {
+    switch (featureName.toLowerCase()) {
+      case 'ai_insights':
+      case 'insights':
+        ComingSoonDialog.showInsightsComingSoon(context);
+        break;
+      case 'risk_prediction':
+      case 'payment_risk':
+        ComingSoonDialog.showRiskComingSoon(context);
+        break;
+      case 'forecast':
+      case 'inventory_forecast':
+        ComingSoonDialog.showForecastComingSoon(context);
+        break;
+      default:
+        ComingSoonDialog.show(
+          context,
+          featureName: 'AI Feature',
+          description: 'This feature is coming soon! Stay tuned.',
+        );
     }
   }
 
