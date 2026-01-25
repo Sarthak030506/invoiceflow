@@ -6,6 +6,7 @@ import 'package:responsive_framework/responsive_framework.dart';
 import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:invoiceflow/providers/auth_provider.dart';
 import 'package:invoiceflow/providers/inventory_provider.dart';
+import 'package:invoiceflow/providers/subscription_provider.dart';
 
 import 'package:invoiceflow/presentation/auth/auth_gate.dart';
 import 'package:invoiceflow/presentation/home_dashboard/home_dashboard.dart';
@@ -70,8 +71,11 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => AuthProvider(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
+      ],
       child: MaterialApp(
         title: 'InvoiceFlow',
         builder: (context, child) {

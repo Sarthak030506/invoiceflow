@@ -15,6 +15,9 @@ import '../presentation/auth/login_screen.dart';
 import '../presentation/auth/forgot_password_screen.dart';
 import '../presentation/returns_screen/returns_screen.dart';
 import '../presentation/items_screen/items_screen.dart';
+import '../presentation/subscription/subscription_screen.dart';
+import '../presentation/invoice_ocr/ocr_scan_screen.dart';
+import '../presentation/ai_hub/ai_hub_screen.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -33,6 +36,9 @@ class AppRoutes {
   static const String forgotPasswordScreen = '/forgot-password';
   static const String returnsScreen = '/returns-screen';
   static const String itemsScreen = '/items-screen';
+  static const String subscriptionScreen = '/subscription';
+  static const String ocrScanScreen = '/ocr-scan';
+  static const String aiHubScreen = '/ai-hub';
 
   static final String csvPath = 'assets/images/data/invoices.csv';
   
@@ -54,5 +60,8 @@ class AppRoutes {
     forgotPasswordScreen: (context) => const ForgotPasswordScreen(),
     returnsScreen: (context) => const ReturnsScreen(),
     itemsScreen: (context) => const ItemsScreen(),
+    subscriptionScreen: (context) => const SubscriptionScreen(),
+    ocrScanScreen: (context) => const OCRScanScreen(),
+    aiHubScreen: (context) => const AIHubScreen(),
   };
 }
