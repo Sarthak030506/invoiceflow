@@ -147,14 +147,17 @@ class SubscriptionProvider extends ChangeNotifier {
     BuildContext? context,
     bool showDialog = true,
   }) async {
-    // Check if feature is coming soon (not implemented yet)
-    final comingSoonFeatures = ['ai_insights', 'insights', 'risk_prediction', 'payment_risk', 'forecast', 'inventory_forecast'];
+    // AI features are now implemented - check premium access instead
+    final premiumFeatures = ['ai_insights', 'insights', 'risk_prediction', 'payment_risk', 'forecast', 'inventory_forecast'];
 
-    if (comingSoonFeatures.contains(featureName.toLowerCase())) {
-      if (showDialog && context != null && context.mounted) {
-        _showComingSoonDialog(context, featureName);
+    if (premiumFeatures.contains(featureName.toLowerCase())) {
+      if (!isPremium) {
+        if (showDialog && context != null && context.mounted) {
+          _showUpgradeDialog(context, featureName);
+        }
+        return false;
       }
-      return false;
+      return true;
     }
 
     try {

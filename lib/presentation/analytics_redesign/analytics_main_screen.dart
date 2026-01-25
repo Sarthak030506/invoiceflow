@@ -29,6 +29,13 @@ class _AnalyticsMainScreenState extends State<AnalyticsMainScreen> {
         foregroundColor: theme.appBarTheme.foregroundColor,
         elevation: theme.appBarTheme.elevation,
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_awesome),
+            tooltip: 'AI Hub',
+            onPressed: () => Navigator.pushNamed(context, '/ai-hub'),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -37,6 +44,9 @@ class _AnalyticsMainScreenState extends State<AnalyticsMainScreen> {
             child: ListView(
               padding: EdgeInsets.all(4.w),
               children: [
+                // AI Hub Card - Premium Feature
+                _buildAIHubCard(),
+                SizedBox(height: 3.w),
                 _buildAnalyticsCard(
                   'Overview KPIs',
                   'Key performance metrics',
@@ -196,6 +206,95 @@ class _AnalyticsMainScreenState extends State<AnalyticsMainScreen> {
             color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w500,
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAIHubCard() {
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, '/ai-hub'),
+      child: Container(
+        padding: EdgeInsets.all(5.w),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6366F1).withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(3.w),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.auto_awesome,
+                color: Colors.white,
+                size: 7.w,
+              ),
+            ),
+            SizedBox(width: 4.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'AI Hub',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(width: 2.w),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
+                        decoration: BoxDecoration(
+                          color: Colors.amber,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'PRO',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 0.5.h),
+                  Text(
+                    'Insights, Risk Prediction & Forecasting',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white.withOpacity(0.8),
+              size: 5.w,
+            ),
+          ],
         ),
       ),
     );
