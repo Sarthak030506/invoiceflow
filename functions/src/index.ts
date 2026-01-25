@@ -297,3 +297,289 @@ export const checkExpiredSubscriptions = functions.pubsub
       throw error;
     }
   });
+
+/**
+ * Generate AI Business Insights using Gemini
+ */
+export const generateBusinessInsights = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { invoiceData, customerData, inventoryData } = data;
+
+  try {
+    console.log(`Generating AI insights for user ${context.auth.uid}`);
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    const prompt = `
+You are a business analyst AI for an Indian small business. Analyze the following business data and provide actionable insights.
+
+BUSINESS DATA:
+- Recent Invoices (last 30 days): ${JSON.stringify(invoiceData)}
+- Customer Summary: ${JSON.stringify(customerData)}
+- Inventory Status: ${JSON.stringify(inventoryData)}
+
+Provide insights in the following JSON format:
+{
+  "insights": [
+    {
+      "id": "unique_id",
+      "type": "trend|alert|opportunity|recommendation",
+      "category": "revenue|products|customers|inventory|payments",
+      "title": "Short title (max 50 chars)",
+      "description": "Detailed insight with specific numbers and actionable advice (2-3 sentences)",
+      "priority": "high|medium|low",
+      "value": optional_numeric_value,
+      "changePercent": optional_percentage_change,
+      "isPositive": true_or_false
+    }
+  ],
+  "summary": "One paragraph executive summary of business health"
+}
+
+Generate 5-8 meaningful insights. Focus on:
+1. Revenue trends and growth opportunities
+2. Top performing products and slow movers
+3. Customer payment patterns and risks
+4. Inventory health and reorder needs
+5. Actionable recommendations for improvement
+
+Use Indian Rupee (₹) for currency. Be specific with numbers.
+`;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
+
+    console.log('Gemini insights response:', text);
+
+    // Parse JSON from response
+    let insightsData;
+    try {
+      const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      const jsonText = jsonMatch ? jsonMatch[1] : text;
+      insightsData = JSON.parse(jsonText);
+    } catch (parseError) {
+      console.error('Failed to parse insights JSON:', text);
+      throw new functions.https.HttpsError('internal', 'Failed to parse AI insights');
+    }
+
+    // Track usage
+    await admin.firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .collection('ai_usage')
+      .add({
+        featureType: 'business_insights',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        tokensUsed: response.usageMetadata?.totalTokenCount || 0,
+        insightsCount: insightsData.insights?.length || 0,
+      });
+
+    return { success: true, data: insightsData };
+  } catch (error: any) {
+    console.error('Business insights error:', error);
+    throw new functions.https.HttpsError('internal', `AI insights failed: ${error.message}`);
+  }
+});
+
+/**
+ * Predict Payment Risk using Gemini AI
+ */
+export const predictPaymentRisk = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { customers } = data;
+
+  try {
+    console.log(`Predicting payment risk for user ${context.auth.uid}`);
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    const prompt = `
+You are a credit risk analyst AI for an Indian small business. Analyze customer payment data and predict payment risk.
+
+CUSTOMER DATA:
+${JSON.stringify(customers)}
+
+For each customer, analyze:
+- Outstanding balance and total spent
+- Payment history patterns
+- Invoice count and recency
+- Credit utilization
+
+Return JSON in this exact format:
+{
+  "riskAssessments": [
+    {
+      "customerId": "customer_id",
+      "customerName": "name",
+      "riskScore": 0-100 (higher = more risky),
+      "riskLevel": "critical|high|medium|low",
+      "outstandingAmount": amount_in_rupees,
+      "factors": ["factor1", "factor2"],
+      "recommendation": "Specific action to take",
+      "predictedPaymentDays": estimated_days_to_payment
+    }
+  ],
+  "summary": {
+    "totalAtRisk": total_rupees_at_risk,
+    "criticalCount": number,
+    "highRiskCount": number,
+    "recommendation": "Overall collection strategy"
+  }
+}
+
+Risk scoring guidelines:
+- 80-100: Critical - immediate action needed, high default probability
+- 60-79: High - follow up within 3 days
+- 40-59: Medium - weekly reminder
+- 0-39: Low - standard collection cycle
+
+Be specific with amounts in ₹ and provide actionable recommendations.
+`;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
+
+    console.log('Gemini risk response:', text);
+
+    let riskData;
+    try {
+      const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      const jsonText = jsonMatch ? jsonMatch[1] : text;
+      riskData = JSON.parse(jsonText);
+    } catch (parseError) {
+      console.error('Failed to parse risk JSON:', text);
+      throw new functions.https.HttpsError('internal', 'Failed to parse risk predictions');
+    }
+
+    // Track usage
+    await admin.firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .collection('ai_usage')
+      .add({
+        featureType: 'payment_risk',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        tokensUsed: response.usageMetadata?.totalTokenCount || 0,
+        customersAnalyzed: customers.length,
+      });
+
+    return { success: true, data: riskData };
+  } catch (error: any) {
+    console.error('Payment risk error:', error);
+    throw new functions.https.HttpsError('internal', `Risk prediction failed: ${error.message}`);
+  }
+});
+
+/**
+ * Forecast Inventory Demand using Gemini AI
+ */
+export const forecastInventory = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { inventoryData, currentMonth } = data;
+
+  try {
+    console.log(`Forecasting inventory for user ${context.auth.uid}`);
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    const monthName = new Date(2024, (currentMonth || new Date().getMonth()) - 1, 1)
+      .toLocaleString('en-IN', { month: 'long' });
+
+    const prompt = `
+You are an inventory management AI for an Indian small business. Analyze inventory data to forecast demand.
+
+Current Month: ${monthName}
+
+INVENTORY DATA (with 90-day sales metrics):
+${JSON.stringify(inventoryData)}
+
+For each inventory item, predict:
+- Daily/weekly demand
+- Days until stockout
+- Recommended reorder quantity
+- Seasonal factors (consider Indian festivals, seasons)
+
+Return JSON in this exact format:
+{
+  "forecasts": [
+    {
+      "itemId": "item_id",
+      "itemName": "name",
+      "currentStock": current_quantity,
+      "dailyDemand": predicted_daily_sales,
+      "weeklyDemand": predicted_weekly_sales,
+      "daysUntilStockout": estimated_days,
+      "reorderPoint": when_to_order,
+      "recommendedOrderQty": how_much_to_order,
+      "trend": "increasing|stable|decreasing",
+      "confidence": "high|medium|low",
+      "seasonalNote": "Any seasonal factor like Diwali, summer, etc.",
+      "alert": {
+        "type": "stockout|overstock|slow_moving|seasonal_spike|none",
+        "message": "Alert message if any",
+        "severity": "critical|warning|info"
+      }
+    }
+  ],
+  "summary": {
+    "criticalItems": number_needing_immediate_reorder,
+    "totalReorderValue": estimated_purchase_amount,
+    "slowMovingItems": number_of_slow_movers,
+    "recommendation": "Overall inventory strategy"
+  }
+}
+
+Consider Indian context:
+- Festival seasons (Diwali in Oct-Nov, Holi in March, etc.)
+- Summer months (April-June) for seasonal products
+- Monsoon (July-Sept) impacts
+- Wedding season (Nov-Feb)
+
+Be specific with quantities and provide actionable insights.
+`;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
+
+    console.log('Gemini forecast response:', text);
+
+    let forecastData;
+    try {
+      const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      const jsonText = jsonMatch ? jsonMatch[1] : text;
+      forecastData = JSON.parse(jsonText);
+    } catch (parseError) {
+      console.error('Failed to parse forecast JSON:', text);
+      throw new functions.https.HttpsError('internal', 'Failed to parse forecast data');
+    }
+
+    // Track usage
+    await admin.firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .collection('ai_usage')
+      .add({
+        featureType: 'inventory_forecast',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        tokensUsed: response.usageMetadata?.totalTokenCount || 0,
+        itemsAnalyzed: inventoryData?.length || 0,
+      });
+
+    return { success: true, data: forecastData };
+  } catch (error: any) {
+    console.error('Inventory forecast error:', error);
+    throw new functions.https.HttpsError('internal', `Forecast failed: ${error.message}`);
+  }
+});

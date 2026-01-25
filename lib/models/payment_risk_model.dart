@@ -14,6 +14,7 @@ class PaymentRiskScore {
   final List<RiskFactor> riskFactors;
   final String? recommendedAction;
   final DateTime calculatedAt;
+  final int? aiPredictedDays; // AI-predicted days until payment
 
   PaymentRiskScore({
     required this.customerId,
@@ -29,6 +30,7 @@ class PaymentRiskScore {
     List<RiskFactor>? riskFactors,
     this.recommendedAction,
     DateTime? calculatedAt,
+    this.aiPredictedDays,
   })  : riskLevel = _calculateRiskLevel(riskScore),
         riskFactors = riskFactors ?? [],
         calculatedAt = calculatedAt ?? DateTime.now();
@@ -139,25 +141,45 @@ enum RiskFactorType {
   other,
 }
 
-/// Summary report for payment risk analysis
-class PaymentRiskReport {
-  final List<PaymentRiskScore> customerRisks;
+/// Summary data for payment risk analysis
+class PaymentRiskSummary {
   final double totalAtRisk;
   final int criticalCount;
   final int highRiskCount;
   final int mediumRiskCount;
   final int lowRiskCount;
+  final String? recommendation;
+
+  PaymentRiskSummary({
+    required this.totalAtRisk,
+    required this.criticalCount,
+    required this.highRiskCount,
+    required this.mediumRiskCount,
+    required this.lowRiskCount,
+    this.recommendation,
+  });
+}
+
+/// Summary report for payment risk analysis
+class PaymentRiskReport {
+  final List<PaymentRiskScore> customerRisks;
+  final PaymentRiskSummary summary;
   final DateTime generatedAt;
+  final bool isAIPowered;
 
   PaymentRiskReport({
     required this.customerRisks,
+    required this.summary,
     DateTime? generatedAt,
-  })  : totalAtRisk = customerRisks.fold(0, (sum, c) => sum + c.totalOutstanding),
-        criticalCount = customerRisks.where((c) => c.riskLevel == RiskLevel.critical).length,
-        highRiskCount = customerRisks.where((c) => c.riskLevel == RiskLevel.high).length,
-        mediumRiskCount = customerRisks.where((c) => c.riskLevel == RiskLevel.medium).length,
-        lowRiskCount = customerRisks.where((c) => c.riskLevel == RiskLevel.low).length,
-        generatedAt = generatedAt ?? DateTime.now();
+    this.isAIPowered = false,
+  })  : generatedAt = generatedAt ?? DateTime.now();
+
+  // Convenience getters from summary
+  double get totalAtRisk => summary.totalAtRisk;
+  int get criticalCount => summary.criticalCount;
+  int get highRiskCount => summary.highRiskCount;
+  int get mediumRiskCount => summary.mediumRiskCount;
+  int get lowRiskCount => summary.lowRiskCount;
 
   List<PaymentRiskScore> get sortedByRisk {
     final sorted = List<PaymentRiskScore>.from(customerRisks);

@@ -976,7 +976,7 @@ class PdfService {
       AppLogger.info('Generating PDF for web download: ${invoice.invoiceNumber}', 'PdfService');
 
       // Generate PDF
-      // Note: On web, compute might be limited, but should work. 
+      // Note: On web, compute might be limited, but should work.
       // If compute fails, we can call _generatePdfInIsolate directly, but let's try standard flow.
       final pdfBytes = await generateInvoicePdf(invoice);
 
@@ -989,6 +989,35 @@ class PdfService {
       AppLogger.info('Web download triggered', 'PdfService');
     } catch (e, stackTrace) {
       AppLogger.error('Failed to download PDF on web', 'PdfService', e, stackTrace);
+      rethrow;
+    }
+  }
+
+  /// Web-specific: Download outstanding invoices summary PDF
+  Future<void> downloadOutstandingSummaryPdfWeb({
+    required String customerName,
+    required String? customerPhone,
+    required List<InvoiceModel> unpaidInvoices,
+  }) async {
+    try {
+      AppLogger.info('Generating outstanding summary PDF for web download: $customerName', 'PdfService');
+
+      // Generate PDF
+      final pdfBytes = await generateOutstandingInvoicesSummaryPdf(
+        customerName: customerName,
+        customerPhone: customerPhone,
+        unpaidInvoices: unpaidInvoices,
+      );
+
+      // Trigger download using Printing package (works as share/download on web)
+      await Printing.sharePdf(
+        bytes: pdfBytes,
+        filename: 'Outstanding_Statement_${customerName.replaceAll(' ', '_')}.pdf',
+      );
+
+      AppLogger.info('Web download triggered for outstanding summary', 'PdfService');
+    } catch (e, stackTrace) {
+      AppLogger.error('Failed to download outstanding summary PDF on web', 'PdfService', e, stackTrace);
       rethrow;
     }
   }

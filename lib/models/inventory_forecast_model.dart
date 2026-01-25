@@ -17,6 +17,7 @@ class InventoryForecast {
   final double seasonalMultiplier;
   final DateTime forecastDate;
   final Map<String, dynamic>? metadata;
+  final String? aiRecommendation; // AI-generated recommendation
 
   InventoryForecast({
     required this.itemId,
@@ -36,6 +37,7 @@ class InventoryForecast {
     this.seasonalMultiplier = 1.0,
     DateTime? forecastDate,
     this.metadata,
+    this.aiRecommendation,
   }) : forecastDate = forecastDate ?? DateTime.now();
 
   bool get needsReorder => currentStock <= reorderPoint;
@@ -170,10 +172,14 @@ class InventoryForecastReport {
   final int slowMovingCount;
   final double totalReorderValue;
   final DateTime generatedAt;
+  final String? summary; // AI-generated summary
+  final bool isAIPowered; // Whether this report was generated using AI
 
   InventoryForecastReport({
     required this.forecasts,
     DateTime? generatedAt,
+    this.summary,
+    this.isAIPowered = false,
   })  : totalItems = forecasts.length,
         needsReorderCount = forecasts.where((f) => f.needsReorder).length,
         criticalCount = forecasts.where((f) => f.isCritical).length,

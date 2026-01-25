@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -38,8 +38,6 @@ class _WhatsAppDueReminderButtonState extends State<WhatsAppDueReminderButton> {
     });
 
     try {
-      print('Fetching unpaid invoices for customer: ${widget.customer.name}');
-
       // Get all unpaid invoices for this customer
       final FirestoreService firestoreService = FirestoreService.instance;
       final List<InvoiceModel> allInvoices = await firestoreService.getInvoicesByCustomerId(widget.customer.id);
@@ -47,31 +45,8 @@ class _WhatsAppDueReminderButtonState extends State<WhatsAppDueReminderButton> {
       // Filter unpaid invoices
       final List<InvoiceModel> unpaidInvoices = allInvoices.where((invoice) {
         final remaining = invoice.adjustedTotal - invoice.amountPaid;
-        return remaining > 0.01; // Consider amounts > ₹0.01 as unpaid
+        return remaining > 0.01;
       }).toList();
-
-      if (unpaidInvoices.isEmpty) {
-        print('No unpaid invoices found for customer');
-        if (mounted) {
-          setState(() {
-            _isGenerating = false;
-          });
-          FeedbackAnimations.showError(context, message: 'No unpaid invoices found');
-        }
-        return;
-      }
-
-      print('Found ${unpaidInvoices.length} unpaid invoices, generating summary PDF');
-
-      // Generate summary PDF
-      final PdfService pdfService = PdfService.instance;
-      final String pdfPath = await pdfService.getOutstandingInvoicesSummaryPdfPath(
-        customerName: widget.customer.name,
-        customerPhone: widget.customer.phoneNumber,
-        unpaidInvoices: unpaidInvoices,
-      );
-
-      print('Summary PDF generated at: $pdfPath');
 
       final message = '''Hello ${widget.customer.name},
 
@@ -97,47 +72,83 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
         phoneNumber = '91$phoneNumber';
       }
 
-      print('Opening WhatsApp for number: $phoneNumber');
+      // WEB: Download PDF and open WhatsApp Web
+      if (kIsWeb) {
+        debugPrint('Web platform detected - using web flow');
 
-      if (mounted) {
-        setState(() {
-          _isGenerating = false;
-        });
-      }
-
-      // Android-specific: Try to use WhatsApp directly via Intent
-      if (Platform.isAndroid) {
-        try {
-          // Use platform channel to send WhatsApp Intent with file
-          const platform = MethodChannel('com.invoiceflow.app/whatsapp');
-
-          await platform.invokeMethod('sendWhatsAppMessage', {
-            'phoneNumber': phoneNumber,
-            'message': message,
-            'filePath': pdfPath,
-          });
-
-          if (mounted) {
-            FeedbackAnimations.showSuccess(context, message: 'Opening WhatsApp...');
-            HapticFeedbackUtil.success();
-          }
-        } catch (e) {
-          print('Platform channel failed, using share sheet: $e');
-
-          // Fallback to share sheet
-          final result = await Share.shareXFiles(
-            [XFile(pdfPath)],
-            text: message,
-          );
-
-          if (mounted) {
-            FeedbackAnimations.showSuccess(context, message: 'Please select WhatsApp');
-            HapticFeedbackUtil.success();
+        if (unpaidInvoices.isNotEmpty) {
+          // Download PDF
+          try {
+            if (mounted) {
+              FeedbackAnimations.showSuccess(context, message: 'Downloading PDF...');
+            }
+            final PdfService pdfService = PdfService.instance;
+            await pdfService.downloadOutstandingSummaryPdfWeb(
+              customerName: widget.customer.name,
+              customerPhone: widget.customer.phoneNumber,
+              unpaidInvoices: unpaidInvoices,
+            );
+          } catch (e) {
+            debugPrint('Web PDF download failed: $e');
           }
         }
-      } else {
-        // For iOS and other platforms, use share sheet
-        final result = await Share.shareXFiles(
+
+        // Open WhatsApp Web
+        final whatsappUrl = 'https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}';
+
+        if (await canLaunchUrl(Uri.parse(whatsappUrl))) {
+          await launchUrl(Uri.parse(whatsappUrl), mode: LaunchMode.externalApplication);
+          if (mounted) {
+            setState(() => _isGenerating = false);
+            FeedbackAnimations.showSuccess(context, message: 'Opening WhatsApp Web...');
+          }
+        } else {
+          throw 'Could not launch WhatsApp';
+        }
+        return;
+      }
+
+      // MOBILE: Generate PDF and share via WhatsApp
+      debugPrint('Mobile platform detected - using native flow');
+
+      if (unpaidInvoices.isEmpty) {
+        if (mounted) {
+          setState(() => _isGenerating = false);
+          FeedbackAnimations.showError(context, message: 'No unpaid invoices found');
+        }
+        return;
+      }
+
+      // Generate summary PDF
+      final PdfService pdfService = PdfService.instance;
+      final String pdfPath = await pdfService.getOutstandingInvoicesSummaryPdfPath(
+        customerName: widget.customer.name,
+        customerPhone: widget.customer.phoneNumber,
+        unpaidInvoices: unpaidInvoices,
+      );
+
+      if (mounted) {
+        setState(() => _isGenerating = false);
+      }
+
+      // Try Android platform channel first
+      try {
+        const platform = MethodChannel('com.invoiceflow.app/whatsapp');
+        await platform.invokeMethod('sendWhatsAppMessage', {
+          'phoneNumber': phoneNumber,
+          'message': message,
+          'filePath': pdfPath,
+        });
+
+        if (mounted) {
+          FeedbackAnimations.showSuccess(context, message: 'Opening WhatsApp...');
+          HapticFeedbackUtil.success();
+        }
+      } catch (e) {
+        debugPrint('Platform channel failed, using share sheet: $e');
+
+        // Fallback to share sheet
+        await Share.shareXFiles(
           [XFile(pdfPath)],
           text: message,
         );
@@ -148,12 +159,10 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
         }
       }
     } catch (e) {
-      print('Error sending WhatsApp reminder with summary PDF: $e');
+      debugPrint('Error sending WhatsApp reminder: $e');
 
       if (mounted) {
-        setState(() {
-          _isGenerating = false;
-        });
+        setState(() => _isGenerating = false);
         FeedbackAnimations.showError(
           context,
           message: 'Failed to send reminder: ${e.toString()}',

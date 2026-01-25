@@ -105,10 +105,14 @@ class BusinessInsightsReport {
   final int totalInsights;
   final int highPriorityCount;
   final Map<InsightCategory, int> categoryBreakdown;
+  final String? summary; // AI-generated summary
+  final bool isAIPowered; // Whether this report was generated using AI
 
   BusinessInsightsReport({
     required this.insights,
     DateTime? generatedAt,
+    this.summary,
+    this.isAIPowered = false,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         totalInsights = insights.length,
         highPriorityCount = insights.where((i) => i.priority == InsightPriority.high).length,

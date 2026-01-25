@@ -1,11 +1,11 @@
 import 'package:flutter/foundation.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:invoiceflow/models/payment_risk_model.dart';
-import 'package:invoiceflow/models/invoice_model.dart';
 import 'package:invoiceflow/models/customer_model.dart';
 import 'package:invoiceflow/services/firestore_service.dart';
 import 'package:invoiceflow/services/customer_service.dart';
 
-/// Service for predicting payment risk for customers
+/// Service for predicting payment risk using Gemini AI
 class PaymentRiskService {
   static PaymentRiskService? _instance;
   PaymentRiskService._internal();
@@ -17,15 +17,134 @@ class PaymentRiskService {
 
   final FirestoreService _firestoreService = FirestoreService.instance;
   final CustomerService _customerService = CustomerService.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
-  // Risk factor weights
-  static const double _daysOverdueWeight = 0.35;
-  static const double _paymentHistoryWeight = 0.30;
-  static const double _creditRatioWeight = 0.20;
-  static const double _invoiceSizeWeight = 0.15;
-
-  /// Generate payment risk report for all customers with outstanding balances
+  /// Generate AI-powered payment risk report
   Future<PaymentRiskReport> generateRiskReport() async {
+    try {
+      final customers = await _customerService.getAllCustomers();
+      final customersWithDues =
+          customers.where((c) => c.outstandingAmount > 0.01).toList();
+
+      if (customersWithDues.isEmpty) {
+        return PaymentRiskReport(
+          customerRisks: [],
+          summary: PaymentRiskSummary(
+            totalAtRisk: 0,
+            criticalCount: 0,
+            highRiskCount: 0,
+            mediumRiskCount: 0,
+            lowRiskCount: 0,
+            recommendation: 'Great! No outstanding payments.',
+          ),
+          isAIPowered: true,
+        );
+      }
+
+      // Prepare detailed customer data for AI
+      final customerDataForAI = <Map<String, dynamic>>[];
+
+      for (final customer in customersWithDues) {
+        final invoices = await _firestoreService.getInvoicesByCustomerId(customer.id);
+        final salesInvoices = invoices.where((i) => i.invoiceType == 'sales').toList();
+
+        // Calculate metrics
+        final paidInvoices = salesInvoices.where((i) => i.isFullyPaid).length;
+        final unpaidInvoices = salesInvoices.where((i) => !i.isFullyPaid).toList();
+        int maxDaysOverdue = 0;
+        for (final inv in unpaidInvoices) {
+          final days = DateTime.now().difference(inv.date).inDays;
+          if (days > maxDaysOverdue) maxDaysOverdue = days;
+        }
+
+        customerDataForAI.add({
+          'id': customer.id,
+          'name': customer.name,
+          'phone': customer.phoneNumber,
+          'totalSpent': customer.totalSpent,
+          'totalPaid': customer.totalPaid,
+          'outstanding': customer.outstandingAmount,
+          'invoiceCount': customer.invoiceCount,
+          'paidInvoicesCount': paidInvoices,
+          'unpaidInvoicesCount': unpaidInvoices.length,
+          'maxDaysOverdue': maxDaysOverdue,
+          'lastPurchaseDate': customer.lastPurchaseDate?.toIso8601String(),
+        });
+      }
+
+      // Call Firebase Function with Gemini AI
+      final callable = _functions.httpsCallable('predictPaymentRisk');
+      final result = await callable.call({'customers': customerDataForAI});
+
+      final data = result.data as Map<String, dynamic>;
+
+      if (data['success'] != true) {
+        throw Exception('AI risk prediction failed');
+      }
+
+      final aiResponse = data['data'] as Map<String, dynamic>;
+      final assessments = aiResponse['riskAssessments'] as List<dynamic>? ?? [];
+      final summaryData = aiResponse['summary'] as Map<String, dynamic>? ?? {};
+
+      // Convert AI response to PaymentRiskScore objects
+      final riskScores = assessments.map((item) {
+        final map = item as Map<String, dynamic>;
+        final customerId = map['customerId'] ?? '';
+        final customer = customersWithDues.firstWhere(
+          (c) => c.id == customerId,
+          orElse: () => customersWithDues.first,
+        );
+
+        return PaymentRiskScore(
+          customerId: customerId,
+          customerName: map['customerName'] ?? customer.name,
+          customerPhone: customer.phoneNumber,
+          riskScore: ((map['riskScore'] as num?) ?? 50).toDouble().clamp(0, 100),
+          totalOutstanding: (map['outstandingAmount'] as num?)?.toDouble() ?? customer.outstandingAmount,
+          overdueInvoices: 0,
+          maxDaysOverdue: 0,
+          avgPaymentDelay: 0,
+          totalInvoices: customer.invoiceCount,
+          onTimePayments: 0,
+          riskFactors: (map['factors'] as List<dynamic>?)
+              ?.map((f) => RiskFactor(
+                    name: f.toString(),
+                    description: f.toString(),
+                    impact: 0,
+                    type: RiskFactorType.daysOverdue,
+                  ))
+              .toList() ?? [],
+          recommendedAction: map['recommendation'] ?? 'Follow up on payment.',
+          aiPredictedDays: (map['predictedPaymentDays'] as num?)?.toInt(),
+        );
+      }).toList();
+
+      // Sort by risk score
+      riskScores.sort((a, b) => b.riskScore.compareTo(a.riskScore));
+
+      return PaymentRiskReport(
+        customerRisks: riskScores,
+        summary: PaymentRiskSummary(
+          totalAtRisk: (summaryData['totalAtRisk'] as num?)?.toDouble() ??
+              riskScores.fold(0.0, (sum, r) => sum + r.totalOutstanding),
+          criticalCount: (summaryData['criticalCount'] as num?)?.toInt() ??
+              riskScores.where((r) => r.riskLevel == RiskLevel.critical).length,
+          highRiskCount: (summaryData['highRiskCount'] as num?)?.toInt() ??
+              riskScores.where((r) => r.riskLevel == RiskLevel.high).length,
+          mediumRiskCount: riskScores.where((r) => r.riskLevel == RiskLevel.medium).length,
+          lowRiskCount: riskScores.where((r) => r.riskLevel == RiskLevel.low).length,
+          recommendation: summaryData['recommendation'] ?? 'Prioritize high-risk customers.',
+        ),
+        isAIPowered: true,
+      );
+    } catch (e) {
+      debugPrint('Error generating AI risk report: $e');
+      return _generateFallbackReport();
+    }
+  }
+
+  /// Fallback risk calculation if AI fails
+  Future<PaymentRiskReport> _generateFallbackReport() async {
     try {
       final customers = await _customerService.getAllCustomers();
       final customersWithDues =
@@ -34,112 +153,103 @@ class PaymentRiskService {
       final riskScores = <PaymentRiskScore>[];
 
       for (final customer in customersWithDues) {
-        final score = await calculateCustomerRisk(customer);
+        final score = await _calculateCustomerRiskFallback(customer);
         if (score != null) {
           riskScores.add(score);
         }
       }
 
-      // Sort by risk score (highest first)
       riskScores.sort((a, b) => b.riskScore.compareTo(a.riskScore));
 
-      return PaymentRiskReport(customerRisks: riskScores);
+      return PaymentRiskReport(
+        customerRisks: riskScores,
+        summary: PaymentRiskSummary(
+          totalAtRisk: riskScores.fold(0.0, (sum, r) => sum + r.totalOutstanding),
+          criticalCount: riskScores.where((r) => r.riskLevel == RiskLevel.critical).length,
+          highRiskCount: riskScores.where((r) => r.riskLevel == RiskLevel.high).length,
+          mediumRiskCount: riskScores.where((r) => r.riskLevel == RiskLevel.medium).length,
+          lowRiskCount: riskScores.where((r) => r.riskLevel == RiskLevel.low).length,
+          recommendation: 'Basic analysis. AI unavailable.',
+        ),
+        isAIPowered: false,
+      );
     } catch (e) {
-      debugPrint('Error generating risk report: $e');
-      return PaymentRiskReport(customerRisks: []);
+      debugPrint('Fallback risk report error: $e');
+      return PaymentRiskReport(
+        customerRisks: [],
+        summary: PaymentRiskSummary(
+          totalAtRisk: 0,
+          criticalCount: 0,
+          highRiskCount: 0,
+          mediumRiskCount: 0,
+          lowRiskCount: 0,
+          recommendation: 'Unable to generate report.',
+        ),
+        isAIPowered: false,
+      );
     }
   }
 
-  /// Calculate risk score for a specific customer
-  Future<PaymentRiskScore?> calculateCustomerRisk(CustomerModel customer) async {
+  Future<PaymentRiskScore?> _calculateCustomerRiskFallback(CustomerModel customer) async {
     try {
-      // Get customer's invoices
-      final invoices =
-          await _firestoreService.getInvoicesByCustomerId(customer.id);
-
-      if (invoices.isEmpty) return null;
-
-      // Filter to sales invoices
-      final salesInvoices =
-          invoices.where((i) => i.invoiceType == 'sales' && i.status != 'cancelled').toList();
+      final invoices = await _firestoreService.getInvoicesByCustomerId(customer.id);
+      final salesInvoices = invoices.where((i) => i.invoiceType == 'sales').toList();
 
       if (salesInvoices.isEmpty) return null;
 
-      // Calculate risk factors
       final riskFactors = <RiskFactor>[];
       double totalScore = 0;
 
-      // 1. Days Overdue Factor (35%)
-      final overdueData = _calculateOverdueFactor(salesInvoices);
-      totalScore += overdueData['score'] * _daysOverdueWeight;
-      if (overdueData['score'] > 0) {
+      // Days overdue factor
+      final unpaidInvoices = salesInvoices.where((i) => !i.isFullyPaid).toList();
+      int maxDaysOverdue = 0;
+      for (final inv in unpaidInvoices) {
+        final days = DateTime.now().difference(inv.date).inDays;
+        if (days > maxDaysOverdue) maxDaysOverdue = days;
+      }
+
+      if (maxDaysOverdue > 60) {
+        totalScore += 35;
         riskFactors.add(RiskFactor(
-          name: 'Days Overdue',
-          description: overdueData['description'],
-          impact: overdueData['score'] * _daysOverdueWeight,
+          name: 'Severely Overdue',
+          description: '$maxDaysOverdue days overdue',
+          impact: 35,
+          type: RiskFactorType.daysOverdue,
+        ));
+      } else if (maxDaysOverdue > 30) {
+        totalScore += 25;
+        riskFactors.add(RiskFactor(
+          name: 'Overdue',
+          description: '$maxDaysOverdue days overdue',
+          impact: 25,
           type: RiskFactorType.daysOverdue,
         ));
       }
 
-      // 2. Payment History Factor (30%)
-      final historyData = _calculatePaymentHistoryFactor(salesInvoices);
-      totalScore += historyData['score'] * _paymentHistoryWeight;
-      riskFactors.add(RiskFactor(
-        name: 'Payment History',
-        description: historyData['description'],
-        impact: historyData['score'] * _paymentHistoryWeight,
-        type: RiskFactorType.paymentHistory,
-      ));
-
-      // 3. Credit Ratio Factor (20%)
-      final creditData = _calculateCreditRatioFactor(customer);
-      totalScore += creditData['score'] * _creditRatioWeight;
-      if (creditData['score'] > 0) {
+      // Credit ratio factor
+      final creditRatio = customer.outstandingAmount / (customer.totalSpent > 0 ? customer.totalSpent : 1);
+      if (creditRatio > 0.5) {
+        totalScore += 30;
         riskFactors.add(RiskFactor(
-          name: 'Credit Ratio',
-          description: creditData['description'],
-          impact: creditData['score'] * _creditRatioWeight,
+          name: 'High Credit Ratio',
+          description: '${(creditRatio * 100).toStringAsFixed(0)}% outstanding',
+          impact: 30,
           type: RiskFactorType.creditRatio,
         ));
+      } else if (creditRatio > 0.3) {
+        totalScore += 15;
       }
 
-      // 4. Invoice Size Factor (15%)
-      final sizeData = _calculateInvoiceSizeFactor(salesInvoices);
-      totalScore += sizeData['score'] * _invoiceSizeWeight;
-      if (sizeData['score'] > 0) {
+      // Amount factor
+      if (customer.outstandingAmount > 10000) {
+        totalScore += 20;
         riskFactors.add(RiskFactor(
-          name: 'Invoice Size',
-          description: sizeData['description'],
-          impact: sizeData['score'] * _invoiceSizeWeight,
+          name: 'Large Amount',
+          description: '₹${customer.outstandingAmount.toStringAsFixed(0)} outstanding',
+          impact: 20,
           type: RiskFactorType.invoiceSize,
         ));
       }
-
-      // Calculate additional metrics
-      final unpaidInvoices =
-          salesInvoices.where((i) => !i.isFullyPaid).toList();
-      final overdueInvoices = unpaidInvoices.where((i) {
-        final daysSince = DateTime.now().difference(i.date).inDays;
-        return daysSince > 30;
-      }).toList();
-
-      int maxDaysOverdue = 0;
-      for (final invoice in unpaidInvoices) {
-        final days = DateTime.now().difference(invoice.date).inDays;
-        if (days > maxDaysOverdue) maxDaysOverdue = days;
-      }
-
-      // Calculate on-time payments
-      final paidInvoices = salesInvoices.where((i) => i.isFullyPaid).toList();
-      int onTimePayments = 0;
-      for (final invoice in paidInvoices) {
-        // Consider on-time if paid within 30 days
-        final daysToPay = invoice.updatedAt.difference(invoice.date).inDays;
-        if (daysToPay <= 30) onTimePayments++;
-      }
-
-      // Get recommended action
-      final recommendedAction = _getRecommendedAction(totalScore, overdueData);
 
       return PaymentRiskScore(
         customerId: customer.id,
@@ -147,216 +257,29 @@ class PaymentRiskService {
         customerPhone: customer.phoneNumber,
         riskScore: totalScore.clamp(0, 100),
         totalOutstanding: customer.outstandingAmount,
-        overdueInvoices: overdueInvoices.length,
+        overdueInvoices: unpaidInvoices.length,
         maxDaysOverdue: maxDaysOverdue,
-        avgPaymentDelay: historyData['avgDelay'] ?? 0.0,
+        avgPaymentDelay: 0,
         totalInvoices: salesInvoices.length,
-        onTimePayments: onTimePayments,
+        onTimePayments: salesInvoices.where((i) => i.isFullyPaid).length,
         riskFactors: riskFactors,
-        recommendedAction: recommendedAction,
+        recommendedAction: _getRecommendation(totalScore),
       );
     } catch (e) {
-      debugPrint('Error calculating risk for customer ${customer.id}: $e');
       return null;
     }
   }
 
-  /// Calculate days overdue risk factor
-  Map<String, dynamic> _calculateOverdueFactor(List<InvoiceModel> invoices) {
-    final unpaidInvoices = invoices.where((i) => !i.isFullyPaid).toList();
-
-    if (unpaidInvoices.isEmpty) {
-      return {'score': 0.0, 'description': 'No overdue invoices'};
-    }
-
-    int maxDaysOverdue = 0;
-    double totalOverdue = 0;
-
-    for (final invoice in unpaidInvoices) {
-      final daysSince = DateTime.now().difference(invoice.date).inDays;
-      if (daysSince > maxDaysOverdue) maxDaysOverdue = daysSince;
-      if (daysSince > 30) {
-        totalOverdue += invoice.remainingAmount;
-      }
-    }
-
-    // Score based on max days overdue
-    double score;
-    String description;
-
-    if (maxDaysOverdue > 90) {
-      score = 100;
-      description = '$maxDaysOverdue days overdue - Critical';
-    } else if (maxDaysOverdue > 60) {
-      score = 80;
-      description = '$maxDaysOverdue days overdue - Very High';
-    } else if (maxDaysOverdue > 30) {
-      score = 60;
-      description = '$maxDaysOverdue days overdue - High';
-    } else if (maxDaysOverdue > 15) {
-      score = 40;
-      description = '$maxDaysOverdue days since invoice';
-    } else {
-      score = 20;
-      description = 'Recent invoice ($maxDaysOverdue days)';
-    }
-
-    return {'score': score, 'description': description, 'totalOverdue': totalOverdue};
+  String _getRecommendation(double score) {
+    if (score >= 80) return 'Call immediately. Consider stopping credit.';
+    if (score >= 60) return 'Follow up within 2-3 days.';
+    if (score >= 40) return 'Send WhatsApp reminder this week.';
+    return 'Standard follow-up cycle.';
   }
 
-  /// Calculate payment history risk factor
-  Map<String, dynamic> _calculatePaymentHistoryFactor(
-      List<InvoiceModel> invoices) {
-    final paidInvoices = invoices.where((i) => i.isFullyPaid).toList();
-
-    if (paidInvoices.isEmpty) {
-      return {
-        'score': 50.0,
-        'description': 'No payment history',
-        'avgDelay': 0.0
-      };
-    }
-
-    // Calculate average days to pay
-    double totalDays = 0;
-    int latePayments = 0;
-
-    for (final invoice in paidInvoices) {
-      final daysToPay = invoice.updatedAt.difference(invoice.date).inDays;
-      totalDays += daysToPay;
-      if (daysToPay > 30) latePayments++;
-    }
-
-    final avgDays = totalDays / paidInvoices.length;
-    final latePaymentRate = latePayments / paidInvoices.length;
-
-    // Score based on payment behavior
-    double score;
-    String description;
-
-    if (latePaymentRate > 0.7) {
-      score = 90;
-      description = '${(latePaymentRate * 100).toStringAsFixed(0)}% late payments';
-    } else if (latePaymentRate > 0.5) {
-      score = 70;
-      description = 'Frequently late (${(latePaymentRate * 100).toStringAsFixed(0)}%)';
-    } else if (latePaymentRate > 0.3) {
-      score = 50;
-      description = 'Sometimes late (${(latePaymentRate * 100).toStringAsFixed(0)}%)';
-    } else if (latePaymentRate > 0.1) {
-      score = 30;
-      description = 'Usually on time';
-    } else {
-      score = 10;
-      description = 'Excellent payment history';
-    }
-
-    return {'score': score, 'description': description, 'avgDelay': avgDays};
-  }
-
-  /// Calculate credit ratio risk factor
-  Map<String, dynamic> _calculateCreditRatioFactor(CustomerModel customer) {
-    if (customer.totalSpent == 0) {
-      return {'score': 0.0, 'description': 'No credit history'};
-    }
-
-    final creditRatio = customer.outstandingAmount / customer.totalSpent;
-
-    double score;
-    String description;
-
-    if (creditRatio > 0.7) {
-      score = 90;
-      description = '${(creditRatio * 100).toStringAsFixed(0)}% outstanding';
-    } else if (creditRatio > 0.5) {
-      score = 70;
-      description = 'High credit utilization';
-    } else if (creditRatio > 0.3) {
-      score = 50;
-      description = 'Moderate credit utilization';
-    } else if (creditRatio > 0.1) {
-      score = 30;
-      description = 'Low credit utilization';
-    } else {
-      score = 10;
-      description = 'Minimal outstanding';
-    }
-
-    return {'score': score, 'description': description};
-  }
-
-  /// Calculate invoice size risk factor
-  Map<String, dynamic> _calculateInvoiceSizeFactor(List<InvoiceModel> invoices) {
-    final unpaidInvoices = invoices.where((i) => !i.isFullyPaid).toList();
-
-    if (unpaidInvoices.isEmpty) {
-      return {'score': 0.0, 'description': 'No unpaid invoices'};
-    }
-
-    // Get largest unpaid invoice
-    double maxUnpaid = 0;
-    for (final invoice in unpaidInvoices) {
-      if (invoice.remainingAmount > maxUnpaid) {
-        maxUnpaid = invoice.remainingAmount;
-      }
-    }
-
-    double score;
-    String description;
-
-    if (maxUnpaid > 50000) {
-      score = 90;
-      description = 'Large invoice (₹${maxUnpaid.toStringAsFixed(0)})';
-    } else if (maxUnpaid > 20000) {
-      score = 70;
-      description = 'Significant amount (₹${maxUnpaid.toStringAsFixed(0)})';
-    } else if (maxUnpaid > 10000) {
-      score = 50;
-      description = 'Moderate amount (₹${maxUnpaid.toStringAsFixed(0)})';
-    } else if (maxUnpaid > 5000) {
-      score = 30;
-      description = 'Small amount (₹${maxUnpaid.toStringAsFixed(0)})';
-    } else {
-      score = 10;
-      description = 'Minor amount (₹${maxUnpaid.toStringAsFixed(0)})';
-    }
-
-    return {'score': score, 'description': description};
-  }
-
-  /// Get recommended action based on risk score
-  String _getRecommendedAction(double score, Map<String, dynamic> overdueData) {
-    if (score >= 80) {
-      return 'Call immediately. Consider stopping further credit.';
-    } else if (score >= 60) {
-      return 'Follow up within 2-3 days. Send payment reminder.';
-    } else if (score >= 40) {
-      return 'Send WhatsApp reminder this week.';
-    } else {
-      return 'Standard follow-up cycle.';
-    }
-  }
-
-  /// Get customers sorted by risk level
-  Future<List<PaymentRiskScore>> getCustomersByRiskLevel(
-      RiskLevel level) async {
+  /// Get customers by risk level
+  Future<List<PaymentRiskScore>> getCustomersByRiskLevel(RiskLevel level) async {
     final report = await generateRiskReport();
-    return report.customerRisks
-        .where((c) => c.riskLevel == level)
-        .toList();
-  }
-
-  /// Get total amount at risk by level
-  Future<Map<RiskLevel, double>> getAmountAtRiskByLevel() async {
-    final report = await generateRiskReport();
-    final result = <RiskLevel, double>{};
-
-    for (final level in RiskLevel.values) {
-      result[level] = report.customerRisks
-          .where((c) => c.riskLevel == level)
-          .fold(0, (sum, c) => sum + c.totalOutstanding);
-    }
-
-    return result;
+    return report.customerRisks.where((c) => c.riskLevel == level).toList();
   }
 }

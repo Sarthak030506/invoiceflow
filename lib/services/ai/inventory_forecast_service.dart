@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:invoiceflow/models/inventory_forecast_model.dart';
 import 'package:invoiceflow/models/inventory_item_model.dart';
 import 'package:invoiceflow/models/stock_movement_model.dart';
 import 'package:invoiceflow/services/inventory_service.dart';
 
-/// Service for forecasting inventory demand
+/// Service for forecasting inventory demand using Gemini AI
 class InventoryForecastService {
   static InventoryForecastService? _instance;
   InventoryForecastService._internal();
@@ -15,46 +16,243 @@ class InventoryForecastService {
   }
 
   final InventoryService _inventoryService = InventoryService();
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   // Default lead time in days (time to receive stock after ordering)
   static const int _defaultLeadTime = 7;
   // Service level factor for 95% service level
   static const double _serviceLevelFactor = 1.65;
 
-  /// Generate forecast report for all inventory items
+  /// Generate AI-powered forecast report for all inventory items
   Future<InventoryForecastReport> generateForecastReport() async {
+    try {
+      final items = await _inventoryService.getAllItems();
+
+      if (items.isEmpty) {
+        return InventoryForecastReport(
+          forecasts: [],
+          summary: 'No inventory items found.',
+          isAIPowered: true,
+        );
+      }
+
+      // Prepare inventory data for AI
+      final inventoryDataForAI = <Map<String, dynamic>>[];
+      final now = DateTime.now();
+      final ninetyDaysAgo = now.subtract(const Duration(days: 90));
+
+      for (final item in items) {
+        final movements = await _inventoryService.getMovementsByItem(item.id);
+
+        // Filter to recent OUT movements (sales)
+        final recentSales = movements.where((m) {
+          return m.type == StockMovementType.OUT &&
+              m.createdAt.isAfter(ninetyDaysAgo);
+        }).toList();
+
+        // Calculate basic metrics for AI
+        final totalSold = recentSales.fold<double>(0, (sum, m) => sum + m.quantity);
+        final avgWeeklyDemand = totalSold / 13; // 90 days ≈ 13 weeks
+
+        inventoryDataForAI.add({
+          'id': item.id,
+          'name': item.name,
+          'sku': item.sku,
+          'category': item.category,
+          'currentStock': item.currentStock,
+          'reorderPoint': item.reorderPoint,
+          'avgCost': item.avgCost,
+          'totalSold90Days': totalSold,
+          'avgWeeklyDemand': avgWeeklyDemand,
+          'movementCount': recentSales.length,
+          'lastMovementDate': recentSales.isNotEmpty
+              ? recentSales.first.createdAt.toIso8601String()
+              : null,
+        });
+      }
+
+      // Call Firebase Function with Gemini AI
+      final callable = _functions.httpsCallable('forecastInventory');
+      final result = await callable.call({
+        'inventoryData': inventoryDataForAI,
+        'currentMonth': now.month,
+      });
+
+      final data = result.data as Map<String, dynamic>;
+
+      if (data['success'] != true) {
+        throw Exception('AI forecast generation failed');
+      }
+
+      final aiResponse = data['data'] as Map<String, dynamic>;
+      final forecastList = aiResponse['forecasts'] as List<dynamic>? ?? [];
+      final summary = aiResponse['summary'] as String? ?? '';
+
+      // Convert AI response to InventoryForecast objects
+      final forecasts = forecastList.map((item) {
+        final map = item as Map<String, dynamic>;
+        final itemId = map['itemId'] ?? '';
+        final originalItem = items.firstWhere(
+          (i) => i.id == itemId,
+          orElse: () => items.first,
+        );
+
+        return InventoryForecast(
+          itemId: itemId,
+          itemName: map['itemName'] ?? originalItem.name,
+          sku: originalItem.sku,
+          category: originalItem.category,
+          currentStock: originalItem.currentStock,
+          reorderPoint: originalItem.reorderPoint,
+          dailyDemand: ((map['dailyDemand'] as num?) ?? 0).toDouble(),
+          weeklyDemand: ((map['weeklyDemand'] as num?) ?? 0).toDouble(),
+          daysUntilStockout: ((map['daysUntilStockout'] as num?) ?? 999).toInt(),
+          recommendedOrderQty: ((map['recommendedOrderQty'] as num?) ?? 0).toDouble(),
+          safetyStock: ((map['safetyStock'] as num?) ?? 0).toDouble(),
+          confidence: _parseConfidence(map['confidence']),
+          alert: _parseAlertFromAI(map['alert']),
+          trend: _parseTrend(map['trend']),
+          seasonalMultiplier: ((map['seasonalMultiplier'] as num?) ?? 1.0).toDouble(),
+          aiRecommendation: map['recommendation'],
+          metadata: {
+            'aiPowered': true,
+            'predictedDemandNextMonth': map['predictedDemandNextMonth'],
+          },
+        );
+      }).toList();
+
+      // Sort by urgency
+      forecasts.sort((a, b) {
+        if (a.isCritical && !b.isCritical) return -1;
+        if (!a.isCritical && b.isCritical) return 1;
+        if (a.needsReorder && !b.needsReorder) return -1;
+        if (!a.needsReorder && b.needsReorder) return 1;
+        return a.daysUntilStockout.compareTo(b.daysUntilStockout);
+      });
+
+      return InventoryForecastReport(
+        forecasts: forecasts,
+        summary: summary,
+        isAIPowered: true,
+      );
+    } catch (e) {
+      debugPrint('Error generating AI forecast report: $e');
+      return _generateFallbackReport();
+    }
+  }
+
+  /// Parse confidence level from AI response
+  ForecastConfidence _parseConfidence(String? confidence) {
+    switch (confidence?.toLowerCase()) {
+      case 'high':
+        return ForecastConfidence.high;
+      case 'medium':
+        return ForecastConfidence.medium;
+      case 'low':
+        return ForecastConfidence.low;
+      default:
+        return ForecastConfidence.medium;
+    }
+  }
+
+  /// Parse trend direction from AI response
+  TrendDirection _parseTrend(String? trend) {
+    switch (trend?.toLowerCase()) {
+      case 'increasing':
+      case 'up':
+        return TrendDirection.increasing;
+      case 'decreasing':
+      case 'down':
+        return TrendDirection.decreasing;
+      case 'stable':
+      default:
+        return TrendDirection.stable;
+    }
+  }
+
+  /// Parse alert from AI response
+  ForecastAlert? _parseAlertFromAI(Map<String, dynamic>? alertData) {
+    if (alertData == null) return null;
+
+    AlertType type;
+    switch (alertData['type']?.toString().toLowerCase()) {
+      case 'stockout':
+        type = AlertType.stockout;
+        break;
+      case 'reordernow':
+      case 'reorder':
+        type = AlertType.reorderNow;
+        break;
+      case 'overstock':
+        type = AlertType.overstock;
+        break;
+      case 'slowmoving':
+      case 'slow':
+        type = AlertType.slowMoving;
+        break;
+      default:
+        type = AlertType.reorderNow;
+    }
+
+    AlertSeverity severity;
+    switch (alertData['severity']?.toString().toLowerCase()) {
+      case 'critical':
+        severity = AlertSeverity.critical;
+        break;
+      case 'warning':
+        severity = AlertSeverity.warning;
+        break;
+      case 'info':
+      default:
+        severity = AlertSeverity.info;
+    }
+
+    return ForecastAlert(
+      type: type,
+      message: alertData['message'] ?? 'Action needed',
+      severity: severity,
+      actionText: alertData['actionText'] ?? 'Review',
+    );
+  }
+
+  /// Fallback report if AI fails
+  Future<InventoryForecastReport> _generateFallbackReport() async {
     try {
       final items = await _inventoryService.getAllItems();
       final forecasts = <InventoryForecast>[];
 
       for (final item in items) {
-        final forecast = await generateItemForecast(item);
+        final forecast = await _generateItemForecastFallback(item);
         if (forecast != null) {
           forecasts.add(forecast);
         }
       }
 
-      // Sort by urgency (days until stockout)
       forecasts.sort((a, b) {
-        // Critical items first
         if (a.isCritical && !b.isCritical) return -1;
         if (!a.isCritical && b.isCritical) return 1;
-        // Then by needs reorder
         if (a.needsReorder && !b.needsReorder) return -1;
         if (!a.needsReorder && b.needsReorder) return 1;
-        // Then by days until stockout
         return a.daysUntilStockout.compareTo(b.daysUntilStockout);
       });
 
-      return InventoryForecastReport(forecasts: forecasts);
+      return InventoryForecastReport(
+        forecasts: forecasts,
+        summary: 'Basic forecast generated. AI analysis unavailable.',
+        isAIPowered: false,
+      );
     } catch (e) {
-      debugPrint('Error generating forecast report: $e');
-      return InventoryForecastReport(forecasts: []);
+      debugPrint('Fallback forecast error: $e');
+      return InventoryForecastReport(
+        forecasts: [],
+        summary: 'Unable to generate forecast.',
+        isAIPowered: false,
+      );
     }
   }
 
-  /// Generate forecast for a specific item
-  Future<InventoryForecast?> generateItemForecast(InventoryItem item) async {
+  /// Fallback forecast for a specific item (rule-based)
+  Future<InventoryForecast?> _generateItemForecastFallback(InventoryItem item) async {
     try {
       // Get stock movements for the past 90 days
       final movements = await _inventoryService.getMovementsByItem(item.id);
