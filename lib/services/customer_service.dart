@@ -48,9 +48,12 @@ class CustomerService {
   
   Future<void> deleteCustomer(String customerId) async => _fs.deleteCustomer(customerId);
   
+  /// Rounds a monetary value to 2 decimal places to prevent floating-point drift.
+  static double roundMoney(double v) => (v * 100).roundToDouble() / 100.0;
+
   String generateWhatsAppReminderLink(InvoiceModel invoice, String shopName, String shopContact) {
-    // Check if invoice is paid or pending
-    final double pendingAmount = invoice.total - invoice.amountPaid;
+    // Use adjustedTotal (not total) so refund adjustments are reflected
+    final double pendingAmount = roundMoney(invoice.adjustedTotal - invoice.amountPaid);
     final bool isPaid = pendingAmount <= 0;
     
     // Create appropriate message based on payment status
@@ -78,7 +81,7 @@ Hello ${invoice.clientName},
 This is a friendly reminder from $shopName regarding your invoice #${invoice.invoiceNumber} dated ${invoice.getFormattedDate()}.
 
 Invoice details:
-- Total amount: ₹${invoice.total.toStringAsFixed(2)}
+- Total amount: ₹${invoice.adjustedTotal.toStringAsFixed(2)}
 - Amount paid: ₹${invoice.amountPaid.toStringAsFixed(2)}
 - Balance due: ₹${pendingAmount.toStringAsFixed(2)}
 
@@ -178,7 +181,7 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
     DateTime? lastPurchaseDate;
 
     for (final invoice in invoices) {
-      if (invoice.invoiceType.toLowerCase() == 'sales') {
+      if (invoice.invoiceType.toLowerCase() == 'sales' && invoice.status != 'cancelled') {
         totalSpent += invoice.adjustedTotal;
         totalPaid += invoice.amountPaid;
 
@@ -192,7 +195,7 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
     final updatedCustomer = customer.copyWith(
       totalSpent: totalSpent,
       totalPaid: totalPaid,
-      invoiceCount: invoices.where((inv) => inv.invoiceType.toLowerCase() == 'sales').length,
+      invoiceCount: invoices.where((inv) => inv.invoiceType.toLowerCase() == 'sales' && inv.status != 'cancelled').length,
       lastPurchaseDate: lastPurchaseDate,
       updatedAt: DateTime.now(),
     );
