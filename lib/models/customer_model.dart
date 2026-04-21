@@ -81,6 +81,8 @@ class CustomerModel {
     );
   }
 
-  // Computed property for outstanding amount
-  double get outstandingAmount => totalSpent - totalPaid;
+  // Computed property for outstanding amount — subtracts pending return credit
+  // so a customer with ₹200 return credit on a ₹500 invoice shows ₹300 owed, not ₹500.
+  double get outstandingAmount =>
+      (totalSpent - totalPaid - pendingReturnAmount).clamp(0.0, double.infinity);
 }
