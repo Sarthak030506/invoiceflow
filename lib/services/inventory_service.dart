@@ -3,7 +3,6 @@ import '../models/stock_movement_model.dart';
 import '../models/reorder_item_model.dart';
 import 'inventory_firestore_service.dart';
 import './inventory_notification_service.dart';
-import './stock_map_service.dart';
 import '../utils/app_logger.dart';
 import 'dart:async';
 
@@ -93,7 +92,6 @@ class InventoryService {
     await _updateItemCurrentStock(itemId);
     await refreshMetricsAndNotify();
     _inventoryUpdatesController.add(null);
-    StockMapService().notifyInventoryUpdated();
   }
 
   /// OPTIMIZATION: Receive stock without triggering full metrics refresh
@@ -140,7 +138,6 @@ class InventoryService {
     await _updateItemCurrentStock(itemId);
     await refreshMetricsAndNotify();
     _inventoryUpdatesController.add(null);
-    StockMapService().notifyInventoryUpdated();
     return true;
   }
 
@@ -197,7 +194,6 @@ class InventoryService {
     await _updateItemCurrentStock(itemId);
     await refreshMetricsAndNotify();
     _inventoryUpdatesController.add(null);
-    StockMapService().notifyInventoryUpdated();
   }
 
   Future<double> computeCurrentStock(String itemId) async {
@@ -487,7 +483,6 @@ class InventoryService {
     // Notify UI
     InventoryNotificationService().notifyLowStock(currentLowStock);
     _inventoryUpdatesController.add(null);
-    StockMapService().notifyInventoryUpdated();
 
     // Only recalculate metrics if needed (async to avoid blocking)
     Future.microtask(() async {
@@ -577,133 +572,4 @@ class InventoryService {
     }
   }
 
-  /// Adds an item directly to inventory without creating a purchase invoice
-  Future<void> addItemDirectlyToInventory(dynamic catalogItem, double quantity) async {
-    if (quantity <= 0) throw Exception('Quantity must be positive');
-
-    // Check if item already exists in inventory
-    String itemId;
-    final existingItem = await _db.getItemByName(catalogItem.name);
-
-    if (existingItem != null) {
-      itemId = existingItem.id;
-    } else {
-      // Create new inventory item from catalog item
-      final newItem = InventoryItem(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: catalogItem.name,
-        sku: 'SKU-${catalogItem.id}',
-        category: 'General',
-        unit: 'pcs',
-        avgCost: catalogItem.rate,
-        openingStock: 0.0,
-        currentStock: 0.0,
-        reorderPoint: 10.0,
-        barcode: '',
-        lastUpdated: DateTime.now(),
-      );
-
-      await addItem(newItem);
-      itemId = newItem.id;
-    }
-
-    // Add stock movement for direct addition
-    final movement = StockMovement(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      itemId: itemId,
-      type: StockMovementType.IN,
-      quantity: quantity,
-      unitCost: catalogItem.rate,
-      sourceRefType: 'direct_add',
-      sourceRefId: 'manual_${DateTime.now().millisecondsSinceEpoch}',
-      createdAt: DateTime.now(),
-    );
-
-    await addMovement(movement);
-    await _updateItemCurrentStock(itemId);
-    await refreshMetricsAndNotify();
-    _inventoryUpdatesController.add(null);
-    StockMapService().notifyInventoryUpdated();
-  }
-
-  /// OPTIMIZATION: Batch add multiple items to inventory at once (much faster)
-  Future<void> batchAddItemsDirectlyToInventory(List<Map<String, dynamic>> itemsWithQuantities) async {
-    if (itemsWithQuantities.isEmpty) return;
-
-    // OPTIMIZATION: Load all existing items once
-    final allItems = await getAllItems();
-    final itemsByName = {for (var item in allItems) item.name.toLowerCase(): item};
-
-    final List<InventoryItem> newItemsToCreate = [];
-    final List<StockMovement> movements = [];
-    final List<String> affectedItemIds = [];
-    final now = DateTime.now();
-
-    // OPTIMIZATION: Prepare all items and movements without DB calls
-    int timestampOffset = 0;
-    for (final entry in itemsWithQuantities) {
-      final catalogItem = entry['item'];
-      final quantity = entry['quantity'] as double;
-
-      if (quantity <= 0) continue;
-
-      // Check if item exists
-      String itemId;
-      final existingItem = itemsByName[catalogItem.name.toLowerCase()];
-
-      if (existingItem != null) {
-        itemId = existingItem.id;
-      } else {
-        // Queue new item for batch creation
-        final newItem = InventoryItem(
-          id: '${now.millisecondsSinceEpoch + timestampOffset}',
-          name: catalogItem.name,
-          sku: 'SKU-${catalogItem.id}',
-          category: 'General',
-          unit: 'pcs',
-          avgCost: catalogItem.rate,
-          openingStock: 0.0,
-          currentStock: 0.0,
-          reorderPoint: 10.0,
-          barcode: '',
-          lastUpdated: now,
-        );
-        newItemsToCreate.add(newItem);
-        itemId = newItem.id;
-        timestampOffset++;
-      }
-
-      affectedItemIds.add(itemId);
-
-      // Queue stock movement
-      movements.add(StockMovement(
-        id: '${now.millisecondsSinceEpoch + timestampOffset}_manual',
-        itemId: itemId,
-        type: StockMovementType.IN,
-        quantity: quantity,
-        unitCost: catalogItem.rate,
-        sourceRefType: 'direct_add',
-        sourceRefId: 'manual_batch_${now.millisecondsSinceEpoch}',
-        createdAt: now,
-      ));
-      timestampOffset++;
-    }
-
-    // OPTIMIZATION: Batch create all new items
-    if (newItemsToCreate.isNotEmpty) {
-      await batchAddItems(newItemsToCreate);
-    }
-
-    // OPTIMIZATION: Add all movements in parallel
-    await Future.wait(movements.map((m) => addMovement(m)));
-
-    // OPTIMIZATION: Update stock for all affected items in parallel
-    await Future.wait(affectedItemIds.map((id) => _updateItemCurrentStock(id)));
-
-    // OPTIMIZATION: Single metrics refresh at the end for all items
-    await refreshMetricsForItems(affectedItemIds);
-
-    _inventoryUpdatesController.add(null);
-    StockMapService().notifyInventoryUpdated();
-  }
 }
