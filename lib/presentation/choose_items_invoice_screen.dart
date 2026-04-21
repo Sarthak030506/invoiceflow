@@ -1,564 +1,183 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
-import 'package:uuid/uuid.dart';
+
 import '../models/invoice_model.dart';
-import '../models/customer_model.dart';
-import '../models/catalog_item.dart';
-import '../services/invoice_service.dart';
+import '../models/inventory_item_model.dart';
+import '../providers/catalogue_provider.dart';
 import '../services/customer_service.dart';
-import '../services/stock_map_service.dart';
-import '../services/return_service.dart';
-import '../services/catalog_service.dart';
 import '../services/inventory_service.dart';
+import '../services/invoice_service.dart';
+import '../services/items_service.dart';
+import '../services/return_service.dart';
 import '../utils/app_logger.dart';
 import '../widgets/enhanced_payment_details_widget.dart';
-import '../widgets/rate_edit_dialog.dart';
+import '../widgets/item_autocomplete_field.dart';
 import './create_invoice/widgets/customer_input_widget.dart';
-import './catalogue/business_type_selection_screen.dart';
-import 'dart:async';
 
 class ChooseItemsInvoiceScreen extends StatefulWidget {
   final String invoiceType; // 'sales' or 'purchase'
-  
+
   const ChooseItemsInvoiceScreen({
     Key? key,
     required this.invoiceType,
   }) : super(key: key);
 
   @override
-  State<ChooseItemsInvoiceScreen> createState() => _ChooseItemsInvoiceScreenState();
+  State<ChooseItemsInvoiceScreen> createState() =>
+      _ChooseItemsInvoiceScreenState();
 }
 
-class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> with WidgetsBindingObserver {
-  final Map<int, _SelectedItem> _selectedItems = {};
-  String _search = '';
-  String _selectedCategory = 'All';
+class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
   late final InvoiceService _invoiceService;
   late final CustomerService _customerService;
-  late final StockMapService _stockMapService;
   late final ReturnService _returnService;
-  late final CatalogService _catalogService;
   late final InventoryService _inventoryService;
-  StreamSubscription<void>? _inventorySubscription;
 
-  // Dynamic catalog with custom rates and live stock
-  List<CatalogItem> _itemCatalog = [];
-  Map<int, int> _stockMap = {};
-  bool _catalogLoading = true;
-  
-  // Performance optimizations
-  Timer? _searchDebounce;
-  
-  // Configuration
-  static const bool _allowNegativeStock = false;
-  static const int _reorderPoint = 10;
-  
-  // Customer information
+  /// Keyed by stable selection key (`inv:<id>` / `cat:<id>` / `name:<lower>`)
+  /// so the same item can't appear twice.
+  final Map<String, _SelectedRow> _selected = {};
+
   String _customerName = '';
   String _customerPhone = '';
   String? _customerId;
   double _pendingRefundAmount = 0.0;
-  
+
+  bool get _isSales => widget.invoiceType == 'sales';
+  Color get _accent => _isSales ? Colors.blue : Colors.green;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _invoiceService = InvoiceService.instance;
     _customerService = CustomerService.instance;
-    _stockMapService = StockMapService();
     _returnService = ReturnService.instance;
-    _catalogService = CatalogService.instance;
     _inventoryService = InventoryService();
-    _loadCatalog();
-    // Only load stock map separately for purchase invoices
-    // For sales invoices, stock map is built during _loadCatalog()
-    if (widget.invoiceType != 'sales') {
-      _loadStockMap();
-    }
-    _inventorySubscription = _stockMapService.inventoryUpdates.listen((_) {
-      // For sales invoices, reload catalog (which rebuilds stock map)
-      // For purchase invoices, reload both catalog and stock map
-      if (widget.invoiceType == 'sales') {
-        _loadCatalog();
-      } else {
-        _loadStockMap();
-        _loadCatalog();
-      }
-    });
-  }
-  
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _inventorySubscription?.cancel();
-    _searchDebounce?.cancel();
-    super.dispose();
-  }
-  
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // For sales invoices, reload catalog (which rebuilds stock map)
-      // For purchase invoices, reload stock map
-      if (widget.invoiceType == 'sales') {
-        _loadCatalog();
-      } else {
-        _loadStockMap();
-      }
-    }
-  }
-  
-  Future<void> _loadCatalog() async {
-    try {
-      List<CatalogItem> catalog;
-      Map<int, int> stockMap = {};
-
-      if (widget.invoiceType == 'sales') {
-        // For SALES: Load only items from inventory (items with stock > 0)
-        final sellableItems = await _inventoryService.getSellableItems();
-        catalog = sellableItems.map((item) {
-          final itemId = item['id']?.toString().hashCode.abs() ?? 0;
-          // Store stock information for this item
-          stockMap[itemId] = (item['currentStock'] as num?)?.toInt() ?? 0;
-          return CatalogItem(
-            id: itemId,
-            name: item['name'] ?? '',
-            rate: (item['rate'] as num?)?.toDouble() ?? 0.0,
-            category: item['category'] as String?,
-          );
-        }).toList();
-      } else {
-        // For PURCHASE: Load all items from catalogue
-        catalog = await _catalogService.getAllItems();
-
-        // Load inventory to get stock levels for catalog items
-        final inventoryItems = await _inventoryService.getAllItems();
-        final inventoryMap = <String, int>{};
-        for (final inv in inventoryItems) {
-          inventoryMap[inv.name.toLowerCase()] = inv.currentStock.toInt();
-        }
-
-        // Match catalog items with inventory by name
-        for (final item in catalog) {
-          final stock = inventoryMap[item.name.toLowerCase()] ?? 0;
-          stockMap[item.id] = stock;
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _itemCatalog = catalog;
-          _stockMap = stockMap;
-          _catalogLoading = false;
-        });
-
-        AppLogger.info(
-          'Catalog loaded: ${catalog.length} items, Stock map: ${stockMap.length} entries',
-          'ChooseItemsInvoice',
-        );
-
-        // If no items available, show appropriate prompt
-        if (catalog.isEmpty) {
-          if (widget.invoiceType == 'sales') {
-            _promptNoInventory();
-          } else {
-            _promptCatalogueSetup();
-          }
-        }
-      }
-    } catch (e) {
-      AppLogger.error('Error loading catalog', 'ChooseItemsInvoice', e);
-      // Fallback to static catalog only for purchase invoices
-      if (mounted && widget.invoiceType == 'purchase') {
-        setState(() {
-          _itemCatalog = ItemCatalog.items;
-          _catalogLoading = false;
-        });
-      } else if (mounted) {
-        setState(() {
-          _itemCatalog = [];
-          _catalogLoading = false;
-        });
-      }
-    }
   }
 
-  Future<void> _editItem(CatalogItem item) async {
-    final result = await RateEditDialog.show(
-      context,
-      item,
-      onRateUpdated: () {
-        _loadCatalog(); // Refresh catalog after update
-      },
-    );
+  // --- Selection -----------------------------------------------------------
+
+  String _keyFor(ItemAutocompleteResult r) {
+    if (r.inventoryItem != null) return 'inv:${r.inventoryItem!.id}';
+    if (r.catalogueItem != null) return 'cat:${r.catalogueItem!.id}';
+    return 'name:${r.name.toLowerCase()}';
   }
 
-  Future<void> _loadStockMap() async {
-    try {
-      final stockMap = await _stockMapService.getCurrentStockMap();
-      if (mounted) {
-        setState(() {
-          _stockMap = stockMap;
-        });
-        AppLogger.info(
-          'Stock map loaded separately: ${stockMap.length} entries (${widget.invoiceType})',
-          'ChooseItemsInvoice',
-        );
-      }
-    } catch (e) {
-      AppLogger.error('Error loading stock map', 'ChooseItemsInvoice', e);
-    }
-  }
-
-  void _promptCatalogueSetup() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              Icon(Icons.inventory_2, color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green, size: 7.w),
-              SizedBox(width: 3.w),
-              Expanded(
-                child: Text(
-                  'Set Up Your Catalogue',
-                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Your product catalogue is empty. Set it up now to start creating ${widget.invoiceType} invoices.',
-                style: TextStyle(fontSize: 12.sp, height: 1.4),
-              ),
-              SizedBox(height: 2.h),
-              Container(
-                padding: EdgeInsets.all(3.w),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.lightbulb_outline, color: Colors.blue[700], size: 5.w),
-                    SizedBox(width: 2.w),
-                    Expanded(
-                      child: Text(
-                        'Choose from 8 business types or create your own custom catalogue',
-                        style: TextStyle(fontSize: 10.sp, color: Colors.blue[900]),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).pop(); // Also pop the invoice screen
-              },
-              child: Text('Cancel', style: TextStyle(fontSize: 12.sp)),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.of(context).pop(); // Close dialog
-
-                // Navigate to catalogue setup
-                final result = await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const BusinessTypeSelectionScreen(
-                      isFirstTimeSetup: false,
-                      returnRoute: 'invoice',
-                    ),
-                  ),
-                );
-
-                // Reload catalogue if setup was completed
-                if (result == true && mounted) {
-                  _loadCatalog();
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: Text('Set Up Catalogue', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600)),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  void _promptNoInventory() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              Icon(Icons.inventory_2_outlined, color: Colors.orange, size: 7.w),
-              SizedBox(width: 3.w),
-              Expanded(
-                child: Text(
-                  'No Items in Inventory',
-                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'You don\'t have any items in your inventory to sell. Add inventory first before creating sales invoices.',
-                style: TextStyle(fontSize: 12.sp, height: 1.4),
-              ),
-              SizedBox(height: 2.h),
-              Container(
-                padding: EdgeInsets.all(3.w),
-                decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.lightbulb_outline, color: Colors.orange[700], size: 5.w),
-                    SizedBox(width: 2.w),
-                    Expanded(
-                      child: Text(
-                        'Create a purchase invoice to add items to your inventory',
-                        style: TextStyle(fontSize: 10.sp, color: Colors.orange[900]),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).pop(); // Also pop the invoice screen
-              },
-              child: Text('Cancel', style: TextStyle(fontSize: 12.sp)),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Close dialog
-                Navigator.of(context).pop(); // Close sales invoice screen
-                // User should navigate to Inventory or create Purchase Invoice
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: Text('OK', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600)),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  void _onSearchChanged(String value) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        setState(() {
-          _search = value;
-        });
-      }
-    });
-  }
-
-  void _showQuantityInputDialog(BuildContext context, CatalogItem item, _SelectedItem selectedItem, int currentStock) {
-    final TextEditingController quantityController = TextEditingController(text: selectedItem.quantity.toString());
-    final Color itemColor = widget.invoiceType == 'sales' ? Colors.blue : Colors.green;
-
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              Icon(Icons.shopping_cart, color: itemColor),
-              SizedBox(width: 2.w),
-              Expanded(
-                child: Text(
-                  'Enter Quantity',
-                  style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                item.name,
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-              SizedBox(height: 2.h),
-              if (widget.invoiceType == 'sales')
-                Padding(
-                  padding: EdgeInsets.only(bottom: 2.h),
-                  child: Row(
-                    children: [
-                      Icon(Icons.inventory_2, size: 4.w, color: Colors.grey.shade600),
-                      SizedBox(width: 2.w),
-                      Text(
-                        'Available: ${currentStock.toInt()} units',
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              TextField(
-                controller: quantityController,
-                autofocus: true,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Quantity',
-                  hintText: 'Enter quantity',
-                  prefixIcon: Icon(Icons.format_list_numbered, color: itemColor),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: itemColor, width: 2),
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                ),
-                onSubmitted: (value) {
-                  _updateQuantityFromDialog(dialogContext, item, selectedItem, quantityController.text, currentStock);
-                },
-              ),
-              SizedBox(height: 1.h),
-              Text(
-                'Price per unit: ₹${item.rate.toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text('Cancel', style: TextStyle(color: Colors.grey.shade600)),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                _updateQuantityFromDialog(dialogContext, item, selectedItem, quantityController.text, currentStock);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: itemColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: const Text('Update', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _updateQuantityFromDialog(BuildContext dialogContext, CatalogItem item, _SelectedItem selectedItem, String inputText, int currentStock) {
-    final int? newQuantity = int.tryParse(inputText.trim());
-
-    // Validation
-    if (newQuantity == null || newQuantity < 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid positive number'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // Stock validation for sales invoices
-    if (widget.invoiceType == 'sales' && !_allowNegativeStock && newQuantity > currentStock) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Only ${currentStock.toInt()} units available in stock'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // Update quantity
+  void _handleSelection(ItemAutocompleteResult result) {
+    final key = _keyFor(result);
     setState(() {
-      selectedItem.quantity = newQuantity;
+      _selected.putIfAbsent(key, () => _SelectedRow.fromResult(result));
     });
+  }
 
-    // Close dialog
-    Navigator.of(dialogContext).pop();
-
-    // Show success feedback
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Quantity updated to $newQuantity'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 1),
-      ),
+  Future<void> _handleOutOfStockTap(ProductCatalogItem item) async {
+    final seed = await showModalBottomSheet<_SeedStockResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SeedStockSheet(item: item),
     );
+    if (seed == null || !mounted) return;
+    try {
+      final invItem = InventoryItem(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        sku: item.sku,
+        name: item.name,
+        unit: item.unit,
+        openingStock: 0.0,
+        currentStock: 0.0,
+        reorderPoint: 0.0,
+        avgCost: seed.unitCost,
+        category: item.category,
+        lastUpdated: DateTime.now(),
+        barcode: item.barcode,
+        catalogItemId: item.id,
+      );
+      await _inventoryService.addItem(invItem);
+      await _inventoryService.receiveStock(
+        invItem.id,
+        seed.quantity,
+        seed.unitCost,
+        'opening_stock:${DateTime.now().microsecondsSinceEpoch}',
+      );
+      if (!mounted) return;
+      // Auto-select the freshly stocked item.
+      final fresh = await _inventoryService.getItemById(invItem.id);
+      if (fresh != null && mounted) {
+        setState(() {
+          _selected['inv:${fresh.id}'] = _SelectedRow(
+            name: fresh.name,
+            sku: fresh.sku,
+            unit: fresh.unit,
+            rate: fresh.avgCost,
+            quantity: 1,
+            inventoryItem: fresh,
+          );
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to add opening stock: $e')),
+      );
+    }
   }
-  
-  int _getItemStock(int itemId) {
-    return _stockMap[itemId] ?? 0;
+
+  double get _total =>
+      _selected.values.fold<double>(0, (s, r) => s + r.quantity * r.rate);
+
+  // --- Invoice generation flow --------------------------------------------
+
+  Future<void> _ensureCatalogueLinkedInventory() async {
+    // For each selected row that came from catalogue/new, make sure a matching
+    // inventory item exists with `catalogItemId` linkage. _processInvoiceInventory
+    // creates inventory by name only and would lose the linkage otherwise.
+    final inventory = await _inventoryService.getAllItems();
+    final byName = {for (final i in inventory) i.name.toLowerCase().trim(): i};
+    final byCatalogId = <String, InventoryItem>{
+      for (final i in inventory)
+        if (i.catalogItemId != null) i.catalogItemId!: i,
+    };
+
+    for (final row in _selected.values) {
+      if (row.catalogueItem == null) continue;
+      final cat = row.catalogueItem!;
+      if (byCatalogId.containsKey(cat.id)) continue;
+      if (byName.containsKey(cat.name.toLowerCase().trim())) continue;
+
+      final invItem = InventoryItem(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        sku: cat.sku,
+        name: cat.name,
+        unit: cat.unit,
+        openingStock: 0.0,
+        currentStock: 0.0,
+        reorderPoint: 0.0,
+        avgCost: row.rate,
+        category: cat.category,
+        lastUpdated: DateTime.now(),
+        barcode: cat.barcode,
+        catalogItemId: cat.id,
+      );
+      await _inventoryService.addItem(invItem);
+    }
   }
-  
+
   void _onCustomerSelected(String name, String phone, String? customerId) async {
     setState(() {
       _customerName = name;
       _customerPhone = phone;
       _customerId = customerId;
-      _pendingRefundAmount = 0.0; // Reset initially
+      _pendingRefundAmount = 0.0;
     });
-
-    // For sales invoices, check if customer has pending refund
-    if (widget.invoiceType == 'sales' && customerId != null) {
+    if (_isSales && customerId != null) {
       try {
         final customer = await _customerService.getCustomerById(customerId);
         if (customer != null && customer.pendingReturnAmount > 0) {
-          setState(() {
-            _pendingRefundAmount = customer.pendingReturnAmount;
-          });
+          setState(() => _pendingRefundAmount = customer.pendingReturnAmount);
         }
       } catch (e) {
         AppLogger.error('Error fetching customer refund', 'ChooseItemsInvoice', e);
@@ -566,850 +185,250 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
     }
   }
 
-  /// Get count of available items (respecting inventory filter for sales)
-  int _getAvailableItemsCount() {
-    return _itemCatalog.length;
-  }
+  void _showInvoiceSummaryDialog() {
+    final invoiceItems = _selected.values
+        .map((r) => InvoiceItem(
+              name: r.name,
+              quantity: r.quantity.toInt(),
+              price: r.rate,
+            ))
+        .toList();
+    final totalAmount = _total;
 
-  /// Get unique categories from items
-  List<String> _getUniqueCategories() {
-    final categories = <String>{};
-    for (final item in _itemCatalog) {
-      if (item.category != null && item.category!.isNotEmpty) {
-        categories.add(item.category!);
-      }
-    }
-    return categories.toList()..sort();
-  }
-
-  /// Get count of items in a category
-  int _getCategoryItemCount(String category) {
-    return _itemCatalog.where((item) => item.category == category).length;
-  }
-
-  Widget _buildFilterChip(String label, int count) {
-    final bool isSelected = _selectedCategory == label;
-    final color = widget.invoiceType == 'sales' ? Colors.blue : Colors.green;
-    
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedCategory = label;
-        });
-      },
-      child: Container(
-        margin: EdgeInsets.only(right: 2.w),
-        padding: EdgeInsets.symmetric(horizontal: 3.w),
-        decoration: BoxDecoration(
-          color: isSelected ? color : Colors.grey[200],
-          borderRadius: BorderRadius.circular(20),
-          border: isSelected ? null : Border.all(color: Colors.grey[300]!),
-        ),
-        alignment: Alignment.center,
-        child: Row(
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Colors.grey[800],
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-            SizedBox(width: 1.w),
-            Container(
-              padding: EdgeInsets.all(1.w),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white.withOpacity(0.3) : Colors.grey[300],
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                count.toString(),
-                style: TextStyle(
-                  fontSize: 9.sp,
-                  color: isSelected ? Colors.white : Colors.grey[800],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+            Icon(_isSales ? Icons.shopping_cart : Icons.inventory, color: _accent),
+            SizedBox(width: 2.w),
+            Text(_isSales ? 'Sales Invoice' : 'Purchase Invoice'),
           ],
         ),
-      ),
-    );
-  }
-  
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.invoiceType == 'sales' ? 'Sales Invoice Items' : 'Purchase Invoice Items'),
-        backgroundColor: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.info_outline),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Select items to add to your ${widget.invoiceType} invoice'),
-                  behavior: SnackBarBehavior.floating,
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: 50.h),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Invoice Summary',
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp)),
+                const Divider(),
+                Expanded(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: invoiceItems
+                        .map((i) => Padding(
+                              padding: EdgeInsets.symmetric(vertical: 1.h),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                      flex: 2,
+                                      child: Text(i.name,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w500))),
+                                  Expanded(
+                                      child: Text('x${i.quantity}',
+                                          textAlign: TextAlign.center)),
+                                  Expanded(
+                                      child: Text(
+                                          '₹${i.price.toStringAsFixed(2)}',
+                                          textAlign: TextAlign.right)),
+                                  Expanded(
+                                      child: Text(
+                                          '₹${(i.quantity * i.price).toStringAsFixed(2)}',
+                                          textAlign: TextAlign.right,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold))),
+                                ],
+                              ),
+                            ))
+                        .toList(),
+                  ),
                 ),
-              );
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total Amount:',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text('₹${totalAmount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16.sp,
+                            color: _accent)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _accent),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              if (_isSales) {
+                _showCustomerInfoSheet(invoiceItems, totalAmount);
+              } else {
+                _showPaymentDetailsSheet(invoiceItems, totalAmount);
+              }
             },
+            child: const Text('Continue', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
-      body: _buildItemsList(),
     );
   }
 
-
-  Widget _buildItemsList() {
-    // Show loading indicator while catalog is loading
-    if (_catalogLoading) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
-            ),
-            SizedBox(height: 2.h),
-            Text(
-              'Loading items...',
-              style: TextStyle(
-                fontSize: 14.sp,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    List<CatalogItem> filteredItems = _itemCatalog;
-
-    // Note: For sales invoices, _itemCatalog is already filtered to inventory items
-    // in _loadCatalog(), so no additional filtering needed here
-
-    // Apply search filter
-    if (_search.isNotEmpty) {
-      filteredItems = filteredItems
-          .where((item) => item.name.toLowerCase().contains(_search.toLowerCase()))
-          .toList();
-    }
-
-    // Apply category filter
-    if (_selectedCategory != 'All') {
-      filteredItems = filteredItems.where((item) {
-        return item.category == _selectedCategory;
-      }).toList();
-    }
-    final total = _selectedItems.values.fold<double>(0, (sum, si) => sum + si.amount);
-
-    return Column(
-        children: [
-          Padding(
-            padding: EdgeInsets.all(3.w),
-            child: TextField(
-              decoration: InputDecoration(
-                labelText: 'Search items',
-                hintText: 'Type to search...',
-                prefixIcon: Icon(Icons.search, color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green),
-                suffixIcon: _search.isNotEmpty ? IconButton(
-                  icon: Icon(Icons.clear),
-                  onPressed: () => setState(() => _search = ''),
-                ) : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.grey[50],
-              ),
-              onChanged: _onSearchChanged,
+  void _showCustomerInfoSheet(List<InvoiceItem> invoiceItems, double totalAmount) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (modalCtx, setModalState) => Container(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(modalCtx).viewInsets.bottom,
+            left: 4.w,
+            right: 4.w,
+            top: 2.h,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
             ),
           ),
-          
-          // Category chips
-          Container(
-            constraints: BoxConstraints(
-              minHeight: 4.h,
-              maxHeight: 6.h,
-            ),
-            margin: EdgeInsets.symmetric(horizontal: 3.w),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                _buildFilterChip('All', _getAvailableItemsCount()),
-                ..._getUniqueCategories().map((category) =>
-                  _buildFilterChip(category, _getCategoryItemCount(category))
-                ),
-              ],
-            ),
-          ),
-          
-          // Selected items count
-          Padding(
-            padding: EdgeInsets.fromLTRB(3.w, 2.w, 3.w, 1.w),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '${filteredItems.length} items available',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12.sp),
-                ),
-                if (_selectedItems.isNotEmpty)
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 0.5.h),
-                    decoration: BoxDecoration(
-                      color: widget.invoiceType == 'sales' ? Colors.blue.withOpacity(0.1) : Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${_selectedItems.length} selected',
-                      style: TextStyle(
-                        color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                Container(
+                  width: 10.w,
+                  height: 0.5.h,
+                  margin: EdgeInsets.only(bottom: 2.h),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(10),
                   ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: filteredItems.length,
-              itemBuilder: (context, idx) {
-                final item = filteredItems[idx];
-                final itemId = item.id;
-                final selected = _selectedItems.containsKey(itemId);
-                final selectedItem = _selectedItems[itemId];
-                final currentStock = _getItemStock(itemId);
-                final isLowStock = currentStock <= _reorderPoint;
-                final isOutOfStock = currentStock <= 0;
-                final itemColor = widget.invoiceType == 'sales' ? Colors.blue : Colors.green;
-                
-                return Card(
-                  margin: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.w),
-                  elevation: Theme.of(context).cardTheme.elevation,
-                  shape: Theme.of(context).cardTheme.shape,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () {
-                      setState(() {
-                        if (selected) {
-                          _selectedItems.remove(itemId);
-                        } else {
-                          _selectedItems[itemId] = _SelectedItem(item: item, quantity: 1);
-                        }
-                      });
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: selected ? Border.all(color: itemColor, width: 2) : null,
+                ),
+                Text('Customer Information',
+                    style: TextStyle(
+                        fontSize: 18.sp, fontWeight: FontWeight.bold)),
+                SizedBox(height: 2.h),
+                CustomerInputWidget(
+                  initialName: _customerName,
+                  initialPhone: _customerPhone,
+                  onCustomerSelected: (name, phone, customerId) {
+                    _onCustomerSelected(name, phone, customerId);
+                    setModalState(() {});
+                  },
+                ),
+                SizedBox(height: 2.h),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                          side: BorderSide(color: Colors.grey.shade400),
+                          foregroundColor: Colors.black87,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () => Navigator.pop(modalCtx),
+                        child: Text('Cancel', style: TextStyle(fontSize: 14.sp)),
                       ),
-                      child: Padding(
-                        padding: EdgeInsets.all(2.w),
-                        child: Column(
+                    ),
+                    SizedBox(width: 3.w),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.grey.shade300,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: _customerPhone.isEmpty
+                            ? null
+                            : () async {
+                                if (_customerId == null &&
+                                    _customerPhone.isNotEmpty) {
+                                  try {
+                                    final c =
+                                        await _customerService.addCustomer(
+                                      _customerName.isEmpty
+                                          ? 'Customer'
+                                          : _customerName,
+                                      _customerPhone,
+                                    );
+                                    _customerId = c.id;
+                                  } catch (e) {
+                                    AppLogger.error(
+                                        'Error saving customer',
+                                        'ChooseItemsInvoice',
+                                        e);
+                                  }
+                                }
+                                if (!mounted) return;
+                                if (Navigator.of(modalCtx).canPop()) {
+                                  Navigator.pop(modalCtx);
+                                }
+                                _showPaymentDetailsSheet(
+                                    invoiceItems, totalAmount);
+                              },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Row(
-                              children: [
-                                // Checkbox and item details
-                                Checkbox(
-                                  value: selected,
-                                  activeColor: itemColor,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                                  onChanged: (val) {
-                                    setState(() {
-                                      if (val == true) {
-                                        _selectedItems[itemId] = _SelectedItem(item: item, quantity: 1);
-                                      } else {
-                                        _selectedItems.remove(itemId);
-                                      }
-                                    });
-                                  },
-                                ),
-                                SizedBox(width: 2.w),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              item.name,
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14.sp,
-                                              ),
-                                            ),
-                                          ),
-                                          Container(
-                                            padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
-                                            decoration: BoxDecoration(
-                                              color: isOutOfStock ? Colors.red.withOpacity(0.1) : 
-                                                     isLowStock ? Colors.orange.withOpacity(0.1) : 
-                                                     Colors.green.withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(12),
-                                              border: Border.all(
-                                                color: isOutOfStock ? Colors.red : 
-                                                       isLowStock ? Colors.orange : 
-                                                       Colors.green,
-                                                width: 1,
-                                              ),
-                                            ),
-                                            child: Text(
-                                              'Stock: $currentStock',
-                                              style: TextStyle(
-                                                color: isOutOfStock ? Colors.red : 
-                                                       isLowStock ? Colors.orange : 
-                                                       Colors.green,
-                                                fontSize: 10.sp,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      SizedBox(height: 0.5.h),
-                                      Text(
-                                        'Rate: ₹${item.rate.toStringAsFixed(2)}',
-                                        style: TextStyle(
-                                          color: Colors.grey[600],
-                                          fontSize: 12.sp,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                            const Icon(Icons.arrow_forward, size: 16),
+                            SizedBox(width: 1.w),
+                            Flexible(
+                              child: Text('Continue to Payment',
+                                  style: TextStyle(fontSize: 13.sp),
+                                  overflow: TextOverflow.ellipsis),
                             ),
-                            // Only show edit button for sales invoices (inventory items)
-                            if (widget.invoiceType == 'sales')
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: InkWell(
-                                  onTap: () => _editItem(item),
-                                  borderRadius: BorderRadius.circular(20),
-                                  child: Container(
-                                    padding: EdgeInsets.all(2.w),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.withOpacity(0.1),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      Icons.edit,
-                                      size: 4.5.w,
-                                      color: Colors.blue.shade700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            SizedBox(height: 1.h),
-
-                            // Quantity controls (only show if selected)
-                            if (selected)
-                              Container(
-                                margin: EdgeInsets.only(top: 2.w),
-                                padding: EdgeInsets.all(2.w),
-                                decoration: BoxDecoration(
-                                  color: itemColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          'Quantity:',
-                                          style: TextStyle(fontWeight: FontWeight.w500),
-                                        ),
-                                        Spacer(),
-                                        Container(
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius: BorderRadius.circular(8),
-                                            border: Border.all(color: Colors.grey[300]!),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              InkWell(
-                                                onTap: () {
-                                                  setState(() {
-                                                    if (selectedItem!.quantity > 1) {
-                                                      selectedItem.quantity--;
-                                                    }
-                                                  });
-                                                },
-                                                borderRadius: BorderRadius.circular(8),
-                                                child: Container(
-                                                  padding: EdgeInsets.all(1.w),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.grey[200],
-                                                    borderRadius: BorderRadius.only(
-                                                      topLeft: Radius.circular(8),
-                                                      bottomLeft: Radius.circular(8),
-                                                    ),
-                                                  ),
-                                                  child: Icon(Icons.remove, size: 5.w),
-                                                ),
-                                              ),
-                                              InkWell(
-                                                onTap: () {
-                                                  _showQuantityInputDialog(context, item, selectedItem!, currentStock);
-                                                },
-                                                child: Container(
-                                                  width: 10.w,
-                                                  alignment: Alignment.center,
-                                                  padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 1.h),
-                                                  child: Text(
-                                                    '${selectedItem?.quantity ?? 1}',
-                                                    style: TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      color: itemColor,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              InkWell(
-                                                onTap: () {
-                                                  final newQty = selectedItem!.quantity + 1;
-                                                  if (widget.invoiceType == 'sales' && !_allowNegativeStock && newQty > currentStock) {
-                                                    ScaffoldMessenger.of(context).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text('Only ${currentStock.toInt()} in stock.'),
-                                                        backgroundColor: Colors.red,
-                                                      ),
-                                                    );
-                                                  } else {
-                                                    setState(() {
-                                                      selectedItem!.quantity = newQty;
-                                                    });
-                                                  }
-                                                },
-                                                borderRadius: BorderRadius.circular(8),
-                                                child: Container(
-                                                  padding: EdgeInsets.all(1.w),
-                                                  decoration: BoxDecoration(
-                                                    color: itemColor,
-                                                    borderRadius: BorderRadius.only(
-                                                      topRight: Radius.circular(8),
-                                                      bottomRight: Radius.circular(8),
-                                                    ),
-                                                  ),
-                                                  child: Icon(Icons.add, size: 5.w, color: Colors.white),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        SizedBox(width: 3.w),
-                                        Text(
-                                          '₹${(selectedItem?.amount ?? 0).toStringAsFixed(2)}',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: itemColor,
-                                            fontSize: 14.sp,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    if (widget.invoiceType == 'sales' && _allowNegativeStock && selectedItem != null && selectedItem!.quantity > currentStock)
-                                      Container(
-                                        margin: EdgeInsets.only(top: 1.h),
-                                        padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
-                                        decoration: BoxDecoration(
-                                          color: Colors.orange.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(6),
-                                          border: Border.all(color: Colors.orange, width: 1),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.warning_amber, size: 4.w, color: Colors.orange),
-                                            SizedBox(width: 1.w),
-                                            Text(
-                                              'Stock will go negative',
-                                              style: TextStyle(
-                                                color: Colors.orange,
-                                                fontSize: 10.sp,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
                           ],
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  ],
+                ),
+                SizedBox(height: 2.h),
+              ],
             ),
           ),
-          if (_selectedItems.isNotEmpty)
-            Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: Offset(0, -5),
-                  ),
-                ],
-              ),
-              padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 3.w),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Selected Items:',
-                        style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
-                      ),
-                      Text(
-                        '${_selectedItems.length} items',
-                        style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 1.h),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Total Amount:',
-                        style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
-                      ),
-                      Text(
-                        '₹${total.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: 18.sp, 
-                          fontWeight: FontWeight.bold,
-                          color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 2.h),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: 5.h,
-                      maxHeight: 7.h,
-                    ),
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: Colors.grey.shade300,
-                        disabledForegroundColor: Colors.grey.shade600,
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16.0),
-                        ),
-                        padding: EdgeInsets.symmetric(vertical: 1.8.h),
-                      ),
-                      onPressed: _selectedItems.isEmpty ? null : () {
-                        final items = _selectedItems.values.map((si) => {
-                          'name': si.item.name,
-                          'rate': si.item.rate,
-                          'quantity': si.quantity,
-                          'amount': si.amount,
-                        }).toList();
-                        final totalAmount = items.fold<double>(0, (sum, i) => sum + (i['amount'] as double));
-
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Row(
-                              children: [
-                                Icon(
-                                  widget.invoiceType == 'sales' ? Icons.shopping_cart : Icons.inventory,
-                                  color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
-                                ),
-                                SizedBox(width: 2.w),
-                                Text('${widget.invoiceType.substring(0, 1).toUpperCase()}${widget.invoiceType.substring(1)} Invoice'),
-                              ],
-                            ),
-                            content: Container(
-                              width: double.maxFinite,
-                              constraints: BoxConstraints(maxHeight: 50.h),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Invoice Summary',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp),
-                                  ),
-                                  Divider(),
-                                  Expanded(
-                                    child: ListView(
-                                      shrinkWrap: true,
-                                      children: [
-                                        ...items.map((i) => Padding(
-                                          padding: EdgeInsets.symmetric(vertical: 1.h),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
-                                                  '${i['name']}',
-                                                  style: TextStyle(fontWeight: FontWeight.w500),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                child: Text(
-                                                  'x${i['quantity']}',
-                                                  textAlign: TextAlign.center,
-                                                ),
-                                              ),
-                                              Expanded(
-                                                child: Text(
-                                                  '₹${i['rate']}',
-                                                  textAlign: TextAlign.right,
-                                                ),
-                                              ),
-                                              Expanded(
-                                                child: Text(
-                                                  '₹${(i['amount'] as double? ?? 0).toStringAsFixed(2)}',
-                                                  textAlign: TextAlign.right,
-                                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        )).toList(),
-                                      ],
-                                    ),
-                                  ),
-                                  Divider(),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text('Total Amount:', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      Text(
-                                        '₹${totalAmount.toStringAsFixed(2)}', 
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold, 
-                                          fontSize: 16.sp,
-                                          color: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: Text('Cancel'),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: widget.invoiceType == 'sales' ? Colors.blue : Colors.green,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(24.0),
-                                  ),
-                                ),
-                                onPressed: () async {
-                                  final invoiceItems = items.map((i) => InvoiceItem(
-                                    name: i['name'] as String,
-                                    quantity: i['quantity'] as int,
-                                    price: i['rate'] as double,
-                                  )).toList();
-                                  // Close the invoice summary dialog
-                                  Navigator.of(context).pop();
-                                  
-                                  // For sales invoices, show customer information input first
-                                  if (widget.invoiceType == 'sales') {
-                                    showModalBottomSheet(
-                                      context: context,
-                                      isScrollControlled: true,
-                                      backgroundColor: Colors.transparent,
-                                      builder: (context) => StatefulBuilder(
-                                        builder: (context, setModalState) => Container(
-                                          padding: EdgeInsets.only(
-                                            bottom: MediaQuery.of(context).viewInsets.bottom,
-                                            left: 4.w,
-                                            right: 4.w,
-                                            top: 2.h,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius: BorderRadius.only(
-                                              topLeft: Radius.circular(20),
-                                              topRight: Radius.circular(20),
-                                            ),
-                                          ),
-                                          child: SingleChildScrollView(
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Container(
-                                                  width: 10.w,
-                                                  height: 0.5.h,
-                                                  margin: EdgeInsets.only(bottom: 2.h),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.grey[300],
-                                                    borderRadius: BorderRadius.circular(10),
-                                                  ),
-                                                ),
-                                                Text(
-                                                  'Customer Information',
-                                                  style: TextStyle(
-                                                    fontSize: 18.sp,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                                SizedBox(height: 2.h),
-                                                CustomerInputWidget(
-                                                  initialName: _customerName,
-                                                  initialPhone: _customerPhone,
-                                                  onCustomerSelected: (name, phone, customerId) {
-                                                    _onCustomerSelected(name, phone, customerId);
-                                                    // Rebuild modal to enable/disable button
-                                                    setModalState(() {});
-                                                  },
-                                                ),
-                                                SizedBox(height: 2.h),
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: OutlinedButton(
-                                                        style: OutlinedButton.styleFrom(
-                                                          padding: EdgeInsets.symmetric(vertical: 1.8.h),
-                                                          side: BorderSide(color: Colors.grey.shade400),
-                                                          foregroundColor: Colors.black87,
-                                                          shape: RoundedRectangleBorder(
-                                                            borderRadius: BorderRadius.circular(12),
-                                                          ),
-                                                        ),
-                                                        onPressed: () {
-                                                          Navigator.pop(context);
-                                                        },
-                                                        child: Text('Cancel', style: TextStyle(fontSize: 14.sp)),
-                                                      ),
-                                                    ),
-                                                    SizedBox(width: 3.w),
-                                                    Expanded(
-                                                      child: ElevatedButton(
-                                                        style: ElevatedButton.styleFrom(
-                                                          padding: EdgeInsets.symmetric(vertical: 1.8.h),
-                                                          backgroundColor: Colors.blue,
-                                                          foregroundColor: Colors.white,
-                                                          disabledBackgroundColor: Colors.grey.shade300,
-                                                          disabledForegroundColor: Colors.grey.shade600,
-                                                          shape: RoundedRectangleBorder(
-                                                            borderRadius: BorderRadius.circular(12),
-                                                          ),
-                                                        ),
-                                                        onPressed: _customerPhone.isEmpty ? null : () async {
-                                                        // Save customer if needed
-                                                        if (_customerId == null && _customerPhone.isNotEmpty) {
-                                                          try {
-                                                            final customer = await _customerService.addCustomer(
-                                                              _customerName.isEmpty ? 'Customer' : _customerName,
-                                                              _customerPhone,
-                                                            );
-                                                            _customerId = customer.id;
-                                                          } catch (e) {
-                                                            AppLogger.error('Error saving customer', 'ChooseItemsInvoice', e);
-                                                          }
-                                                        }
-                                                        
-                                                        // Close customer info sheet and show payment details
-                                                        if (!mounted) return;
-                                                        if (Navigator.of(context).canPop()) {
-                                                          Navigator.pop(context);
-                                                        }
-                                                        _showPaymentDetailsSheet(invoiceItems, totalAmount);
-                                                      },
-                                                      child: Row(
-                                                        mainAxisAlignment: MainAxisAlignment.center,
-                                                        mainAxisSize: MainAxisSize.min,
-                                                        children: [
-                                                          Icon(Icons.arrow_forward, size: 16),
-                                                          SizedBox(width: 1.w),
-                                                          Flexible(
-                                                            child: Text(
-                                                              'Continue to Payment',
-                                                              style: TextStyle(fontSize: 13.sp),
-                                                              overflow: TextOverflow.ellipsis,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              SizedBox(height: 2.h),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    );
-                                  } else {
-                                    // For purchase invoices, go directly to payment details
-                                    _showPaymentDetailsSheet(invoiceItems, totalAmount);
-                                  }
-                                },
-                                child: Text('Continue'),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.receipt_long, size: 5.w),
-                          SizedBox(width: 2.w),
-                          Text(
-                            'Generate Invoice',
-                            style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      );
+        ),
+      ),
+    );
   }
-  
-  void _showPaymentDetailsSheet(List<InvoiceItem> invoiceItems, double totalAmount) {
-    // Capture a stable parent context from this State to avoid using a deactivated sheet context
+
+  void _showPaymentDetailsSheet(
+      List<InvoiceItem> invoiceItems, double totalAmount) {
     final parentContext = context;
     showModalBottomSheet(
       context: parentContext,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) => Container(
+      builder: (sheetCtx) => Container(
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(parentContext).viewInsets.bottom,
           left: 4.w,
           right: 4.w,
           top: 2.h,
         ),
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(20),
@@ -1429,129 +448,62 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              Text(
-                'Payment Details',
-                style: TextStyle(
-                  fontSize: 18.sp,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text('Payment Details',
+                  style: TextStyle(
+                      fontSize: 18.sp, fontWeight: FontWeight.bold)),
               SizedBox(height: 2.h),
               EnhancedPaymentDetailsWidget(
                 totalAmount: totalAmount,
                 invoiceType: widget.invoiceType,
                 pendingRefundAmount: _pendingRefundAmount,
-                onPaymentDetailsSubmitted: (amountPaid, paymentMethod, invoiceNumber, invoiceDate) async {
-                  // Show a blocking loader with progress message
+                onPaymentDetailsSubmitted: (amountPaid, paymentMethod,
+                    invoiceNumber, invoiceDate) async {
                   showDialog(
                     context: parentContext,
                     barrierDismissible: false,
                     builder: (_) => WillPopScope(
                       onWillPop: () async => false,
-                      child: Center(
-                        child: Container(
-                          padding: EdgeInsets.all(6.w),
-                          margin: EdgeInsets.symmetric(horizontal: 10.w),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Icon background
-                              Container(
-                                padding: EdgeInsets.all(3.w),
-                                decoration: BoxDecoration(
-                                  color: widget.invoiceType == 'sales' ? Colors.blue.shade50 : Colors.green.shade50,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: SizedBox(
-                                  width: 50,
-                                  height: 50,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 4,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      widget.invoiceType == 'sales' ? Colors.blue.shade600 : Colors.green.shade600,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(height: 3.h),
-                              Text(
-                                'Processing Invoice...',
-                                style: TextStyle(
-                                  fontSize: 18.sp,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black87,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              SizedBox(height: 1.5.h),
-                              Container(
-                                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-                                decoration: BoxDecoration(
-                                  color: widget.invoiceType == 'sales' ? Colors.blue.shade50 : Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  'Saving ${invoiceItems.length} item${invoiceItems.length > 1 ? 's' : ''}\nand updating inventory',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 13.sp,
-                                    color: widget.invoiceType == 'sales' ? Colors.blue.shade700 : Colors.green.shade700,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      child: const Center(
+                        child: CircularProgressIndicator(),
                       ),
                     ),
                   );
                   try {
-                    // For sales invoices, ensure customer exists and is linked
-                    if (widget.invoiceType == 'sales' && _customerPhone.isNotEmpty && _customerId == null) {
-                      // If we don't have a customerId yet, create or find the customer
-                      final customer = await _customerService.addCustomer(
+                    if (_isSales &&
+                        _customerPhone.isNotEmpty &&
+                        _customerId == null) {
+                      final c = await _customerService.addCustomer(
                         _customerName.isEmpty ? 'Customer' : _customerName,
                         _customerPhone,
                       );
-                      _customerId = customer.id;
+                      _customerId = c.id;
                     }
 
-                    // Apply pending returns for sales invoices
                     String? returnNotes;
-                    if (widget.invoiceType == 'sales' && _customerId != null && _pendingRefundAmount > 0) {
-                      // The refund adjustment is already tracked separately in refundAdjustment field
-                      // amountPaid should be exactly what the customer paid (the adjusted amount)
-                      returnNotes = 'Return credit of ₹${_pendingRefundAmount.toStringAsFixed(2)} applied';
-
-                      // Mark pending returns as applied/settled
-                      await _returnService.applyPendingReturnsToInvoice(_customerId!, _pendingRefundAmount);
+                    if (_isSales &&
+                        _customerId != null &&
+                        _pendingRefundAmount > 0) {
+                      returnNotes =
+                          'Return credit of ₹${_pendingRefundAmount.toStringAsFixed(2)} applied';
+                      await _returnService.applyPendingReturnsToInvoice(
+                          _customerId!, _pendingRefundAmount);
                     }
 
-                    // Create invoice with payment details and customer ID
+                    // Pre-create inventory items linked to catalogue picks so
+                    // _processInvoiceInventory's name-match preserves linkage.
+                    await _ensureCatalogueLinkedInventory();
+
                     final now = DateTime.now();
-                    final invoiceId = invoiceNumber.replaceAll(RegExp(r'[^A-Za-z0-9-_]'), '_');
-
-                    AppLogger.debug('Creating invoice with refund adjustment: $_pendingRefundAmount', 'ChooseItemsInvoice');
-
-                    // Calculate adjusted total for status determination
+                    final invoiceId = invoiceNumber.replaceAll(
+                        RegExp(r'[^A-Za-z0-9-_]'), '_');
                     final adjustedTotal = totalAmount - _pendingRefundAmount;
 
-                    // Determine invoice status based on payment
                     String invoiceStatus;
                     if ((amountPaid - adjustedTotal).abs() < 0.01) {
-                      // Fully paid
                       invoiceStatus = 'paid';
                     } else if (amountPaid > 0.01) {
-                      // Partially paid
                       invoiceStatus = 'partial';
                     } else {
-                      // Not paid (due)
                       invoiceStatus = 'posted';
                     }
 
@@ -1559,8 +511,8 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                       id: invoiceId,
                       invoiceNumber: invoiceNumber,
                       clientName: _customerName,
-                      customerPhone: widget.invoiceType == 'sales' ? _customerPhone : null,
-                      customerId: widget.invoiceType == 'sales' ? _customerId : null,
+                      customerPhone: _isSales ? _customerPhone : null,
+                      customerId: _isSales ? _customerId : null,
                       date: invoiceDate,
                       refundAdjustment: _pendingRefundAmount,
                       revenue: totalAmount,
@@ -1573,37 +525,35 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
                       amountPaid: amountPaid,
                       paymentMethod: paymentMethod,
                     );
-                    
-                    // Save the invoice to the database using InvoiceService
+
                     await _invoiceService.addInvoice(newInvoice);
 
                     if (!mounted) return;
-                    // Dismiss loader
-                    if (Navigator.of(parentContext, rootNavigator: true).canPop()) {
+                    context.read<CatalogueProvider>().invalidate();
+
+                    if (Navigator.of(parentContext, rootNavigator: true)
+                        .canPop()) {
                       Navigator.of(parentContext, rootNavigator: true).pop();
                     }
                     ScaffoldMessenger.of(parentContext).showSnackBar(
-                      const SnackBar(content: Text('Invoice created and saved to database!')),
+                      const SnackBar(
+                          content: Text('Invoice created and saved!')),
                     );
-
-                    // Close the payment details bottom sheet
                     if (Navigator.of(parentContext).canPop()) {
                       Navigator.of(parentContext).pop();
                     }
-
-                    // Navigate directly to home screen and clear all previous screens
                     Navigator.of(parentContext).pushNamedAndRemoveUntil(
-                      '/',  // Home route
-                      (route) => false,  // Remove all previous routes
+                      '/',
+                      (route) => false,
                     );
                   } catch (e) {
                     if (!mounted) return;
-                    // Ensure loader is dismissed on error
-                    if (Navigator.of(parentContext, rootNavigator: true).canPop()) {
+                    if (Navigator.of(parentContext, rootNavigator: true)
+                        .canPop()) {
                       Navigator.of(parentContext, rootNavigator: true).pop();
                     }
                     ScaffoldMessenger.of(parentContext).showSnackBar(
-                      SnackBar(content: Text('Error saving invoice: ${e.toString()}')),
+                      SnackBar(content: Text('Error saving invoice: $e')),
                     );
                   }
                 },
@@ -1615,13 +565,496 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> wit
       ),
     );
   }
-  
+
+  // --- Build ---------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title:
+            Text(_isSales ? 'Sales Invoice Items' : 'Purchase Invoice Items'),
+        backgroundColor: _accent,
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.all(3.w),
+              child: ItemAutocompleteField(
+                mode: _isSales
+                    ? AutocompleteMode.sales
+                    : AutocompleteMode.purchase,
+                autofocus: true,
+                onSelected: _handleSelection,
+                onOutOfStockTapped: _isSales ? _handleOutOfStockTap : null,
+                decoration: InputDecoration(
+                  hintText: _isSales
+                      ? 'Search items in stock'
+                      : 'Search or add items',
+                  prefixIcon: Icon(Icons.search, color: _accent),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
+              ),
+            ),
+            Expanded(
+              child: _selected.isEmpty
+                  ? _EmptyState(isSales: _isSales)
+                  : ListView(
+                      children: _selected.entries
+                          .map((e) => _SelectedRowTile(
+                                key: ValueKey(e.key),
+                                row: e.value,
+                                accent: _accent,
+                                isSales: _isSales,
+                                onChanged: () => setState(() {}),
+                                onRemove: () =>
+                                    setState(() => _selected.remove(e.key)),
+                              ))
+                          .toList(),
+                    ),
+            ),
+            if (_selected.isNotEmpty) _buildBottomBar(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 3.w),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('${_selected.length} item(s)',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey[600])),
+                Text('₹${_total.toStringAsFixed(2)}',
+                    style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color: _accent)),
+              ],
+            ),
+            SizedBox(height: 1.5.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _accent,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                onPressed: _showInvoiceSummaryDialog,
+                icon: const Icon(Icons.receipt_long),
+                label: Text('Generate Invoice',
+                    style: TextStyle(
+                        fontSize: 14.sp, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _SelectedItem {
-  final CatalogItem item;
-  int quantity;
-  _SelectedItem({required this.item, this.quantity = 1});
-  double get amount => quantity * item.rate;
+// ---------------------------------------------------------------------------
+// Selected-row tile
+// ---------------------------------------------------------------------------
+
+class _SelectedRow {
+  _SelectedRow({
+    required this.name,
+    required this.sku,
+    required this.unit,
+    required this.rate,
+    required this.quantity,
+    this.inventoryItem,
+    this.catalogueItem,
+  });
+
+  final String name;
+  final String sku;
+  final String unit;
+  double rate;
+  double quantity;
+  final InventoryItem? inventoryItem;
+  final ProductCatalogItem? catalogueItem;
+
+  factory _SelectedRow.fromResult(ItemAutocompleteResult r) => _SelectedRow(
+        name: r.name,
+        sku: r.sku,
+        unit: r.unit,
+        rate: r.rate,
+        quantity: 1,
+        inventoryItem: r.inventoryItem,
+        catalogueItem: r.catalogueItem,
+      );
 }
 
+class _SelectedRowTile extends StatefulWidget {
+  const _SelectedRowTile({
+    super.key,
+    required this.row,
+    required this.accent,
+    required this.isSales,
+    required this.onChanged,
+    required this.onRemove,
+  });
+
+  final _SelectedRow row;
+  final Color accent;
+  final bool isSales;
+  final VoidCallback onChanged;
+  final VoidCallback onRemove;
+
+  @override
+  State<_SelectedRowTile> createState() => _SelectedRowTileState();
+}
+
+class _SelectedRowTileState extends State<_SelectedRowTile> {
+  late final TextEditingController _qtyCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyCtrl = TextEditingController(text: _fmt(widget.row.quantity));
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    super.dispose();
+  }
+
+  String _fmt(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+
+  void _setQty(double v) {
+    if (widget.isSales) {
+      final stock = widget.row.inventoryItem?.currentStock ?? 0;
+      if (v > stock) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Only ${stock.toInt()} in stock'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        v = stock;
+      }
+    }
+    if (v < 0) v = 0;
+    setState(() {
+      widget.row.quantity = v;
+      _qtyCtrl.text = _fmt(v);
+    });
+    widget.onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = widget.row.quantity * widget.row.rate;
+    final stock = widget.row.inventoryItem?.currentStock;
+    final isNew = widget.row.inventoryItem == null;
+    return Card(
+      margin: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.w),
+      child: Padding(
+        padding: EdgeInsets.all(3.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.row.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(
+                        stock != null
+                            ? '${widget.row.sku} • Stock: ${stock.toInt()} ${widget.row.unit}'
+                            : '${widget.row.sku} • ${widget.row.unit}',
+                        style: TextStyle(
+                            fontSize: 11.sp, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isNew)
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: 2.w, vertical: 0.4.h),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text('New',
+                        style: TextStyle(
+                            fontSize: 10.sp,
+                            color: Colors.blue.shade800,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: widget.onRemove,
+                ),
+              ],
+            ),
+            SizedBox(height: 1.h),
+            Row(
+              children: [
+                _qtyButton(Icons.remove,
+                    () => _setQty((widget.row.quantity - 1).clamp(0, double.infinity))),
+                SizedBox(
+                  width: 16.w,
+                  child: TextField(
+                    controller: _qtyCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                    ],
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) {
+                      widget.row.quantity = double.tryParse(v) ?? 0;
+                      widget.onChanged();
+                    },
+                  ),
+                ),
+                _qtyButton(Icons.add, () => _setQty(widget.row.quantity + 1)),
+                SizedBox(width: 3.w),
+                Text('@ ₹${widget.row.rate.toStringAsFixed(2)}',
+                    style:
+                        TextStyle(fontSize: 12.sp, color: Colors.grey.shade700)),
+                const Spacer(),
+                Text('₹${amount.toStringAsFixed(2)}',
+                    style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.bold,
+                        color: widget.accent)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _qtyButton(IconData icon, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: EdgeInsets.all(1.5.w),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, size: 5.w),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// "Seed opening stock" sheet for sales-mode out-of-stock taps
+// ---------------------------------------------------------------------------
+
+class _SeedStockResult {
+  final double quantity;
+  final double unitCost;
+  _SeedStockResult(this.quantity, this.unitCost);
+}
+
+class _SeedStockSheet extends StatefulWidget {
+  const _SeedStockSheet({required this.item});
+  final ProductCatalogItem item;
+
+  @override
+  State<_SeedStockSheet> createState() => _SeedStockSheetState();
+}
+
+class _SeedStockSheetState extends State<_SeedStockSheet> {
+  late final TextEditingController _qtyCtrl;
+  late final TextEditingController _costCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyCtrl = TextEditingController(text: '1');
+    _costCtrl = TextEditingController(text: widget.item.rate.toString());
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    _costCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom + 4.w,
+        left: 4.w,
+        right: 4.w,
+        top: 2.h,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 10.w,
+            height: 0.5.h,
+            margin: EdgeInsets.only(bottom: 2.h),
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          Text('${widget.item.name} is not in stock',
+              style:
+                  TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+          SizedBox(height: 1.h),
+          Text('Add opening stock so you can sell it.',
+              style:
+                  TextStyle(fontSize: 12.sp, color: Colors.grey.shade700)),
+          SizedBox(height: 2.h),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _qtyCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                  ],
+                  decoration: const InputDecoration(
+                    labelText: 'Quantity',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: TextField(
+                  controller: _costCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                  ],
+                  decoration: const InputDecoration(
+                    labelText: 'Unit cost (₹)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 2.h),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              SizedBox(width: 3.w),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    final q = double.tryParse(_qtyCtrl.text) ?? 0;
+                    final c = double.tryParse(_costCtrl.text) ?? 0;
+                    if (q <= 0) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content:
+                                Text('Quantity must be greater than zero')),
+                      );
+                      return;
+                    }
+                    Navigator.pop(context, _SeedStockResult(q, c));
+                  },
+                  child: const Text('Add Stock'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.isSales});
+  final bool isSales;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isSales ? Icons.shopping_cart_outlined : Icons.inventory_outlined,
+            size: 18.w,
+            color: Colors.grey.shade400,
+          ),
+          SizedBox(height: 2.h),
+          Text(
+            isSales
+                ? 'Search for items you want to sell'
+                : 'Search or add items to purchase',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13.sp),
+          ),
+        ],
+      ),
+    );
+  }
+}
