@@ -7,7 +7,7 @@ import 'package:invoiceflow/services/ai/ocr_service.dart';
 import 'package:invoiceflow/models/ocr_scan_model.dart';
 import 'package:invoiceflow/presentation/invoice_ocr/widgets/ocr_results_sheet.dart';
 import 'package:invoiceflow/widgets/feature_gate_overlay.dart';
-import 'package:invoiceflow/services/catalog_service.dart';
+import 'package:invoiceflow/services/items_service.dart';
 
 class OCRScanScreen extends StatefulWidget {
   const OCRScanScreen({super.key});
@@ -353,7 +353,7 @@ class _OCRScanScreenState extends State<OCRScanScreen> {
         _statusMessage = 'Loading catalog...';
       });
 
-      final catalogItems = await CatalogService.instance.getAllItems();
+      final catalogItems = await ItemsService().getAllItems();
 
       // Process OCR
       setState(() {
