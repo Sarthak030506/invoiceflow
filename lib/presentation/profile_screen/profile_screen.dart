@@ -7,10 +7,11 @@ import '../../providers/auth_provider.dart';
 import '../../core/app_export.dart';
 import './widgets/logout_button_widget.dart';
 import './widgets/profile_header_widget.dart';
-import '../../widgets/enhanced_bottom_nav.dart';
 import '../../widgets/adaptive_scaffold.dart';
 import '../../config/navigation_config.dart';
 import '../../utils/responsive_helper.dart';
+import '../../models/business_profile_model.dart';
+import '../../services/business_profile_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -20,26 +21,176 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  int _currentIndex = 4; // Profile is index 4
+  final int _currentIndex = 4; // Profile is index 4
   String _userName = '';
   String _userEmail = '';
   bool _isLoading = false;
 
-  // Mock user data
-  final Map<String, dynamic> _mockUserData = {
-    "fullName": "Sarah Johnson",
-    "email": "sarah.johnson@example.com",
-    "profileImage": null, // Use initials-based avatar instead
-    "isEmailVerified": true,
-    "lastSyncTime": "2025-07-09 17:45:00",
-    "appVersion": "1.2.3",
-    "joinDate": "2024-03-15"
-  };
+  String? _profileImageUrl;
+  bool _isEmailVerified = false;
+
+  // Business profile state
+  BusinessProfileModel? _businessProfile;
+  bool _isSavingProfile = false;
+  final _shopNameCtrl    = TextEditingController();
+  final _ownerPhoneCtrl  = TextEditingController();
+  final _addressCtrl     = TextEditingController();
+  final _gstinCtrl       = TextEditingController();
+  String? _businessType;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _loadBusinessProfile();
+  }
+
+  @override
+  void dispose() {
+    _shopNameCtrl.dispose();
+    _ownerPhoneCtrl.dispose();
+    _addressCtrl.dispose();
+    _gstinCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadBusinessProfile() async {
+    final profile = await BusinessProfileService.instance.getProfile();
+    if (!mounted) return;
+    setState(() {
+      _businessProfile = profile;
+      _shopNameCtrl.text   = profile?.shopName   ?? '';
+      _ownerPhoneCtrl.text = profile?.ownerPhone ?? '';
+      _addressCtrl.text    = profile?.address    ?? '';
+      _gstinCtrl.text      = profile?.gstin      ?? '';
+      _businessType        = profile?.businessType;
+    });
+  }
+
+  Future<void> _saveBusinessProfile() async {
+    final shopName  = _shopNameCtrl.text.trim();
+    final phone     = _ownerPhoneCtrl.text.trim();
+    final address   = _addressCtrl.text.trim();
+
+    if (shopName.isEmpty || phone.isEmpty || address.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Shop name, phone, and address are required.')),
+      );
+      return;
+    }
+
+    setState(() => _isSavingProfile = true);
+    try {
+      final profile = BusinessProfileModel(
+        shopName: shopName,
+        ownerPhone: phone,
+        address: address,
+        gstin: _gstinCtrl.text.trim().isEmpty ? null : _gstinCtrl.text.trim(),
+        businessType: _businessType,
+      );
+      await BusinessProfileService.instance.saveProfile(profile);
+      if (!mounted) return;
+      setState(() => _businessProfile = profile);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Business profile saved.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSavingProfile = false);
+    }
+  }
+
+  Widget _buildBusinessSettingsCard() {
+    final gstin = _gstinCtrl.text.trim();
+    return Card(
+      elevation: 2,
+      margin: EdgeInsets.symmetric(horizontal: 4.w),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: EdgeInsets.all(4.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Business Settings',
+                style: AppTheme.lightTheme.textTheme.titleMedium),
+            SizedBox(height: 2.h),
+            TextField(
+              controller: _shopNameCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Shop / Business Name *',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            SizedBox(height: 1.5.h),
+            TextField(
+              controller: _ownerPhoneCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Owner Phone *',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            SizedBox(height: 1.5.h),
+            TextField(
+              controller: _addressCtrl,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Address *',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            SizedBox(height: 1.5.h),
+            TextField(
+              controller: _gstinCtrl,
+              decoration: const InputDecoration(
+                labelText: 'GSTIN (optional — leave blank for non-GST mode)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            if (gstin.isNotEmpty) ...[
+              SizedBox(height: 1.5.h),
+              DropdownButtonFormField<String>(
+                value: _businessType,
+                decoration: const InputDecoration(
+                  labelText: 'Business Type',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'proprietor',  child: Text('Proprietorship')),
+                  DropdownMenuItem(value: 'partnership', child: Text('Partnership')),
+                  DropdownMenuItem(value: 'pvt_ltd',     child: Text('Private Limited')),
+                ],
+                onChanged: (v) => setState(() => _businessType = v),
+              ),
+            ],
+            SizedBox(height: 2.h),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSavingProfile ? null : _saveBusinessProfile,
+                child: _isSavingProfile
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save Business Profile'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _loadUserData() async {
@@ -56,10 +207,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (user != null) {
         _userName = user.displayName ?? user.email?.split('@').first ?? 'User';
         _userEmail = user.email ?? '';
+        _profileImageUrl = user.photoURL;
+        _isEmailVerified = user.emailVerified;
       } else {
-        // Fallback to SharedPreferences or mock data
-        _userName = prefs.getString('user_name') ?? (_mockUserData['fullName'] as String);
-        _userEmail = prefs.getString('user_email') ?? (_mockUserData['email'] as String);
+        _userName = prefs.getString('user_name') ?? 'User';
+        _userEmail = prefs.getString('user_email') ?? '';
       }
 
       // Simulate loading delay
@@ -203,10 +355,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ProfileHeaderWidget(
                               userName: _userName,
                               userEmail: _userEmail,
-                              profileImageUrl: _mockUserData['profileImage'] as String?,
-                              isEmailVerified: _mockUserData['isEmailVerified'] as bool,
+                              profileImageUrl: _profileImageUrl,
+                              isEmailVerified: _isEmailVerified,
                             ),
-                            SizedBox(height: 4.h),
+                            SizedBox(height: 3.h),
+                            _buildBusinessSettingsCard(),
+                            SizedBox(height: 3.h),
                             LogoutButtonWidget(
                               onPressed: _showLogoutDialog,
                             ),
