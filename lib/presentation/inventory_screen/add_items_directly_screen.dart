@@ -1,824 +1,389 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
-import '../../models/catalog_item.dart';
-import '../../services/inventory_service.dart';
-import '../../services/catalog_service.dart';
-import '../../services/stock_map_service.dart';
-import '../../constants/app_scaling.dart';
-import '../catalogue/business_type_selection_screen.dart';
-import '../../widgets/rate_edit_dialog.dart';
 
+import '../../models/inventory_item_model.dart';
+import '../../providers/catalogue_provider.dart';
+import '../../services/business_profile_service.dart';
+import '../../services/inventory_service.dart';
+import '../../services/items_service.dart';
+import '../../widgets/item_autocomplete_field.dart';
+
+/// Add items directly to inventory (without raising a purchase invoice).
+///
+/// Search picks an existing inventory item, an existing catalogue item, or
+/// creates a new catalogue entry on the fly. Each selected row carries a
+/// quantity and unit cost; submitting fans out one stock-receive movement per
+/// row, creating the linked inventory item first if it doesn't exist yet.
 class AddItemsDirectlyScreen extends StatefulWidget {
+  const AddItemsDirectlyScreen({super.key});
+
   @override
   State<AddItemsDirectlyScreen> createState() => _AddItemsDirectlyScreenState();
 }
 
 class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
-  final Map<int, _SelectedItem> _selectedItems = {};
-  String _search = '';
-  String _selectedCategory = 'All';
   final InventoryService _inventoryService = InventoryService();
-  final CatalogService _catalogService = CatalogService.instance;
-  final StockMapService _stockMapService = StockMapService();
 
-  List<CatalogItem> _itemCatalog = [];
-  Map<int, int> _stockMap = {};
-  bool _catalogLoading = true;
+  /// Keyed by a stable selection key (catalog id or inventory id) so the same
+  /// item can't appear twice in the list.
+  final Map<String, _SelectedRow> _selected = {};
+  bool _submitting = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadCatalog();
-    _loadStockMap();
-  }
-
-  Future<void> _loadCatalog() async {
-    setState(() => _catalogLoading = true);
-    try {
-      final catalog = await _catalogService.getAllItems();
-      if (mounted) {
-        setState(() {
-          _itemCatalog = catalog;
-          _catalogLoading = false;
-        });
-
-        // If catalogue is empty, prompt user to set it up
-        if (catalog.isEmpty) {
-          _promptCatalogueSetup();
-        }
-      }
-    } catch (e) {
-      print('Error loading catalog: $e');
-      // Fallback to static catalog
-      if (mounted) {
-        setState(() {
-          _itemCatalog = ItemCatalog.items;
-          _catalogLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _loadStockMap() async {
-    try {
-      final stockMap = await _stockMapService.getCurrentStockMap();
-      if (mounted) {
-        setState(() {
-          _stockMap = stockMap;
-        });
-      }
-    } catch (e) {
-      print('Error loading stock map: $e');
-    }
-  }
-
-  int _getItemStock(int itemId) {
-    return _stockMap[itemId] ?? 0;
-  }
-
-  Future<void> _editItem(CatalogItem item) async {
-    final result = await RateEditDialog.show(
-      context,
-      item,
-      onRateUpdated: () {
-        _loadCatalog(); // Refresh catalog after update
-        _loadStockMap(); // Refresh stock data
-      },
-    );
-  }
-
-  void _promptCatalogueSetup() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: [
-              Icon(Icons.inventory_2, color: Colors.green, size: 7.w),
-              SizedBox(width: 3.w),
-              Expanded(
-                child: Text(
-                  'Set Up Your Catalogue',
-                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Your product catalogue is empty. Set it up now to start adding items to inventory.',
-                style: TextStyle(fontSize: 12.sp, height: 1.4),
-              ),
-              SizedBox(height: 2.h),
-              Container(
-                padding: EdgeInsets.all(3.w),
-                decoration: BoxDecoration(
-                  color: Colors.green[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.lightbulb_outline, color: Colors.green[700], size: 5.w),
-                    SizedBox(width: 2.w),
-                    Expanded(
-                      child: Text(
-                        'Choose from 8 business types or create your own custom catalogue',
-                        style: TextStyle(fontSize: 10.sp, color: Colors.green[900]),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).pop(); // Also pop the add items screen
-              },
-              child: Text('Cancel', style: TextStyle(fontSize: 12.sp)),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.of(context).pop(); // Close dialog
-
-                // Navigate to catalogue setup
-                final result = await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const BusinessTypeSelectionScreen(
-                      isFirstTimeSetup: false,
-                      returnRoute: 'inventory',
-                    ),
-                  ),
-                );
-
-                // Reload catalogue if setup was completed
-                if (result == true && mounted) {
-                  _loadCatalog();
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: Text('Set Up Catalogue', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600)),
-            ),
-          ],
-        ),
-      );
+  void _handleSelection(ItemAutocompleteResult result) {
+    final key = _keyFor(result);
+    setState(() {
+      _selected.putIfAbsent(key, () => _SelectedRow.fromResult(result));
     });
   }
 
-  Widget _buildFilterChip(String label, int count) {
-    final bool isSelected = _selectedCategory == label;
-    
-    return GestureDetector(
-      onTap: () => setState(() => _selectedCategory = label),
-      child: Container(
-        margin: EdgeInsets.only(right: AppScaling.spacing),
-        padding: EdgeInsets.symmetric(horizontal: AppScaling.spacing * 1.5),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.green : Colors.grey[200],
-          borderRadius: BorderRadius.circular(20),
-          border: isSelected ? null : Border.all(color: Colors.grey[300]!),
+  String _keyFor(ItemAutocompleteResult r) {
+    if (r.inventoryItem != null) return 'inv:${r.inventoryItem!.id}';
+    if (r.catalogueItem != null) return 'cat:${r.catalogueItem!.id}';
+    return 'name:${r.name.toLowerCase()}';
+  }
+
+  Future<void> _submit() async {
+    if (_selected.isEmpty || _submitting) return;
+    setState(() => _submitting = true);
+    try {
+      // Snapshot existing inventory so we can match catalogue picks that have
+      // already been promoted to inventory under the hood (e.g. catalogItemId
+      // link) without creating duplicates.
+      final inventory = await _inventoryService.getAllItems();
+      final byCatalogId = <String, InventoryItem>{
+        for (final i in inventory)
+          if (i.catalogItemId != null) i.catalogItemId!: i,
+      };
+
+      for (final row in _selected.values) {
+        if (row.quantity <= 0) continue;
+
+        InventoryItem invItem;
+        if (row.inventoryItem != null) {
+          invItem = row.inventoryItem!;
+        } else {
+          final catalogue = row.catalogueItem!;
+          final existing = byCatalogId[catalogue.id];
+          if (existing != null) {
+            invItem = existing;
+          } else {
+            invItem = InventoryItem(
+              id: DateTime.now().microsecondsSinceEpoch.toString(),
+              sku: catalogue.sku,
+              name: catalogue.name,
+              unit: catalogue.unit,
+              openingStock: 0.0,
+              currentStock: 0.0,
+              reorderPoint: 0.0,
+              avgCost: row.unitCost,
+              category: catalogue.category,
+              lastUpdated: DateTime.now(),
+              barcode: catalogue.barcode,
+              catalogItemId: catalogue.id,
+            );
+            await _inventoryService.addItem(invItem);
+          }
+        }
+
+        await _inventoryService.receiveStock(
+          invItem.id,
+          row.quantity,
+          row.unitCost,
+          'direct_add:${DateTime.now().microsecondsSinceEpoch}',
+        );
+      }
+
+      await BusinessProfileService.instance.markOnboardingComplete();
+      if (!mounted) return;
+      context.read<CatalogueProvider>().invalidate();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${_selected.length} item(s) added to inventory'),
+          backgroundColor: Colors.green,
         ),
-        alignment: Alignment.center,
-        child: Row(
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Colors.grey[800],
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-            SizedBox(width: AppScaling.spacingSmall),
-            Container(
-              padding: EdgeInsets.all(AppScaling.spacingSmall),
-              decoration: BoxDecoration(
-                color: isSelected ? Colors.white.withOpacity(0.3) : Colors.grey[300],
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                count.toString(),
-                style: TextStyle(
-                  fontSize: AppScaling.small,
-                  color: isSelected ? Colors.white : Colors.grey[800],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
+      );
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to add items: $e'),
+          backgroundColor: Colors.red,
         ),
-      ),
-    );
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Add Items to Inventory'),
+        title: const Text('Add Items to Inventory'),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
-        elevation: 0,
       ),
-      body: _catalogLoading
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: Colors.green),
-                  SizedBox(height: 2.h),
-                  Text(
-                    'Loading catalogue...',
-                    style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            )
-          : _buildItemsList(),
-    );
-  }
-
-  Widget _buildItemsList() {
-    List<CatalogItem> filteredItems = _itemCatalog;
-    
-    if (_search.isNotEmpty) {
-      filteredItems = filteredItems
-          .where((item) => item.name.toLowerCase().contains(_search.toLowerCase()))
-          .toList();
-    }
-    
-    if (_selectedCategory != 'All') {
-      filteredItems = filteredItems.where((item) {
-        final name = item.name.toLowerCase();
-        switch (_selectedCategory) {
-          case 'Kitchen':
-            return name.contains('kitchen');
-          case 'Cleaning':
-            return name.contains('clean') || 
-                   name.contains('phenyl') || 
-                   name.contains('mop');
-          case 'Containers':
-            return name.contains('container');
-          case 'Bags':
-            return name.contains('bag');
-          default:
-            return true;
-        }
-      }).toList();
-    }
-
-    return Column(
-      children: [
-        Padding(
-          padding: AppScaling.defaultPadding,
-          child: TextField(
-            decoration: InputDecoration(
-              labelText: 'Search items',
-              hintText: 'Type to search...',
-              prefixIcon: Icon(Icons.search, color: Colors.green),
-              suffixIcon: _search.isNotEmpty ? IconButton(
-                icon: Icon(Icons.clear),
-                onPressed: () => setState(() => _search = ''),
-              ) : null,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.green, width: 2),
-              ),
-              filled: true,
-              fillColor: Colors.grey[50],
-            ),
-            onChanged: (value) => setState(() => _search = value),
-          ),
-        ),
-        
-        Container(
-          height: AppScaling.buttonHeight,
-          margin: EdgeInsets.symmetric(horizontal: AppScaling.spacing * 1.5),
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              _buildFilterChip('All', filteredItems.length),
-              _buildFilterChip('Kitchen', _itemCatalog.where((item) => item.name.toLowerCase().contains('kitchen')).length),
-              _buildFilterChip('Cleaning', _itemCatalog.where((item) => 
-                item.name.toLowerCase().contains('clean') || 
-                item.name.toLowerCase().contains('phenyl') ||
-                item.name.toLowerCase().contains('mop')).length),
-              _buildFilterChip('Containers', _itemCatalog.where((item) => item.name.toLowerCase().contains('container')).length),
-              _buildFilterChip('Bags', _itemCatalog.where((item) => item.name.toLowerCase().contains('bag')).length),
-            ],
-          ),
-        ),
-        
-        Padding(
-          padding: EdgeInsets.fromLTRB(AppScaling.spacing * 1.5, AppScaling.spacing, AppScaling.spacing * 1.5, AppScaling.spacingSmall),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '${filteredItems.length} items available',
-                style: TextStyle(color: Colors.grey[600], fontSize: AppScaling.small),
-              ),
-              if (_selectedItems.isNotEmpty)
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: AppScaling.spacing * 1.5, vertical: AppScaling.spacingSmall),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${_selectedItems.length} selected',
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.all(4.w),
+              child: ItemAutocompleteField(
+                mode: AutocompleteMode.purchase,
+                autofocus: true,
+                onSelected: _handleSelection,
+                decoration: const InputDecoration(
+                  hintText: 'Search or add a new item',
+                  prefixIcon: Icon(Icons.search),
+                  border: OutlineInputBorder(),
                 ),
-            ],
-          ),
-        ),
-        
-        Expanded(
-          child: ListView.builder(
-            itemCount: filteredItems.length,
-            itemBuilder: (context, idx) {
-              final item = filteredItems[idx];
-              final itemId = item.id;
-              final selected = _selectedItems.containsKey(itemId);
-              final selectedItem = _selectedItems[itemId];
-              final currentStock = _getItemStock(itemId);
-              final isLowStock = currentStock <= 10;
-              final isOutOfStock = currentStock <= 0;
-
-              return Card(
-                margin: AppScaling.cardMargin,
-                elevation: 2,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () {
-                    setState(() {
-                      if (selected) {
-                        _selectedItems.remove(itemId);
-                      } else {
-                        _selectedItems[itemId] = _SelectedItem(item: item, quantity: 1);
-                      }
-                    });
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: selected ? Border.all(color: Colors.green, width: 2) : null,
+              ),
+            ),
+            Expanded(
+              child: _selected.isEmpty
+                  ? const _EmptyState()
+                  : ListView(
+                      children: _selected.entries
+                          .map((e) => _SelectedRowTile(
+                                key: ValueKey(e.key),
+                                row: e.value,
+                                onChanged: () => setState(() {}),
+                                onRemove: () => setState(() => _selected.remove(e.key)),
+                              ))
+                          .toList(),
                     ),
-                    child: Padding(
-                      padding: AppScaling.cardPadding2,
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: selected,
-                                activeColor: Colors.green,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                                onChanged: (val) {
-                                  setState(() {
-                                    if (val == true) {
-                                      _selectedItems[itemId] = _SelectedItem(item: item, quantity: 1);
-                                    } else {
-                                      _selectedItems.remove(itemId);
-                                    }
-                                  });
-                                },
+            ),
+            if (_selected.isNotEmpty)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: EdgeInsets.all(4.w),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade600,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(vertical: 1.8.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: _submitting ? null : _submit,
+                      icon: _submitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation(Colors.white),
                               ),
-                              SizedBox(width: AppScaling.spacing),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            item.name,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: AppScaling.h2,
-                                            ),
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: EdgeInsets.symmetric(horizontal: 2.w, vertical: 0.5.h),
-                                          decoration: BoxDecoration(
-                                            color: isOutOfStock ? Colors.red.withOpacity(0.1) :
-                                                   isLowStock ? Colors.orange.withOpacity(0.1) :
-                                                   Colors.green.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(
-                                              color: isOutOfStock ? Colors.red :
-                                                     isLowStock ? Colors.orange :
-                                                     Colors.green,
-                                              width: 1,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            'Stock: $currentStock',
-                                            style: TextStyle(
-                                              color: isOutOfStock ? Colors.red :
-                                                     isLowStock ? Colors.orange :
-                                                     Colors.green,
-                                              fontSize: 10.sp,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    SizedBox(height: AppScaling.spacingSmall),
-                                    Text(
-                                      'Rate: ₹${item.rate.toStringAsFixed(2)}',
-                                      style: TextStyle(
-                                        color: Colors.grey[600],
-                                        fontSize: AppScaling.body,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: InkWell(
-                              onTap: () => _editItem(item),
-                              borderRadius: BorderRadius.circular(20),
-                              child: Container(
-                                padding: EdgeInsets.all(2.w),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.withOpacity(0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.edit,
-                                  size: 4.5.w,
-                                  color: Colors.blue.shade700,
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: 1.h),
-                          
-                          if (selected)
-                            Container(
-                              margin: EdgeInsets.only(top: AppScaling.spacing),
-                              padding: AppScaling.defaultPadding,
-                              decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  Text(
-                                    'Quantity:',
-                                    style: TextStyle(fontWeight: FontWeight.w500),
-                                  ),
-                                  Spacer(),
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.grey[300]!),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        InkWell(
-                                          onTap: () {
-                                            setState(() {
-                                              if (selectedItem!.quantity > 1) {
-                                                selectedItem.quantity--;
-                                              }
-                                            });
-                                          },
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: Container(
-                                            padding: EdgeInsets.all(AppScaling.spacing),
-                                            decoration: BoxDecoration(
-                                              color: Colors.grey[200],
-                                              borderRadius: BorderRadius.only(
-                                                topLeft: Radius.circular(8),
-                                                bottomLeft: Radius.circular(8),
-                                              ),
-                                            ),
-                                            child: Icon(Icons.remove, size: AppScaling.iconSize),
-                                          ),
-                                        ),
-                                        InkWell(
-                                          onTap: () => _showQuantityDialog(selectedItem!),
-                                          child: Container(
-                                            width: 60,
-                                            alignment: Alignment.center,
-                                            padding: EdgeInsets.symmetric(horizontal: AppScaling.spacing),
-                                            child: Text(
-                                              '${selectedItem?.quantity ?? 1}',
-                                              style: TextStyle(fontWeight: FontWeight.bold),
-                                            ),
-                                          ),
-                                        ),
-                                        InkWell(
-                                          onTap: () {
-                                            setState(() {
-                                              selectedItem!.quantity++;
-                                            });
-                                          },
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: Container(
-                                            padding: EdgeInsets.all(AppScaling.spacing),
-                                            decoration: BoxDecoration(
-                                              color: Colors.green,
-                                              borderRadius: BorderRadius.only(
-                                                topRight: Radius.circular(8),
-                                                bottomRight: Radius.circular(8),
-                                              ),
-                                            ),
-                                            child: Icon(Icons.add, size: AppScaling.iconSize, color: Colors.white),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
+                            )
+                          : const Icon(Icons.add_box),
+                      label: Text(
+                        _submitting
+                            ? 'Adding...'
+                            : 'Add ${_selected.length} item(s) to Inventory',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+          ],
         ),
-        
-        if (_selectedItems.isNotEmpty)
-          Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: Offset(0, -5),
-                ),
-              ],
-            ),
-            padding: EdgeInsets.symmetric(horizontal: AppScaling.spacing * 2, vertical: AppScaling.spacing * 1.5),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+      ),
+    );
+  }
+}
+
+class _SelectedRow {
+  _SelectedRow({
+    required this.name,
+    required this.sku,
+    required this.unit,
+    required this.unitCost,
+    required this.quantity,
+    this.inventoryItem,
+    this.catalogueItem,
+  });
+
+  final String name;
+  final String sku;
+  final String unit;
+  double unitCost;
+  double quantity;
+  final InventoryItem? inventoryItem;
+  final ProductCatalogItem? catalogueItem;
+
+  factory _SelectedRow.fromResult(ItemAutocompleteResult r) => _SelectedRow(
+        name: r.name,
+        sku: r.sku,
+        unit: r.unit,
+        unitCost: r.rate,
+        quantity: 1,
+        inventoryItem: r.inventoryItem,
+        catalogueItem: r.catalogueItem,
+      );
+}
+
+class _SelectedRowTile extends StatefulWidget {
+  const _SelectedRowTile({
+    super.key,
+    required this.row,
+    required this.onChanged,
+    required this.onRemove,
+  });
+
+  final _SelectedRow row;
+  final VoidCallback onChanged;
+  final VoidCallback onRemove;
+
+  @override
+  State<_SelectedRowTile> createState() => _SelectedRowTileState();
+}
+
+class _SelectedRowTileState extends State<_SelectedRowTile> {
+  late final TextEditingController _qtyCtrl;
+  late final TextEditingController _costCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyCtrl = TextEditingController(text: _fmt(widget.row.quantity));
+    _costCtrl = TextEditingController(text: _fmt(widget.row.unitCost));
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    _costCtrl.dispose();
+    super.dispose();
+  }
+
+  String _fmt(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+
+  @override
+  Widget build(BuildContext context) {
+    final isNew = widget.row.inventoryItem == null;
+    return Card(
+      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.w),
+      child: Padding(
+        padding: EdgeInsets.all(3.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Selected Items:',
-                      style: TextStyle(fontSize: AppScaling.body, color: Colors.grey[600]),
-                    ),
-                    Text(
-                      '${_selectedItems.length} items',
-                      style: TextStyle(fontSize: AppScaling.body, fontWeight: FontWeight.bold),
-                    ),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.row.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text('${widget.row.sku} • ${widget.row.unit}',
+                          style: TextStyle(
+                              fontSize: 11.sp, color: Colors.grey.shade600)),
+                    ],
+                  ),
                 ),
-                SizedBox(height: AppScaling.spacing),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade600,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade300,
-                      disabledForegroundColor: Colors.grey.shade600,
-                      elevation: 2,
-                      padding: EdgeInsets.symmetric(vertical: 1.8.h),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16.0),
-                      ),
+                if (isNew)
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: 2.w, vertical: 0.4.h),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    onPressed: _selectedItems.isEmpty ? null : _addItemsToInventory,
-                    icon: Icon(Icons.add_box, size: 22),
-                    label: Text(
-                      'Add to Inventory',
-                      style: TextStyle(
-                        fontSize: 15.sp,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                      ),
+                    child: Text('New',
+                        style: TextStyle(
+                            fontSize: 10.sp,
+                            color: Colors.blue.shade800,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: widget.onRemove,
+                ),
+              ],
+            ),
+            SizedBox(height: 1.h),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _qtyCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                    ],
+                    decoration: const InputDecoration(
+                      labelText: 'Quantity',
+                      isDense: true,
+                      border: OutlineInputBorder(),
                     ),
+                    onChanged: (v) {
+                      widget.row.quantity = double.tryParse(v) ?? 0;
+                      widget.onChanged();
+                    },
+                  ),
+                ),
+                SizedBox(width: 3.w),
+                Expanded(
+                  child: TextField(
+                    controller: _costCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                    ],
+                    decoration: const InputDecoration(
+                      labelText: 'Unit cost (₹)',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) {
+                      widget.row.unitCost = double.tryParse(v) ?? 0;
+                      widget.onChanged();
+                    },
                   ),
                 ),
               ],
             ),
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
+}
 
-  void _showQuantityDialog(_SelectedItem selectedItem) {
-    final TextEditingController controller = TextEditingController(
-      text: selectedItem.quantity.toString(),
-    );
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Enter Quantity'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: 'Quantity',
-            hintText: 'Enter quantity',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.green, width: 2),
-            ),
-            errorText: null,
-          ),
-          onSubmitted: (value) {
-            final quantity = int.tryParse(value);
-            if (quantity != null && quantity > 0 && quantity <= 10000) {
-              setState(() {
-                selectedItem.quantity = quantity;
-              });
-              Navigator.of(context).pop();
-            }
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              final value = controller.text.trim();
-              final quantity = int.tryParse(value);
-
-              if (quantity == null || quantity <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Please enter a valid positive number'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-
-              if (quantity > 10000) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Quantity cannot exceed 10,000'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-
-              setState(() {
-                selectedItem.quantity = quantity;
-              });
-              Navigator.of(context).pop();
-            },
-            child: Text('OK'),
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.inventory_2_outlined,
+              size: 18.w, color: Colors.grey.shade400),
+          SizedBox(height: 2.h),
+          Text(
+            'Search above to start adding items',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13.sp),
           ),
         ],
       ),
     );
   }
-
-  Future<void> _addItemsToInventory() async {
-    try {
-      // Show enhanced loading dialog with progress info
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => WillPopScope(
-          onWillPop: () async => false,
-          child: Center(
-            child: Container(
-              padding: EdgeInsets.all(6.w),
-              margin: EdgeInsets.symmetric(horizontal: 10.w),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Icon background
-                  Container(
-                    padding: EdgeInsets.all(3.w),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      shape: BoxShape.circle,
-                    ),
-                    child: SizedBox(
-                      width: 50,
-                      height: 50,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 4,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade600),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 3.h),
-                  Text(
-                    'Adding to Inventory...',
-                    style: TextStyle(
-                      fontSize: 18.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  SizedBox(height: 1.5.h),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'Processing ${_selectedItems.length} item${_selectedItems.length > 1 ? 's' : ''}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13.sp,
-                        color: Colors.green.shade700,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-
-      // OPTIMIZATION: Use batch method instead of sequential processing
-      final itemsWithQuantities = _selectedItems.values.map((selectedItem) => {
-        'item': selectedItem.item,
-        'quantity': selectedItem.quantity.toDouble(),
-      }).toList();
-
-      await _inventoryService.batchAddItemsDirectlyToInventory(itemsWithQuantities);
-
-      if (!mounted) return;
-      Navigator.of(context).pop(); // Close loading dialog
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${_selectedItems.length} items added to inventory successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      Navigator.of(context).pop(); // Go back to inventory screen
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop(); // Close loading dialog
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error adding items: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-}
-
-class _SelectedItem {
-  final CatalogItem item;
-  int quantity;
-  _SelectedItem({required this.item, this.quantity = 1});
 }
