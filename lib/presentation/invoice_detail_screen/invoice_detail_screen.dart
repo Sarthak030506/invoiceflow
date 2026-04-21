@@ -18,6 +18,9 @@ import './widgets/whatsapp_reminder_button.dart';
 import './widgets/edit_invoice_dialog.dart';
 import './widgets/record_payment_dialog.dart';
 import '../return_goods_screen/return_goods_screen.dart';
+import '../../widgets/invoice_cancellation_dialog.dart';
+import '../../models/business_profile_model.dart';
+import '../../services/business_profile_service.dart';
 
 class InvoiceDetailScreen extends StatefulWidget {
   const InvoiceDetailScreen({super.key});
@@ -31,6 +34,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   bool _isOffline = false;
 
   InvoiceModel? _invoice;
+  BusinessProfileModel? _businessProfile;
   late InvoiceService _invoiceService;
   final PdfService _pdfService = PdfService.instance;
 
@@ -45,7 +49,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   void initState() {
     super.initState();
     _invoiceService = InvoiceService.instance;
-    
+    BusinessProfileService.instance.getProfile().then((p) {
+      if (mounted) setState(() => _businessProfile = p);
+    });
     // InvoiceModel must be passed as arguments from the list screen
     Future.microtask(() {
       final args = ModalRoute.of(context)?.settings.arguments;
@@ -435,14 +441,6 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     }
   }
 
-  void _duplicateInvoice() {
-    HapticFeedback.lightImpact();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Invoice duplicated successfully")),
-    );
-  }
-  
   void _processReturn() {
     HapticFeedback.mediumImpact();
     
@@ -504,6 +502,16 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     );
   }
 
+  void _showCancelDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => InvoiceCancellationDialog(
+        invoiceId: _invoice!.id,
+        onCancelled: () => _refreshInvoiceData(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Guard while arguments load
@@ -540,12 +548,33 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ],
         ),
         actions: [
-          // Edit Invoice Button
+          // Edit Invoice Button (hidden for cancelled)
           if (_invoice!.status.toLowerCase() != 'cancelled')
             IconButton(
               onPressed: _showEditInvoiceDialog,
               icon: const Icon(Icons.edit, color: Colors.white),
               tooltip: 'Edit Invoice',
+            ),
+          // Cancel Invoice — posted invoices only
+          if (_invoice!.status.toLowerCase() == 'posted')
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white),
+              tooltip: 'More actions',
+              onSelected: (value) {
+                if (value == 'cancel') _showCancelDialog();
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'cancel',
+                  child: Row(
+                    children: [
+                      Icon(Icons.cancel_outlined, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Cancel Invoice', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
             ),
           if (_isOffline)
             Padding(
@@ -623,12 +652,19 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                     gradient: LinearGradient(
                       colors: _invoice?.status.toLowerCase() == 'paid'
                           ? [Colors.green.shade400, Colors.green.shade600]
-                          : [Colors.orange.shade400, Colors.orange.shade600],
+                          : _invoice?.status.toLowerCase() == 'cancelled'
+                              ? [Colors.grey.shade500, Colors.grey.shade700]
+                              : [Colors.orange.shade400, Colors.orange.shade600],
                     ),
                     borderRadius: BorderRadius.circular(25),
                     boxShadow: [
                       BoxShadow(
-                        color: (_invoice?.status.toLowerCase() == 'paid' ? Colors.green : Colors.orange).withOpacity(0.3),
+                        color: (_invoice?.status.toLowerCase() == 'paid'
+                                ? Colors.green
+                                : _invoice?.status.toLowerCase() == 'cancelled'
+                                    ? Colors.grey
+                                    : Colors.orange)
+                            .withOpacity(0.3),
                         blurRadius: 8,
                         offset: Offset(0, 4),
                       ),
@@ -638,7 +674,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        _invoice?.status.toLowerCase() == 'paid' ? Icons.check_circle : Icons.schedule,
+                        _invoice?.status.toLowerCase() == 'paid'
+                            ? Icons.check_circle
+                            : _invoice?.status.toLowerCase() == 'cancelled'
+                                ? Icons.cancel
+                                : Icons.schedule,
                         color: Colors.white,
                         size: 5.w,
                       ),
@@ -659,7 +699,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ),
 
           // Modified Badge (if invoice has been modified)
-          if (_invoice?.modifiedFlag ?? false && _invoice?.modifiedAt != null) ...[
+          if ((_invoice?.modifiedFlag ?? false) && _invoice?.modifiedAt != null) ...[
             SizedBox(height: 2.h),
             FluidAnimations.createStaggeredListAnimation(
               index: 0,
@@ -761,18 +801,20 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           
           SizedBox(height: 4.h),
 
-          // WhatsApp Reminder Button (only for sales invoices with customer phone)
+          // WhatsApp Reminder Button (only for active sales invoices with customer phone)
           if (_invoice!.invoiceType == 'sales' &&
-              _invoice!.customerPhone != null && _invoice!.customerPhone!.isNotEmpty)
+              _invoice!.customerPhone != null && _invoice!.customerPhone!.isNotEmpty &&
+              _invoice!.status.toLowerCase() != 'cancelled')
             WhatsAppReminderButton(
               invoice: _invoice!,
-              shopName: 'Your Shop Name', // Replace with actual shop name from settings
-              shopContact: '+91 9876543210', // Replace with actual shop contact from settings
+              shopName: _businessProfile?.shopName ?? 'Your Shop',
+              shopContact: _businessProfile?.ownerPhone ?? '',
             ),
 
           SizedBox(height: 2.h),
 
-          // Return Goods Button
+          // Return Goods Button (hidden for cancelled invoices)
+          if (_invoice!.status.toLowerCase() != 'cancelled')
           Container(
             width: double.infinity,
             margin: EdgeInsets.only(bottom: 2.h),
@@ -801,16 +843,40 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             ),
           ),
 
-          // Action Buttons
-          InvoiceActionButtonsWidget(
-            onShare: _shareInvoice,
-            onMarkAsPaid: _markAsPaid,
-            onRecordPayment: _recordPayment,
-            onDownloadPdf: _downloadPdf,
-            onDelete: _deleteInvoice,
-            isMarkingAsPaid: false, // We now use dialogs for loading instead of screen-wide loading
-            hasRemainingBalance: _invoice!.remainingAmount > 0.01,
-          ),
+          // Action Buttons — PDF-only for cancelled, full set for active invoices
+          if (_invoice!.status.toLowerCase() == 'cancelled')
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _downloadPdf,
+                icon: Icon(Icons.download, size: 20, color: Colors.blue.shade600),
+                label: Text(
+                  'Download PDF',
+                  style: TextStyle(
+                    color: Colors.blue.shade600,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14.sp,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.blue.shade600, width: 1.5),
+                  padding: EdgeInsets.symmetric(vertical: 2.h, horizontal: 4.w),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            )
+          else
+            InvoiceActionButtonsWidget(
+              onShare: _shareInvoice,
+              onMarkAsPaid: _markAsPaid,
+              onRecordPayment: _recordPayment,
+              onDownloadPdf: _downloadPdf,
+              onDelete: _deleteInvoice,
+              isMarkingAsPaid: false,
+              hasRemainingBalance: _invoice!.remainingAmount > 0.01,
+            ),
 
           SizedBox(height: 10.h), // Bottom padding for FAB
         ],
