@@ -405,6 +405,7 @@ class _DueRemindersSectionState extends State<DueRemindersSection> {
                         trailing: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               _formatCurrency(customer['amount']),
@@ -414,9 +415,15 @@ class _DueRemindersSectionState extends State<DueRemindersSection> {
                                 fontSize: 16,
                               ),
                             ),
-                            TextButton(
-                              onPressed: () => _viewLedger(customer),
-                              child: const Text('View Ledger', style: TextStyle(fontSize: 12)),
+                            GestureDetector(
+                              onTap: () => _viewLedger(customer),
+                              child: Text(
+                                'View Ledger',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: bucket['color'],
+                                ),
+                              ),
                             ),
                           ],
                         ),
