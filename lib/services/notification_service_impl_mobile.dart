@@ -1,7 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
-import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import './invoice_service.dart';
 
@@ -13,8 +12,6 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
   static const int _dailyFollowUpId = 1;
   static const int _unpaidInvoiceId = 2;
-  static const int _testNotificationId = 99;
-
   Future<void> init() async {
     tz.initializeTimeZones();
 
@@ -179,40 +176,6 @@ class NotificationService {
 
   Future<void> checkAndNotifyPendingPayments() async {
     await scheduleAllDailyNotifications();
-  }
-
-  @deprecated
-  Future<void> scheduleDailyReminder(int pendingInvoiceCount) async {
-    await scheduleDailyFollowUpReminder();
-  }
-
-  Future<void> testFollowUpNotification([BuildContext? context]) async {
-    final invoices = await InvoiceService.instance.fetchAllInvoices();
-    final pendingFollowUps = await _getPendingFollowUps(invoices);
-    const notificationDetails = NotificationDetails(
-      android: AndroidNotificationDetails('test_notifications', 'Test Notifications', channelDescription: 'Test notifications for follow-ups', importance: Importance.high, priority: Priority.high),
-      iOS: DarwinNotificationDetails(),
-    );
-    final message = pendingFollowUps.isEmpty ? 'No pending follow-ups found' : 'TEST: ${pendingFollowUps.length} invoice${pendingFollowUps.length > 1 ? 's' : ''} requiring follow-up';
-    await _notificationsPlugin.show(_testNotificationId, 'Follow-up Test', message, notificationDetails, payload: 'pending_follow_ups');
-    if (context != null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Follow-up test notification sent!'), backgroundColor: Colors.blue, duration: Duration(seconds: 2)));
-    }
-  }
-
-  Future<void> testUnpaidPurchaseNotification([BuildContext? context]) async {
-    final invoices = await InvoiceService.instance.fetchAllInvoices();
-    final unpaidPurchaseInvoices = await _getUnpaidPurchaseInvoices(invoices);
-    const notificationDetails = NotificationDetails(
-      android: AndroidNotificationDetails('test_notifications', 'Test Notifications', channelDescription: 'Test notifications for unpaid purchases', importance: Importance.high, priority: Priority.high),
-      iOS: DarwinNotificationDetails(),
-    );
-    final totalAmount = unpaidPurchaseInvoices.fold<double>(0.0, (sum, invoice) => sum + invoice.remainingAmount);
-    final message = unpaidPurchaseInvoices.isEmpty ? 'No unpaid purchase invoices found' : 'TEST: ${unpaidPurchaseInvoices.length} unpaid purchase invoice${unpaidPurchaseInvoices.length > 1 ? 's' : ''} (₹${totalAmount.toStringAsFixed(2)})';
-    await _notificationsPlugin.show(_testNotificationId + 1, 'Unpaid Purchase Test', message, notificationDetails, payload: 'unpaid_purchase_invoices');
-    if (context != null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unpaid purchase test notification sent!'), backgroundColor: Colors.orange, duration: Duration(seconds: 2)));
-    }
   }
 
   Future<Map<String, dynamic>> getNotificationStatus() async {
