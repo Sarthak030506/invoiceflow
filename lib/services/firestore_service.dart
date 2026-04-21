@@ -6,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/customer_model.dart';
 import '../models/invoice_model.dart';
 import '../models/return_model.dart';
-import '../models/catalog_item.dart';
 import '../utils/app_logger.dart';
 
 /// FirestoreService provides CRUD operations and a one-time migration from the
@@ -40,9 +39,6 @@ class FirestoreService {
 
   CollectionReference<Map<String, dynamic>> _returnsCol(String uid) =>
       _fs.collection('users').doc(uid).collection('returns');
-
-  CollectionReference<Map<String, dynamic>> _catalogRatesCol(String uid) =>
-      _fs.collection('users').doc(uid).collection('catalog_rates');
 
   // ----------------------
   // Customer operations
@@ -365,9 +361,13 @@ class FirestoreService {
       final paymentForThisInvoice = remainingPayment > remaining ? remaining : remainingPayment;
       final newPaidAmount = currentPaid + paymentForThisInvoice;
 
-      // Update the invoice
+      // Update the invoice — also mark paid when fully covered
       final ref = _invoicesCol(uid).doc(invoiceId);
-      batch.update(ref, {'amountPaid': newPaidAmount});
+      final invoiceTotal = invoice['total'] as double;
+      batch.update(ref, {
+        'amountPaid': newPaidAmount,
+        if ((newPaidAmount - invoiceTotal).abs() <= 0.01) 'status': 'paid',
+      });
 
       remainingPayment -= paymentForThisInvoice;
     }
@@ -458,42 +458,118 @@ class FirestoreService {
     AppLogger.firebase('updateReturn', 'success', returnModel.id);
   }
 
+  /// DEPRECATED — use applyAllReturnsTransaction for new call sites.
+  /// WriteBatch has no conflict detection: two concurrent commits silently
+  /// overwrite each other, enabling double-spend of return credits (RET-06).
+  Future<void> applyAllReturnsBatch(
+    List<ReturnModel> updatedReturns,
+    CustomerModel updatedCustomer,
+  ) async {
+    final uid = _requireUid();
+    final batch = _fs.batch();
+    for (final ret in updatedReturns) {
+      batch.set(
+        _returnsCol(uid).doc(ret.id),
+        _returnToFirestore(ret),
+        SetOptions(merge: true),
+      );
+    }
+    batch.set(
+      _customersCol(uid).doc(updatedCustomer.id),
+      _customerToFirestore(updatedCustomer),
+      SetOptions(merge: true),
+    );
+    await batch.commit();
+    AppLogger.firebase('applyAllReturnsBatch', 'success', '${updatedReturns.length} returns + customer');
+  }
+
+  /// Applies pending return credits to an invoice inside a Firestore Transaction.
+  ///
+  /// All return documents for [customerId] are read via transaction.get() so that
+  /// any concurrent write to those documents — or to the customer document — causes
+  /// the SDK to abort and automatically retry with fresh data. This prevents the
+  /// double-spend race (RET-06) that the WriteBatch path allowed.
+  ///
+  /// [computeCallback] receives the live return and customer data from inside the
+  /// transaction, runs the pure arithmetic, and returns updated models plus the
+  /// remaining invoice amount. No Firestore calls may be made inside the callback.
+  ///
+  /// Returns the remaining invoice amount after credit application.
+  /// Throws on persistent transaction failure — caller knows no reduction occurred.
+  Future<double> applyAllReturnsTransaction(
+    String customerId,
+    double invoiceAmount,
+    (List<ReturnModel>, CustomerModel, double) Function(
+      List<ReturnModel> liveReturns,
+      CustomerModel liveCustomer,
+    ) computeCallback,
+  ) async {
+    final uid = _requireUid();
+
+    // Pre-query to discover which return document refs to lock inside the transaction.
+    // Uses the existing customerId index — no new composite index required.
+    final preQuery = await _returnsCol(uid)
+        .where('customerId', isEqualTo: customerId)
+        .orderBy('returnDate', descending: true)
+        .get();
+
+    if (preQuery.docs.isEmpty) return invoiceAmount;
+
+    final returnDocRefs = preQuery.docs
+        .map((d) => _returnsCol(uid).doc(d.id))
+        .toList();
+    final customerDocRef = _customersCol(uid).doc(customerId);
+
+    return await _fs.runTransaction<double>((transaction) async {
+      // Lock every return document and the customer document.
+      // Any concurrent modification before commit causes SDK abort + auto-retry.
+      final List<ReturnModel> liveReturns = [];
+      for (final ref in returnDocRefs) {
+        final snap = await transaction.get(ref);
+        if (snap.exists) {
+          liveReturns.add(_returnFromFirestore(snap.data()!..['id'] = snap.id));
+        }
+      }
+
+      final customerSnap = await transaction.get(customerDocRef);
+      if (!customerSnap.exists) {
+        AppLogger.warning('Customer $customerId not found in transaction', 'Firestore');
+        return invoiceAmount;
+      }
+      final liveCustomer = _customerFromFirestore(
+        customerSnap.data()!..['id'] = customerSnap.id,
+      );
+
+      // Pure computation — no Firestore calls inside the callback
+      final (updatedReturns, updatedCustomer, remainingAmount) = computeCallback(
+        liveReturns,
+        liveCustomer,
+      );
+
+      if (updatedReturns.isEmpty) return invoiceAmount;
+
+      for (final ret in updatedReturns) {
+        transaction.set(
+          _returnsCol(uid).doc(ret.id),
+          _returnToFirestore(ret),
+          SetOptions(merge: true),
+        );
+      }
+      transaction.set(
+        _customersCol(uid).doc(updatedCustomer.id),
+        _customerToFirestore(updatedCustomer),
+        SetOptions(merge: true),
+      );
+
+      AppLogger.firebase('applyAllReturnsTransaction', 'success',
+          '${updatedReturns.length} returns + customer');
+      return remainingAmount;
+    });
+  }
+
   Future<void> deleteReturn(String returnId) async {
     final uid = _requireUid();
     await _returnsCol(uid).doc(returnId).delete();
-  }
-
-  // ----------------------
-  // Catalog rate operations
-  // ----------------------
-  Future<void> updateCatalogItemRate(CatalogItem item) async {
-    final uid = _requireUid();
-    final doc = _catalogRatesCol(uid).doc(item.id.toString());
-    await doc.set({
-      'id': item.id,
-      'name': item.name,
-      'rate': item.rate,
-      'updatedAt': Timestamp.now(),
-    });
-    AppLogger.firebase('updateCatalogItemRate', 'success', item.id.toString());
-  }
-
-  Future<List<CatalogItem>> getAllCatalogRates() async {
-    final uid = _requireUid();
-    final q = await _catalogRatesCol(uid).get();
-    return q.docs.map((d) {
-      final data = d.data();
-      return CatalogItem(
-        id: data['id'] as int,
-        name: data['name'] as String? ?? '',
-        rate: (data['rate'] as num?)?.toDouble() ?? 0.0,
-      );
-    }).toList();
-  }
-
-  Future<void> deleteCatalogItemRate(int itemId) async {
-    final uid = _requireUid();
-    await _catalogRatesCol(uid).doc(itemId.toString()).delete();
   }
 
   // ----------------------
@@ -616,6 +692,7 @@ class FirestoreService {
       'totalReturnValue': ret.totalReturnValue,
       'refundAmount': ret.refundAmount,
       'isApplied': ret.isApplied,
+      'amountApplied': ret.amountApplied,
       'createdAt': Timestamp.fromDate(ret.createdAt),
       'updatedAt': Timestamp.fromDate(ret.updatedAt),
       'items': ret.items
@@ -658,37 +735,10 @@ class FirestoreService {
       totalReturnValue: (data['totalReturnValue'] as num?)?.toDouble() ?? 0.0,
       refundAmount: (data['refundAmount'] as num?)?.toDouble() ?? 0.0,
       isApplied: data['isApplied'] as bool? ?? false,
+      amountApplied: (data['amountApplied'] as num?)?.toDouble() ?? 0.0,
       createdAt: _asDate(data['createdAt']),
       updatedAt: _asDate(data['updatedAt']),
     );
   }
 
-  // Batch helper respecting 500 ops per batch limit
-  Future<void> _writeInBatches(Iterable<_BatchOp> ops) async {
-    const maxOps = 450; // leave headroom for safety
-    var batch = _fs.batch();
-    var count = 0;
-
-    Future<void> commitBatch() async {
-      if (count == 0) return;
-      await batch.commit();
-      batch = _fs.batch();
-      count = 0;
-    }
-
-    for (final op in ops) {
-      batch.set(op.ref, op.data, SetOptions(merge: true));
-      count++;
-      if (count >= maxOps) {
-        await commitBatch();
-      }
-    }
-    await commitBatch();
-  }
-}
-
-class _BatchOp {
-  final DocumentReference<Map<String, dynamic>> ref;
-  final Map<String, dynamic> data;
-  _BatchOp({required this.ref, required this.data});
 }
