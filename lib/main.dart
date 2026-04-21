@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:flutter/foundation.dart'; // For kIsWeb
 import 'package:invoiceflow/providers/auth_provider.dart';
+import 'package:invoiceflow/providers/catalogue_provider.dart';
 import 'package:invoiceflow/providers/inventory_provider.dart';
 import 'package:invoiceflow/providers/subscription_provider.dart';
 
-import 'package:invoiceflow/presentation/auth/auth_gate.dart';
+import 'package:invoiceflow/presentation/auth/auth_wrapper.dart';
 import 'package:invoiceflow/presentation/home_dashboard/home_dashboard.dart';
 import 'package:invoiceflow/theme/app_theme.dart';
 
@@ -29,6 +31,18 @@ void main() async {
     debugPrint('InvoiceFlow Web Version: 1.0.2 (Mobile Frame Fix Setup)');
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    // App Check — Play Integrity (Android) / DeviceCheck (iOS) in release.
+    // Set --dart-define=APP_CHECK_DEBUG=true only for debug/emulator builds.
+    const appCheckDebug = String.fromEnvironment('APP_CHECK_DEBUG');
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: appCheckDebug == 'true'
+          ? AndroidProvider.debug
+          : AndroidProvider.playIntegrity,
+      appleProvider: appCheckDebug == 'true'
+          ? AppleProvider.debug
+          : AppleProvider.deviceCheck,
     );
 
     // Initialize Google Sign In
@@ -75,6 +89,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
+        ChangeNotifierProvider(create: (_) => CatalogueProvider()),
       ],
       child: MaterialApp(
         title: 'InvoiceFlow',
@@ -116,7 +131,7 @@ class MyApp extends StatelessWidget {
         themeMode: ThemeMode.light,
         initialRoute: '/',
         routes: {
-          '/': (context) => const AuthGate(),
+          '/': (context) => const AuthWrapper(),
           '/home': (context) => const HomeDashboard(
                 csvPath: 'assets/images/data/invoices.csv',
               ),
