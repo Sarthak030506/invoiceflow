@@ -30,6 +30,7 @@ import '../../widgets/primary_button.dart';
 import '../../widgets/customer_due_edit_dialog.dart';
 import '../../widgets/feedback_animations.dart';
 import '../../animations/fluid_animations.dart';
+import '../../services/business_profile_service.dart';
 import 'dart:async';
 
 class HomeDashboard extends StatefulWidget {
@@ -61,6 +62,37 @@ class _HomeDashboardState extends State<HomeDashboard> {
     _csvInvoiceService = CsvInvoiceService(assetPath: widget.csvPath);
     _loadDashboardData();
     _setupEventListening();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkBusinessProfile());
+  }
+
+  Future<void> _checkBusinessProfile() async {
+    final complete = await BusinessProfileService.instance.isProfileComplete();
+    if (!complete && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Set Up Business Profile'),
+          content: const Text(
+            'Enter your shop name, phone, and address so WhatsApp '
+            'reminders show your real details instead of placeholders.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Remind Me Later'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pushNamed(context, AppRoutes.profileScreen);
+              },
+              child: const Text('Set Up Now'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   // Colored pill for invoice type (SALES/PURCHASE)
