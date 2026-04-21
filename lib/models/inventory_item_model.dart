@@ -10,6 +10,7 @@ class InventoryItem {
   final String category;
   final DateTime lastUpdated;
   final String? barcode;
+  final String? catalogItemId;
 
   const InventoryItem({
     required this.id,
@@ -23,9 +24,15 @@ class InventoryItem {
     required this.category,
     required this.lastUpdated,
     this.barcode,
+    this.catalogItemId,
   });
 
   double get inventoryValue => currentStock * avgCost;
+
+  String get nameNormalized => normalize(name);
+
+  static String normalize(String name) =>
+      name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
   InventoryItem copyWith({
     String? id,
@@ -39,6 +46,7 @@ class InventoryItem {
     String? category,
     DateTime? lastUpdated,
     String? barcode,
+    String? catalogItemId,
   }) {
     return InventoryItem(
       id: id ?? this.id,
@@ -52,6 +60,7 @@ class InventoryItem {
       category: category ?? this.category,
       lastUpdated: lastUpdated ?? this.lastUpdated,
       barcode: barcode ?? this.barcode,
+      catalogItemId: catalogItemId ?? this.catalogItemId,
     );
   }
 
@@ -60,6 +69,7 @@ class InventoryItem {
       'id': id,
       'sku': sku,
       'name': name,
+      'name_normalized': nameNormalized,
       'unit': unit,
       'opening_stock': openingStock,
       'current_stock': currentStock,
@@ -68,6 +78,7 @@ class InventoryItem {
       'category': category,
       'last_updated': lastUpdated.toIso8601String(),
       'barcode': barcode,
+      'catalog_item_id': catalogItemId,
     };
   }
 
@@ -84,6 +95,7 @@ class InventoryItem {
       category: json['category'],
       lastUpdated: DateTime.parse(json['last_updated']),
       barcode: json['barcode'],
+      catalogItemId: json['catalog_item_id'] as String?,
     );
   }
 }

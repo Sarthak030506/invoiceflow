@@ -178,6 +178,7 @@ class InventoryFirestoreService {
   Map<String, dynamic> _itemToFirestore(InventoryItem item) => {
         'sku': item.sku,
         'name': item.name,
+        'name_normalized': item.nameNormalized,
         'unit': item.unit,
         'opening_stock': item.openingStock,
         'current_stock': item.currentStock,
@@ -186,6 +187,7 @@ class InventoryFirestoreService {
         'category': item.category,
         'last_updated': Timestamp.fromDate(item.lastUpdated),
         'barcode': item.barcode,
+        'catalog_item_id': item.catalogItemId,
       };
 
   InventoryItem _itemFromFirestore(Map<String, dynamic> data) => InventoryItem(
@@ -200,6 +202,7 @@ class InventoryFirestoreService {
         category: data['category'] as String? ?? 'General',
         lastUpdated: (data['last_updated'] as Timestamp?)?.toDate() ?? DateTime.now(),
         barcode: data['barcode'] as String?,
+        catalogItemId: data['catalog_item_id'] as String?,
       );
 
   Map<String, dynamic> _movementToFirestore(StockMovement m) => {
