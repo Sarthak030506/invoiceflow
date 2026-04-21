@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:invoiceflow/providers/auth_provider.dart';
-import 'package:invoiceflow/presentation/home_dashboard/home_dashboard.dart';
-import 'package:invoiceflow/presentation/onboarding/items_setup_onboarding_screen.dart';
-import 'package:invoiceflow/constants/app_constants.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -128,16 +125,9 @@ class _SignupScreenState extends State<SignupScreen> {
                                     _passwordController.text,
                                   );
 
-                                  // Only navigate if signup was successful (returns non-null)
+                                  // AuthWrapper at root handles onboarding routing
                                   if (mounted && userCredential != null) {
-                                    Navigator.pushReplacement(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const ItemsSetupOnboardingScreen(
-                                          isFirstTimeSetup: true,
-                                        ),
-                                      ),
-                                    );
+                                    Navigator.of(context).pushNamedAndRemoveUntil('/', (r) => false);
                                   } else if (mounted && authProvider.error != null) {
                                     // Show error in snackbar as well
                                     ScaffoldMessenger.of(context).showSnackBar(

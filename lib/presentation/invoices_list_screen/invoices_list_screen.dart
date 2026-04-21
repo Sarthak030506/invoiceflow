@@ -36,6 +36,7 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
   bool _hasMore = true;
   dynamic _lastDocument;
   bool _isMultiSelectMode = false;
+  bool _showCancelled = false;
   String _searchQuery = '';
   DateTimeRange? _selectedDateRange;
   String? _selectedInvoiceType;
@@ -199,6 +200,11 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
 
       return true;
     }).toList();
+
+    // Hide cancelled invoices unless the toggle is on (default: hidden)
+    if (!_showCancelled) {
+      filtered = filtered.where((inv) => inv.status.toLowerCase() != 'cancelled').toList();
+    }
 
     setState(() {
       _filteredInvoices = filtered;
@@ -503,7 +509,7 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
   Widget _buildBody() {
     return Column(
       children: [
-        if (!_isMultiSelectMode)
+        if (!_isMultiSelectMode) ...[
           SearchBarWidget(
             controller: _searchController,
             onChanged: _onSearchChanged,
@@ -512,6 +518,28 @@ class _InvoicesListScreenState extends State<InvoicesListScreen>
               _onSearchChanged('');
             },
           ),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 0.5.h),
+            child: Row(
+              children: [
+                FilterChip(
+                  label: const Text('Show Cancelled'),
+                  selected: _showCancelled,
+                  onSelected: (val) {
+                    setState(() => _showCancelled = val);
+                    _filterInvoices();
+                  },
+                  selectedColor: Colors.red.shade100,
+                  checkmarkColor: Colors.red.shade700,
+                  labelStyle: TextStyle(
+                    color: _showCancelled ? Colors.red.shade700 : null,
+                    fontSize: 12.sp,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         Expanded(
           child: _filteredInvoices.isEmpty
               ? const EmptyStateWidget()

@@ -149,7 +149,8 @@ class InvoiceService {
       try {
         await CustomerService.instance.updateCustomerStats(invoice.customerId!);
       } catch (e) {
-        AppLogger.warning('Failed to update customer stats', 'InvoiceService');
+        AppLogger.warning('Failed to update customer stats after addInvoice', 'InvoiceService');
+        rethrow;
       }
     }
   }
@@ -179,7 +180,8 @@ class InvoiceService {
       try {
         await CustomerService.instance.updateCustomerStats(invoice.customerId!);
       } catch (e) {
-        AppLogger.warning('Failed to update customer stats', 'InvoiceService');
+        AppLogger.warning('Failed to update customer stats after updateInvoice', 'InvoiceService');
+        rethrow;
       }
     }
   }
@@ -199,6 +201,9 @@ class InvoiceService {
         // Reverse issued stock for active sales before delete
         await _reverseInvoiceInventory(invoice);
         await _fsService.deleteInvoice(invoiceId);
+        if (invoice.customerId != null && invoice.customerId!.isNotEmpty) {
+          await CustomerService.instance.updateCustomerStats(invoice.customerId!);
+        }
       } else {
         await _fsService.deleteInvoice(invoiceId);
       }
@@ -243,9 +248,30 @@ class InvoiceService {
     return await inventoryService.validateInvoiceCancellation('invoice', invoiceId);
   }
 
-  Future<void> cancelInvoice(String invoiceId, {bool adminOverride = false, String? adminReason}) async {
+  Future<void> cancelInvoice(
+    String invoiceId, {
+    bool adminOverride = false,
+    String? adminReason,
+    String reason = 'Standard cancellation',
+  }) async {
     final invoice = await _fsService.getInvoice(invoiceId);
-    if (invoice == null || invoice.status == 'cancelled') return;
+    if (invoice == null) return;
+
+    // If already cancelled, still ensure stats are current.
+    // This handles the retry case: upsertInvoice succeeded but updateCustomerStats
+    // threw on the first attempt. The caller retried, but without this branch the
+    // function would return early and stats would remain stale forever.
+    if (invoice.status == 'cancelled') {
+      if (invoice.customerId != null && invoice.customerId!.isNotEmpty) {
+        try {
+          await CustomerService.instance.updateCustomerStats(invoice.customerId!);
+        } catch (e) {
+          AppLogger.warning('Failed to update customer stats on cancelled invoice retry', 'InvoiceService');
+          rethrow;
+        }
+      }
+      return;
+    }
     
     // Validate cancellation for purchase invoices
     if (invoice.invoiceType == 'purchase') {
@@ -292,10 +318,19 @@ class InvoiceService {
       status: 'cancelled',
       updatedAt: DateTime.now(),
       cancelledAt: DateTime.now(),
-      cancelReason: adminOverride ? 'Admin override: $adminReason' : 'Standard cancellation',
+      cancelReason: adminOverride ? '$reason | Admin override: $adminReason' : reason,
     );
     
     await _fsService.upsertInvoice(cancelledInvoice);
+
+    if (cancelledInvoice.customerId != null && cancelledInvoice.customerId!.isNotEmpty) {
+      try {
+        await CustomerService.instance.updateCustomerStats(cancelledInvoice.customerId!);
+      } catch (e) {
+        AppLogger.warning('Failed to update customer stats after cancellation', 'InvoiceService');
+        rethrow;
+      }
+    }
   }
 
   Future<Map<String, dynamic>> fetchDashboardMetrics() async {
@@ -306,7 +341,7 @@ class InvoiceService {
       limit: 1000, // Reasonable limit for dashboard
     );
 
-    double totalRevenue = invoices.fold(0.0, (sum, inv) => sum + inv.revenue);
+    double totalRevenue = invoices.fold(0.0, (sum, inv) => sum + inv.adjustedTotal);
     int totalItemsSold = invoices.fold(0, (sum, inv) => sum + inv.items.fold(0, (s, item) => s + item.quantity));
     int totalInvoices = invoices.length;
     return {
@@ -325,8 +360,12 @@ class InvoiceService {
   }
 
   /// Cancels invoice with admin override (for negative stock scenarios)
-  Future<void> cancelInvoiceWithAdminOverride(String invoiceId, String adminReason) async {
-    await cancelInvoice(invoiceId, adminOverride: true, adminReason: adminReason);
+  Future<void> cancelInvoiceWithAdminOverride(
+    String invoiceId,
+    String adminReason, {
+    String reason = 'Standard cancellation',
+  }) async {
+    await cancelInvoice(invoiceId, adminOverride: true, adminReason: adminReason, reason: reason);
   }
 
   Future<void> _processInvoiceInventory(InvoiceModel invoice) async {
@@ -504,22 +543,4 @@ class InvoiceService {
     await _fsService.upsertInvoice(modifiedInvoice);
   }
 
-  Future<void> markLastThreeInvoicesUnpaid() async {
-    final invoices = await _fsService.getAllInvoices();
-    if (invoices.length >= 3) {
-      final lastThree = invoices.take(3).toList();
-      
-      for (final invoice in lastThree) {
-        if (invoice.invoiceType == 'sales') {
-          final updatedInvoice = invoice.copyWith(
-            amountPaid: 0.0,
-            status: 'pending',
-            followUpDate: null,
-            updatedAt: DateTime.now(),
-          );
-          await _fsService.upsertInvoice(updatedInvoice);
-        }
-      }
-    }
-  }
 }

@@ -36,6 +36,7 @@ class AppRoutes {
   static const String forgotPasswordScreen = '/forgot-password';
   static const String returnsScreen = '/returns-screen';
   static const String itemsScreen = '/items-screen';
+  static const String itemCatalog = '/item-catalog';
   static const String subscriptionScreen = '/subscription';
   static const String ocrScanScreen = '/ocr-scan';
   static const String aiHubScreen = '/ai-hub';
@@ -60,6 +61,7 @@ class AppRoutes {
     forgotPasswordScreen: (context) => const ForgotPasswordScreen(),
     returnsScreen: (context) => const ReturnsScreen(),
     itemsScreen: (context) => const ItemsScreen(),
+    itemCatalog: (context) => const ItemsScreen(),
     subscriptionScreen: (context) => const SubscriptionScreen(),
     ocrScanScreen: (context) => const OCRScanScreen(),
     aiHubScreen: (context) => const AIHubScreen(),

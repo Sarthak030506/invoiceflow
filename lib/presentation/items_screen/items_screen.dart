@@ -1,31 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
-import '../../models/catalog_item.dart';
-import '../../services/catalog_service.dart';
+
+import '../../providers/catalogue_provider.dart';
 import '../../services/items_service.dart';
-import '../../widgets/rate_edit_dialog.dart';
 
 class ItemsScreen extends StatefulWidget {
-  const ItemsScreen({Key? key}) : super(key: key);
+  const ItemsScreen({super.key});
 
   @override
   State<ItemsScreen> createState() => _ItemsScreenState();
 }
 
 class _ItemsScreenState extends State<ItemsScreen> {
-  final CatalogService _catalogService = CatalogService.instance;
   final ItemsService _itemsService = ItemsService();
   final TextEditingController _searchController = TextEditingController();
-
-  List<CatalogItem> _allItems = [];
-  List<CatalogItem> _filteredItems = [];
-  bool _isLoading = true;
-  String _searchQuery = '';
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
-    _loadItems();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<CatalogueProvider>().load();
+    });
   }
 
   @override
@@ -34,84 +33,43 @@ class _ItemsScreenState extends State<ItemsScreen> {
     super.dispose();
   }
 
-  Future<void> _loadItems() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final items = await _catalogService.getAllItems();
-      if (mounted) {
-        setState(() {
-          _allItems = items;
-          _filteredItems = items;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading items: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  void _filterItems(String query) {
-    setState(() {
-      _searchQuery = query.toLowerCase();
-      if (_searchQuery.isEmpty) {
-        _filteredItems = _allItems;
-      } else {
-        _filteredItems = _allItems
-            .where((item) => item.name.toLowerCase().contains(_searchQuery))
-            .toList();
-      }
-    });
-  }
-
-  Future<void> _editItemRate(CatalogItem item) async {
-    final result = await RateEditDialog.show(
-      context,
-      item,
-      onRateUpdated: () {
-        _loadItems(); // Refresh the list
-      },
-    );
-
-    if (result == true) {
-      // Item was updated, refresh the list
-      await _loadItems();
-    }
+  List<ProductCatalogItem> _filter(List<ProductCatalogItem> items) {
+    if (_query.isEmpty) return items;
+    final q = _query.toLowerCase();
+    return items
+        .where((i) =>
+            i.name.toLowerCase().contains(q) ||
+            i.sku.toLowerCase().contains(q) ||
+            i.category.toLowerCase().contains(q))
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<CatalogueProvider>();
+    final filtered = _filter(provider.items);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Items'),
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(8.h),
-          child: Container(
+          child: Padding(
             padding: EdgeInsets.all(3.w),
-            color: Colors.transparent,
             child: TextField(
               controller: _searchController,
+              onChanged: (v) => setState(() => _query = v),
+              style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Search items...',
+                hintStyle: const TextStyle(color: Colors.white70),
                 prefixIcon: const Icon(Icons.search, color: Colors.white70),
-                suffixIcon: _searchQuery.isNotEmpty
+                suffixIcon: _query.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear, color: Colors.white70),
                         onPressed: () {
                           _searchController.clear();
-                          _filterItems('');
+                          setState(() => _query = '');
                         },
                       )
                     : null,
@@ -121,117 +79,110 @@ class _ItemsScreenState extends State<ItemsScreen> {
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
-                hintStyle: TextStyle(color: Colors.white70),
               ),
-              style: TextStyle(color: Colors.white),
-              onChanged: _filterItems,
             ),
           ),
         ),
       ),
-      body: _isLoading
+      body: provider.isLoading && provider.items.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Item count display
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    border: Border(
-                      bottom: BorderSide(color: Colors.grey.shade200),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.inventory_2,
-                        size: 5.w,
-                        color: Colors.blue,
-                      ),
-                      SizedBox(width: 2.w),
-                      Text(
-                        _searchQuery.isEmpty
-                            ? '${_filteredItems.length} ${_filteredItems.length == 1 ? 'item' : 'items'}'
-                            : '${_filteredItems.length} of ${_allItems.length} items',
-                        style: TextStyle(
-                          fontSize: 13.sp,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      if (_searchQuery.isNotEmpty) ...[
-                        SizedBox(width: 2.w),
-                        Expanded(
-                          child: Text(
-                            'found',
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                // List
+                _buildCountBar(filtered.length, provider.items.length),
                 Expanded(
-                  child: _filteredItems.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.search_off, size: 64, color: Colors.grey.shade300),
-                              SizedBox(height: 2.h),
-                              Text(
-                                'No items match "$_searchQuery"',
-                                style: TextStyle(
-                                  fontSize: 16.sp,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
+                  child: filtered.isEmpty
+                      ? _buildEmptyState()
                       : RefreshIndicator(
-                          onRefresh: _loadItems,
+                          onRefresh: () =>
+                              provider.load(force: true),
                           child: ListView.builder(
                             padding: EdgeInsets.all(3.w),
-                            itemCount: _filteredItems.length,
-                            itemBuilder: (context, index) {
-                              final item = _filteredItems[index];
-                              return _ItemCard(
-                                item: item,
-                                onEditRate: () => _editItemRate(item),
-                              );
-                            },
+                            itemCount: filtered.length,
+                            itemBuilder: (_, i) => _ItemCard(
+                              item: filtered[i],
+                              onEdit: () => _showEditDialog(filtered[i]),
+                            ),
                           ),
                         ),
                 ),
               ],
             ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddItemDialog,
+        onPressed: _showAddDialog,
+        tooltip: 'Add item',
         child: const Icon(Icons.add),
-        tooltip: 'Add Item',
       ),
     );
   }
 
-  Future<void> _showAddItemDialog() async {
-    final nameController = TextEditingController();
-    final skuController = TextEditingController();
-    final categoryController = TextEditingController(text: 'General');
-    final unitController = TextEditingController(text: 'pcs');
-    final rateController = TextEditingController();
-    final barcodeController = TextEditingController();
-    final descriptionController = TextEditingController();
+  Widget _buildCountBar(int shown, int total) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.inventory_2, size: 5.w, color: Colors.blue),
+          SizedBox(width: 2.w),
+          Text(
+            _query.isEmpty
+                ? '$shown ${shown == 1 ? 'item' : 'items'}'
+                : '$shown of $total items',
+            style: TextStyle(
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            _query.isEmpty ? Icons.inventory_2_outlined : Icons.search_off,
+            size: 64,
+            color: Colors.grey.shade300,
+          ),
+          SizedBox(height: 2.h),
+          Text(
+            _query.isEmpty
+                ? 'No catalogue items yet'
+                : 'No items match "$_query"',
+            style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
+          ),
+          if (_query.isEmpty) ...[
+            SizedBox(height: 1.h),
+            Text('Tap + to add your first item',
+                style: TextStyle(
+                    fontSize: 12.sp, color: Colors.grey.shade500)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // --- Add / edit ---------------------------------------------------------
+
+  Future<void> _showAddDialog() async {
+    final nameCtrl = TextEditingController();
+    final rateCtrl = TextEditingController();
+    final categoryCtrl = TextEditingController(text: 'General');
+    final unitCtrl = TextEditingController(text: 'pcs');
+    final barcodeCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
-    final result = await showDialog<bool>(
+    final save = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Add New Item'),
         content: SingleChildScrollView(
           child: Form(
@@ -239,109 +190,46 @@ class _ItemsScreenState extends State<ItemsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextFormField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Item Name *',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Item name is required';
-                    }
-                    return null;
-                  },
-                ),
+                _field(nameCtrl, 'Item name *',
+                    validator: _required('Item name is required')),
                 SizedBox(height: 2.h),
-                TextFormField(
-                  controller: skuController,
-                  decoration: const InputDecoration(
-                    labelText: 'SKU',
-                    border: OutlineInputBorder(),
-                    hintText: 'Optional',
-                  ),
-                ),
-                SizedBox(height: 2.h),
-                TextFormField(
-                  controller: categoryController,
-                  decoration: const InputDecoration(
-                    labelText: 'Category *',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Category is required';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 2.h),
-                TextFormField(
-                  controller: unitController,
-                  decoration: const InputDecoration(
-                    labelText: 'Unit *',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., pcs, kg, ltr',
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Unit is required';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 2.h),
-                TextFormField(
-                  controller: rateController,
-                  decoration: const InputDecoration(
-                    labelText: 'Rate *',
-                    border: OutlineInputBorder(),
+                _field(rateCtrl, 'Rate *',
                     prefixText: '₹',
-                  ),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Rate is required';
-                    }
-                    final rate = double.tryParse(value);
-                    if (rate == null || rate <= 0) {
-                      return 'Enter a valid rate';
-                    }
-                    return null;
-                  },
-                ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                    ],
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Rate is required';
+                      final r = double.tryParse(v);
+                      if (r == null || r <= 0) return 'Enter a valid rate';
+                      return null;
+                    }),
                 SizedBox(height: 2.h),
-                TextFormField(
-                  controller: barcodeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Barcode',
-                    border: OutlineInputBorder(),
-                    hintText: 'Optional',
-                  ),
-                ),
+                _field(categoryCtrl, 'Category *',
+                    validator: _required('Category is required')),
                 SizedBox(height: 2.h),
-                TextFormField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Description',
-                    border: OutlineInputBorder(),
-                    hintText: 'Optional',
-                  ),
-                  maxLines: 2,
-                ),
+                _field(unitCtrl, 'Unit *',
+                    hint: 'e.g. pcs, kg, ltr',
+                    validator: _required('Unit is required')),
+                SizedBox(height: 2.h),
+                _field(barcodeCtrl, 'Barcode', hint: 'Optional'),
+                SizedBox(height: 2.h),
+                _field(descCtrl, 'Description',
+                    hint: 'Optional', maxLines: 2),
               ],
             ),
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: () {
               if (formKey.currentState!.validate()) {
-                Navigator.pop(context, true);
+                Navigator.pop(ctx, true);
               }
             },
             child: const Text('Add'),
@@ -350,88 +238,193 @@ class _ItemsScreenState extends State<ItemsScreen> {
       ),
     );
 
-    if (result == true) {
+    if (save == true && mounted) {
       try {
-        // Create new item
-        final now = DateTime.now();
-        final newItem = ProductCatalogItem(
-          id: now.millisecondsSinceEpoch.toString(),
-          name: nameController.text.trim(),
-          sku: skuController.text.trim().isEmpty
-              ? nameController.text.trim().toUpperCase().replaceAll(' ', '_')
-              : skuController.text.trim(),
-          category: categoryController.text.trim(),
-          unit: unitController.text.trim(),
-          rate: double.parse(rateController.text.trim()),
-          barcode: barcodeController.text.trim().isEmpty ? null : barcodeController.text.trim(),
-          description: descriptionController.text.trim().isEmpty ? null : descriptionController.text.trim(),
-          createdAt: now,
-          updatedAt: now,
+        await context.read<CatalogueProvider>().findOrCreate(
+              name: nameCtrl.text.trim(),
+              rate: double.parse(rateCtrl.text.trim()),
+              category: categoryCtrl.text.trim(),
+              unit: unitCtrl.text.trim(),
+              barcode:
+                  barcodeCtrl.text.trim().isEmpty ? null : barcodeCtrl.text.trim(),
+              description:
+                  descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+            );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Item "${nameCtrl.text.trim()}" added'),
+            backgroundColor: Colors.green,
+          ),
         );
-
-        // Add to Firestore
-        await _itemsService.addItem(newItem);
-
-        // Clear cache and reload
-        _catalogService.clearCache();
-        await _loadItems();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Item "${newItem.name}" added successfully'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error adding item: ${e.toString()}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding item: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
 
-    // Dispose controllers
-    nameController.dispose();
-    skuController.dispose();
-    categoryController.dispose();
-    unitController.dispose();
-    rateController.dispose();
-    barcodeController.dispose();
-    descriptionController.dispose();
+    nameCtrl.dispose();
+    rateCtrl.dispose();
+    categoryCtrl.dispose();
+    unitCtrl.dispose();
+    barcodeCtrl.dispose();
+    descCtrl.dispose();
   }
+
+  Future<void> _showEditDialog(ProductCatalogItem item) async {
+    final nameCtrl = TextEditingController(text: item.name);
+    final rateCtrl = TextEditingController(text: item.rate.toString());
+    final categoryCtrl = TextEditingController(text: item.category);
+    final unitCtrl = TextEditingController(text: item.unit);
+    final formKey = GlobalKey<FormState>();
+
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Edit ${item.name}'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _field(nameCtrl, 'Item name *',
+                    validator: _required('Item name is required')),
+                SizedBox(height: 2.h),
+                _field(rateCtrl, 'Rate *',
+                    prefixText: '₹',
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                    ],
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Rate is required';
+                      final r = double.tryParse(v);
+                      if (r == null || r <= 0) return 'Enter a valid rate';
+                      return null;
+                    }),
+                SizedBox(height: 2.h),
+                _field(categoryCtrl, 'Category *',
+                    validator: _required('Category is required')),
+                SizedBox(height: 2.h),
+                _field(unitCtrl, 'Unit *',
+                    validator: _required('Unit is required')),
+                SizedBox(height: 1.h),
+                Text('SKU: ${item.sku}',
+                    style: TextStyle(
+                        fontSize: 11.sp, color: Colors.grey.shade600)),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (save == true && mounted) {
+      try {
+        final updated = item.copyWith(
+          name: nameCtrl.text.trim(),
+          rate: double.parse(rateCtrl.text.trim()),
+          category: categoryCtrl.text.trim(),
+          unit: unitCtrl.text.trim(),
+          updatedAt: DateTime.now(),
+        );
+        await _itemsService.updateItem(updated);
+        if (!mounted) return;
+        await context.read<CatalogueProvider>().load(force: true);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Updated "${updated.name}"'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating item: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+
+    nameCtrl.dispose();
+    rateCtrl.dispose();
+    categoryCtrl.dispose();
+    unitCtrl.dispose();
+  }
+
+  // --- Form helpers -------------------------------------------------------
+
+  Widget _field(
+    TextEditingController controller,
+    String label, {
+    String? hint,
+    String? prefixText,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
+      maxLines: maxLines,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixText: prefixText,
+        border: const OutlineInputBorder(),
+      ),
+    );
+  }
+
+  String? Function(String?) _required(String msg) =>
+      (v) => (v == null || v.trim().isEmpty) ? msg : null;
 }
 
 class _ItemCard extends StatelessWidget {
-  final CatalogItem item;
-  final VoidCallback onEditRate;
+  const _ItemCard({required this.item, required this.onEdit});
 
-  const _ItemCard({
-    required this.item,
-    required this.onEditRate,
-  });
+  final ProductCatalogItem item;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       elevation: 2,
       margin: EdgeInsets.only(bottom: 2.h),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        onTap: onEditRate,
+        onTap: onEdit,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: EdgeInsets.all(4.w),
           child: Row(
             children: [
-              // Item icon
               Container(
                 width: 12.w,
                 height: 12.w,
@@ -439,16 +432,10 @@ class _ItemCard extends StatelessWidget {
                   color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  Icons.inventory_2,
-                  color: Colors.blue.shade600,
-                  size: 6.w,
-                ),
+                child: Icon(Icons.inventory_2,
+                    color: Colors.blue.shade600, size: 6.w),
               ),
-
               SizedBox(width: 4.w),
-
-              // Item details
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -462,46 +449,43 @@ class _ItemCard extends StatelessWidget {
                       ),
                     ),
                     SizedBox(height: 0.5.h),
+                    Text(
+                      '${item.sku} • ${item.category} • ${item.unit}',
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    SizedBox(height: 0.5.h),
                     Row(
                       children: [
-                        Icon(
-                          Icons.currency_rupee,
-                          size: 3.w,
-                          color: Colors.grey.shade600,
-                        ),
+                        Icon(Icons.currency_rupee,
+                            size: 3.w, color: Colors.grey.shade600),
                         Text(
-                          '${item.rate.toStringAsFixed(2)}',
+                          item.rate.toStringAsFixed(2),
                           style: TextStyle(
                             fontSize: 16.sp,
                             fontWeight: FontWeight.bold,
                             color: Colors.green.shade700,
                           ),
                         ),
-                        Text(
-                          ' per unit',
-                          style: TextStyle(
-                            fontSize: 11.sp,
-                            color: Colors.grey.shade500,
-                          ),
-                        ),
+                        Text(' per ${item.unit}',
+                            style: TextStyle(
+                                fontSize: 11.sp,
+                                color: Colors.grey.shade500)),
                       ],
                     ),
                   ],
                 ),
               ),
-
-              // Edit button
               Container(
                 decoration: BoxDecoration(
                   color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: IconButton(
-                  icon: Icon(
-                    Icons.edit,
-                    color: Colors.blue.shade700,
-                  ),
-                  onPressed: onEditRate,
+                  icon: Icon(Icons.edit, color: Colors.blue.shade700),
+                  onPressed: onEdit,
                   tooltip: 'Edit item',
                 ),
               ),

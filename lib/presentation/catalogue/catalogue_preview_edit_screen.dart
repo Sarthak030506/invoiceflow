@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../services/business_catalogue_service.dart';
-import '../../services/items_service.dart';
-import '../../services/catalog_service.dart';
+import 'package:sizer/sizer.dart';
+
 import '../../models/business_catalogue_template.dart';
-import '../../providers/auth_provider.dart' as app_auth;
-import '../home_dashboard/home_dashboard.dart';
+import '../../providers/catalogue_provider.dart';
+import '../../services/business_catalogue_service.dart';
+import '../../services/business_profile_service.dart';
 
 class CataloguePreviewEditScreen extends StatefulWidget {
   final List<String> selectedTemplateIds;
@@ -16,12 +14,12 @@ class CataloguePreviewEditScreen extends StatefulWidget {
   final String? returnRoute;
 
   const CataloguePreviewEditScreen({
-    Key? key,
+    super.key,
     required this.selectedTemplateIds,
     this.isCustomMode = false,
     this.isFirstTimeSetup = false,
     this.returnRoute,
-  }) : super(key: key);
+  });
 
   @override
   State<CataloguePreviewEditScreen> createState() =>
@@ -32,13 +30,11 @@ class _CataloguePreviewEditScreenState
     extends State<CataloguePreviewEditScreen> {
   final BusinessCatalogueService _catalogueService =
       BusinessCatalogueService.instance;
-  final ItemsService _itemsService = ItemsService();
-  final CatalogService _catalogService = CatalogService.instance;
   final TextEditingController _searchController = TextEditingController();
 
-  List<EditableCatalogueItem> _allItems = [];
-  List<EditableCatalogueItem> _filteredItems = [];
-  Map<String, List<EditableCatalogueItem>> _groupedItems = {};
+  List<_EditableItem> _allItems = [];
+  List<_EditableItem> _filteredItems = [];
+  Map<String, List<_EditableItem>> _groupedItems = {};
   Set<String> _expandedCategories = {};
   bool _isLoading = false;
   bool _isSaving = false;
@@ -47,7 +43,7 @@ class _CataloguePreviewEditScreenState
   @override
   void initState() {
     super.initState();
-    _loadItems();
+    _loadTemplateItems();
     _searchController.addListener(_filterItems);
   }
 
@@ -57,72 +53,110 @@ class _CataloguePreviewEditScreenState
     super.dispose();
   }
 
-  void _loadItems() {
-    setState(() {
-      _isLoading = true;
-    });
+  // --- Data loading -------------------------------------------------------
+
+  void _loadTemplateItems() {
+    setState(() => _isLoading = true);
 
     List<CatalogueTemplateItem> templateItems;
-
     if (widget.isCustomMode) {
-      // Show popular/suggested items for custom mode
       templateItems = _catalogueService.getPopularItems(limit: 100);
       _showSuggestions = true;
     } else {
-      // Merge selected templates
-      templateItems =
-          _catalogueService.mergeTemplates(widget.selectedTemplateIds);
+      templateItems = _catalogueService.mergeTemplates(widget.selectedTemplateIds);
     }
 
-    // Convert to editable items
     _allItems = templateItems
-        .map((item) => EditableCatalogueItem(
-              originalName: item.name,
-              name: item.name,
-              rate: item.rate,
-              category: item.category,
-              unit: item.unit,
-              description: item.description,
-              isSelected: !widget.isCustomMode, // Pre-select if not custom mode
+        .map((t) => _EditableItem(
+              name: t.name,
+              rate: t.rate,
+              category: t.category,
+              unit: t.unit,
+              description: t.description,
+              isSelected: !widget.isCustomMode,
             ))
         .toList();
 
     _filteredItems = List.from(_allItems);
-    _groupItems();
-
-    // Expand all categories by default
+    _buildGroups();
     _expandedCategories = _groupedItems.keys.toSet();
 
-    setState(() {
-      _isLoading = false;
-    });
+    setState(() => _isLoading = false);
   }
 
-  void _groupItems() {
+  void _buildGroups() {
     _groupedItems = {};
-    for (var item in _filteredItems) {
-      if (!_groupedItems.containsKey(item.category)) {
-        _groupedItems[item.category] = [];
-      }
-      _groupedItems[item.category]!.add(item);
+    for (final item in _filteredItems) {
+      _groupedItems.putIfAbsent(item.category, () => []).add(item);
     }
   }
 
   void _filterItems() {
-    final query = _searchController.text.toLowerCase();
+    final q = _searchController.text.toLowerCase();
     setState(() {
-      if (query.isEmpty) {
-        _filteredItems = List.from(_allItems);
-      } else {
-        _filteredItems = _allItems
-            .where((item) =>
-                item.name.toLowerCase().contains(query) ||
-                item.category.toLowerCase().contains(query))
-            .toList();
-      }
-      _groupItems();
+      _filteredItems = q.isEmpty
+          ? List.from(_allItems)
+          : _allItems
+              .where((i) =>
+                  i.name.toLowerCase().contains(q) ||
+                  i.category.toLowerCase().contains(q))
+              .toList();
+      _buildGroups();
     });
   }
+
+  // --- Save ---------------------------------------------------------------
+
+  Future<void> _save() async {
+    final selected = _allItems.where((i) => i.isSelected).toList();
+    if (selected.isEmpty) return;
+
+    setState(() => _isSaving = true);
+    try {
+      final provider = context.read<CatalogueProvider>();
+
+      // findOrCreate deduplicates by normalised name — safe to call for all.
+      for (final item in selected) {
+        await provider.findOrCreate(
+          name: item.name,
+          rate: item.rate,
+          category: item.category,
+          unit: item.unit,
+          description: item.description,
+        );
+      }
+
+      await BusinessProfileService.instance.markOnboardingComplete();
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Added ${selected.length} items to your catalogue'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      if (widget.isFirstTimeSetup) {
+        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      } else {
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error saving catalogue: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  // --- Build --------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -134,21 +168,20 @@ class _CataloguePreviewEditScreenState
             : 'Review & Edit Catalogue'),
         backgroundColor: Colors.blue[600],
         foregroundColor: Colors.white,
-        elevation: 0,
         centerTitle: true,
         actions: [
           if (!_isLoading)
             TextButton.icon(
               onPressed: _toggleSelectAll,
               icon: Icon(
-                _allSelectedCount() == _allItems.length
+                _selectedCount == _allItems.length
                     ? Icons.deselect
                     : Icons.select_all,
                 color: Colors.white,
                 size: 5.w,
               ),
               label: Text(
-                _allSelectedCount() == _allItems.length
+                _selectedCount == _allItems.length
                     ? 'Deselect All'
                     : 'Select All',
                 style: TextStyle(color: Colors.white, fontSize: 10.sp),
@@ -160,19 +193,19 @@ class _CataloguePreviewEditScreenState
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                _buildInfoBanner(),
+                if (_showSuggestions) _buildInfoBanner(),
                 _buildSearchBar(),
                 _buildStats(),
-                Expanded(child: _buildItemsList()),
+                Expanded(child: _buildList()),
               ],
             ),
       bottomNavigationBar: _buildBottomBar(),
     );
   }
 
-  Widget _buildInfoBanner() {
-    if (!_showSuggestions) return const SizedBox.shrink();
+  int get _selectedCount => _allItems.where((i) => i.isSelected).length;
 
+  Widget _buildInfoBanner() {
     return Container(
       padding: EdgeInsets.all(3.w),
       color: Colors.amber[50],
@@ -182,11 +215,8 @@ class _CataloguePreviewEditScreenState
           SizedBox(width: 3.w),
           Expanded(
             child: Text(
-              'These are suggested items. Select what you need or search for more.',
-              style: TextStyle(
-                fontSize: 10.sp,
-                color: Colors.amber[900],
-              ),
+              'These are suggested items. Select what you need.',
+              style: TextStyle(fontSize: 10.sp, color: Colors.amber[900]),
             ),
           ),
         ],
@@ -206,39 +236,31 @@ class _CataloguePreviewEditScreenState
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear),
-                  onPressed: () {
-                    _searchController.clear();
-                  },
+                  onPressed: _searchController.clear,
                 )
               : null,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey[300]!),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey[300]!),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.blue[600]!),
-          ),
-          contentPadding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
+          border:
+              OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!)),
+          enabledBorder:
+              OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!)),
+          focusedBorder:
+              OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.blue[600]!)),
+          contentPadding:
+              EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.5.h),
         ),
       ),
     );
   }
 
   Widget _buildStats() {
-    final selectedCount = _allSelectedCount();
-
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
       decoration: BoxDecoration(
         color: Colors.blue[50],
-        border: Border(
-          bottom: BorderSide(color: Colors.grey[300]!),
-        ),
+        border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
       ),
       child: Row(
         children: [
@@ -249,19 +271,15 @@ class _CataloguePreviewEditScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$selectedCount of ${_allItems.length} items selected',
+                  '$_selectedCount of ${_allItems.length} items selected',
                   style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.blue[900],
-                  ),
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue[900]),
                 ),
                 Text(
                   '${_groupedItems.length} categories',
-                  style: TextStyle(
-                    fontSize: 10.sp,
-                    color: Colors.blue[700],
-                  ),
+                  style: TextStyle(fontSize: 10.sp, color: Colors.blue[700]),
                 ),
               ],
             ),
@@ -271,7 +289,7 @@ class _CataloguePreviewEditScreenState
     );
   }
 
-  Widget _buildItemsList() {
+  Widget _buildList() {
     if (_groupedItems.isEmpty) {
       return Center(
         child: Column(
@@ -279,177 +297,47 @@ class _CataloguePreviewEditScreenState
           children: [
             Icon(Icons.search_off, size: 15.w, color: Colors.grey[400]),
             SizedBox(height: 2.h),
-            Text(
-              'No items found',
-              style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),
-            ),
+            Text('No items found',
+                style: TextStyle(fontSize: 13.sp, color: Colors.grey[600])),
           ],
         ),
       );
     }
-
-    final sortedCategories = _groupedItems.keys.toList()..sort();
-
+    final categories = _groupedItems.keys.toList()..sort();
     return ListView.builder(
       padding: EdgeInsets.all(3.w),
-      itemCount: sortedCategories.length,
-      itemBuilder: (context, index) {
-        final category = sortedCategories[index];
-        final items = _groupedItems[category]!;
-        final isExpanded = _expandedCategories.contains(category);
-
-        return _buildCategorySection(category, items, isExpanded);
+      itemCount: categories.length,
+      itemBuilder: (_, i) {
+        final cat = categories[i];
+        final items = _groupedItems[cat]!;
+        return _CategorySection(
+          category: cat,
+          items: items,
+          isExpanded: _expandedCategories.contains(cat),
+          onToggleExpand: () => setState(() {
+            if (_expandedCategories.contains(cat)) {
+              _expandedCategories.remove(cat);
+            } else {
+              _expandedCategories.add(cat);
+            }
+          }),
+          onToggleCategorySelect: () {
+            final sel = items.where((i) => i.isSelected).length;
+            final toSelect = sel < items.length;
+            setState(() {
+              for (final item in items) { item.isSelected = toSelect; }
+            });
+          },
+          onItemChanged: () => setState(() {}),
+          onEditName: (item) => _editName(item),
+          onEditRate: (item) => _editRate(item),
+        );
       },
     );
   }
 
-  Widget _buildCategorySection(
-      String category, List<EditableCatalogueItem> items, bool isExpanded) {
-    final selectedInCategory = items.where((item) => item.isSelected).length;
-
-    return Card(
-      margin: EdgeInsets.only(bottom: 2.h),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => _toggleCategoryExpansion(category),
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: EdgeInsets.all(3.w),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: isExpanded
-                    ? const BorderRadius.only(
-                        topLeft: Radius.circular(12),
-                        topRight: Radius.circular(12),
-                      )
-                    : BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    isExpanded ? Icons.expand_less : Icons.expand_more,
-                    color: Colors.blue[700],
-                    size: 6.w,
-                  ),
-                  SizedBox(width: 3.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          category,
-                          style: TextStyle(
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.blue[900],
-                          ),
-                        ),
-                        Text(
-                          '$selectedInCategory of ${items.length} selected',
-                          style: TextStyle(
-                            fontSize: 9.sp,
-                            color: Colors.blue[700],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => _toggleCategorySelection(category, items),
-                    child: Text(
-                      selectedInCategory == items.length
-                          ? 'Deselect All'
-                          : 'Select All',
-                      style: TextStyle(fontSize: 10.sp),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (isExpanded)
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: items.length,
-              separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey[200]),
-              itemBuilder: (context, index) => _buildItemTile(items[index]),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItemTile(EditableCatalogueItem item) {
-    return ListTile(
-      leading: Checkbox(
-        value: item.isSelected,
-        onChanged: (value) {
-          setState(() {
-            item.isSelected = value ?? false;
-          });
-        },
-      ),
-      title: InkWell(
-        onTap: () => _editItemName(item),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                item.name,
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  fontWeight: FontWeight.w500,
-                  color: item.isSelected ? Colors.black87 : Colors.grey[500],
-                ),
-              ),
-            ),
-            Icon(Icons.edit, size: 4.w, color: Colors.grey[400]),
-          ],
-        ),
-      ),
-      subtitle: Text(
-        '${item.unit}',
-        style: TextStyle(fontSize: 9.sp, color: Colors.grey[600]),
-      ),
-      trailing: InkWell(
-        onTap: () => _editItemRate(item),
-        child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
-          decoration: BoxDecoration(
-            color: Colors.green[50],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.green[200]!),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '₹${item.rate.toStringAsFixed(0)}',
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.green[700],
-                ),
-              ),
-              SizedBox(width: 1.w),
-              Icon(Icons.edit, size: 3.5.w, color: Colors.green[700]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildBottomBar() {
-    final selectedCount = _allSelectedCount();
-    final canSave = selectedCount > 0 && !_isSaving;
-
+    final canSave = _selectedCount > 0 && !_isSaving;
     return Container(
       padding: EdgeInsets.all(4.w),
       decoration: BoxDecoration(
@@ -471,8 +359,7 @@ class _CataloguePreviewEditScreenState
                 style: OutlinedButton.styleFrom(
                   padding: EdgeInsets.symmetric(vertical: 2.h),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 child: Text('Back', style: TextStyle(fontSize: 12.sp)),
               ),
@@ -481,14 +368,13 @@ class _CataloguePreviewEditScreenState
             Expanded(
               flex: 2,
               child: ElevatedButton(
-                onPressed: canSave ? _saveCatalogue : null,
+                onPressed: canSave ? _save : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green[600],
                   foregroundColor: Colors.white,
                   padding: EdgeInsets.symmetric(vertical: 2.h),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                      borderRadius: BorderRadius.circular(12)),
                   disabledBackgroundColor: Colors.grey[300],
                 ),
                 child: _isSaving
@@ -497,7 +383,8 @@ class _CataloguePreviewEditScreenState
                         width: 4.w,
                         child: const CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
                     : Row(
@@ -506,11 +393,9 @@ class _CataloguePreviewEditScreenState
                           Icon(Icons.save, size: 5.w),
                           SizedBox(width: 2.w),
                           Text(
-                            'Save $selectedCount Items',
+                            'Save $_selectedCount Items',
                             style: TextStyle(
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.w600,
-                            ),
+                                fontSize: 12.sp, fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -522,238 +407,79 @@ class _CataloguePreviewEditScreenState
     );
   }
 
-  int _allSelectedCount() {
-    return _allItems.where((item) => item.isSelected).length;
-  }
+  // --- Helpers ------------------------------------------------------------
 
   void _toggleSelectAll() {
-    final shouldSelectAll = _allSelectedCount() < _allItems.length;
+    final toSelect = _selectedCount < _allItems.length;
     setState(() {
-      for (var item in _allItems) {
-        item.isSelected = shouldSelectAll;
-      }
+      for (final item in _allItems) { item.isSelected = toSelect; }
     });
   }
 
-  void _toggleCategorySelection(
-      String category, List<EditableCatalogueItem> items) {
-    final selectedCount = items.where((item) => item.isSelected).length;
-    final shouldSelectAll = selectedCount < items.length;
-
-    setState(() {
-      for (var item in items) {
-        item.isSelected = shouldSelectAll;
-      }
-    });
-  }
-
-  void _toggleCategoryExpansion(String category) {
-    setState(() {
-      if (_expandedCategories.contains(category)) {
-        _expandedCategories.remove(category);
-      } else {
-        _expandedCategories.add(category);
-      }
-    });
-  }
-
-  void _editItemName(EditableCatalogueItem item) async {
-    final controller = TextEditingController(text: item.name);
-
+  Future<void> _editName(_EditableItem item) async {
+    final ctrl = TextEditingController(text: item.name);
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Edit Item Name'),
         content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Item Name',
-            border: OutlineInputBorder(),
-          ),
+          controller: ctrl,
           autofocus: true,
+          decoration: const InputDecoration(
+              labelText: 'Item Name', border: OutlineInputBorder()),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Save'),
-          ),
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('Save')),
         ],
       ),
     );
-
+    ctrl.dispose();
     if (result != null && result.trim().isNotEmpty) {
-      setState(() {
-        item.name = result.trim();
-      });
+      setState(() => item.name = result.trim());
     }
-
-    controller.dispose();
   }
 
-  void _editItemRate(EditableCatalogueItem item) async {
-    final controller =
-        TextEditingController(text: item.rate.toStringAsFixed(2));
-
+  Future<void> _editRate(_EditableItem item) async {
+    final ctrl = TextEditingController(text: item.rate.toStringAsFixed(2));
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Item Rate'),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Rate'),
         content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Rate (₹)',
-            border: OutlineInputBorder(),
-            prefixText: '₹ ',
-          ),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          controller: ctrl,
           autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+              labelText: 'Rate (₹)',
+              prefixText: '₹ ',
+              border: OutlineInputBorder()),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Save'),
-          ),
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('Save')),
         ],
       ),
     );
-
+    ctrl.dispose();
     if (result != null) {
-      final newRate = double.tryParse(result);
-      if (newRate != null && newRate > 0) {
-        setState(() {
-          item.rate = newRate;
-        });
-      }
-    }
-
-    controller.dispose();
-  }
-
-  Future<void> _saveCatalogue() async {
-    setState(() {
-      _isSaving = true;
-    });
-
-    try {
-      // Ensure user is authenticated with multiple retries
-      User? currentUser = FirebaseAuth.instance.currentUser;
-
-      if (currentUser == null) {
-        // Try up to 5 times with increasing delays
-        for (int i = 0; i < 5; i++) {
-          await Future.delayed(Duration(milliseconds: 500 + (i * 200)));
-          currentUser = FirebaseAuth.instance.currentUser;
-          if (currentUser != null) break;
-        }
-
-        // Final check
-        if (currentUser == null) {
-          throw Exception('Authentication session expired. Please sign in again.');
-        }
-      }
-
-      // Verify the user can access Firestore
-      if (currentUser.uid.isEmpty) {
-        throw Exception('Invalid user session. Please try again.');
-      }
-
-      // Get selected items
-      final selectedItems =
-          _allItems.where((item) => item.isSelected).toList();
-
-      if (selectedItems.isEmpty) {
-        throw Exception('No items selected');
-      }
-
-      // Convert to ProductCatalogItem format
-      final products = <dynamic>[];
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-
-      for (int i = 0; i < selectedItems.length; i++) {
-        final item = selectedItems[i];
-        products.add({
-          'id': '${timestamp}_cat_$i',
-          'name': item.name,
-          'sku': 'ITEM${(timestamp + i).toString().substring(8)}',
-          'category': item.category,
-          'unit': item.unit,
-          'rate': item.rate,
-          'barcode': '',
-          'description': item.description ?? '',
-          'createdAt': DateTime.now().toIso8601String(),
-          'updatedAt': DateTime.now().toIso8601String(),
-        });
-      }
-
-      // Save to Firestore
-      await _itemsService.addMultipleItemsFromMaps(products);
-
-      // Clear catalog cache to force reload of new items
-      _catalogService.clearCache();
-
-      // Mark onboarding as complete if first time
-      if (widget.isFirstTimeSetup && mounted) {
-        context.read<app_auth.AuthProvider>().completeOnboarding();
-      }
-
-      // Show success message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Successfully added ${products.length} items to your catalogue!'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-
-        // Navigate based on context
-        if (widget.isFirstTimeSetup) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (context) =>
-                  const HomeDashboard(csvPath: 'assets/images/data/invoices.csv'),
-            ),
-            (route) => false,
-          );
-        } else if (widget.returnRoute != null) {
-          // Pop back to the return route
-          Navigator.of(context).popUntil((route) => route.isFirst);
-        } else {
-          // Just pop this screen
-          Navigator.of(context).pop(true);
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving catalogue: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
+      final r = double.tryParse(result);
+      if (r != null && r > 0) setState(() => item.rate = r);
     }
   }
 }
 
-// Helper class for editable catalogue items
-class EditableCatalogueItem {
-  final String originalName;
+// ---------------------------------------------------------------------------
+// Mutable item for in-screen editing before save
+// ---------------------------------------------------------------------------
+
+class _EditableItem {
   String name;
   double rate;
   final String category;
@@ -761,13 +487,182 @@ class EditableCatalogueItem {
   final String? description;
   bool isSelected;
 
-  EditableCatalogueItem({
-    required this.originalName,
+  _EditableItem({
     required this.name,
     required this.rate,
     required this.category,
-    this.unit = 'pcs',
+    required this.unit,
     this.description,
     this.isSelected = false,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Category collapsible section (extracted for clarity)
+// ---------------------------------------------------------------------------
+
+class _CategorySection extends StatelessWidget {
+  const _CategorySection({
+    required this.category,
+    required this.items,
+    required this.isExpanded,
+    required this.onToggleExpand,
+    required this.onToggleCategorySelect,
+    required this.onItemChanged,
+    required this.onEditName,
+    required this.onEditRate,
+  });
+
+  final String category;
+  final List<_EditableItem> items;
+  final bool isExpanded;
+  final VoidCallback onToggleExpand;
+  final VoidCallback onToggleCategorySelect;
+  final VoidCallback onItemChanged;
+  final void Function(_EditableItem) onEditName;
+  final void Function(_EditableItem) onEditRate;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedCount = items.where((i) => i.isSelected).length;
+    return Card(
+      margin: EdgeInsets.only(bottom: 2.h),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onToggleExpand,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: EdgeInsets.all(3.w),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: isExpanded
+                    ? const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12))
+                    : BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(isExpanded ? Icons.expand_less : Icons.expand_more,
+                      color: Colors.blue[700], size: 6.w),
+                  SizedBox(width: 3.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(category,
+                            style: TextStyle(
+                                fontSize: 12.sp,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blue[900])),
+                        Text('$selectedCount of ${items.length} selected',
+                            style: TextStyle(
+                                fontSize: 9.sp, color: Colors.blue[700])),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: onToggleCategorySelect,
+                    child: Text(
+                      selectedCount == items.length
+                          ? 'Deselect All'
+                          : 'Select All',
+                      style: TextStyle(fontSize: 10.sp),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isExpanded)
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              separatorBuilder: (_, __) =>
+                  Divider(height: 1, color: Colors.grey[200]),
+              itemBuilder: (_, i) => _ItemTile(
+                item: items[i],
+                onChanged: onItemChanged,
+                onEditName: () => onEditName(items[i]),
+                onEditRate: () => onEditRate(items[i]),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ItemTile extends StatelessWidget {
+  const _ItemTile({
+    required this.item,
+    required this.onChanged,
+    required this.onEditName,
+    required this.onEditRate,
+  });
+
+  final _EditableItem item;
+  final VoidCallback onChanged;
+  final VoidCallback onEditName;
+  final VoidCallback onEditRate;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Checkbox(
+        value: item.isSelected,
+        onChanged: (v) {
+          item.isSelected = v ?? false;
+          onChanged();
+        },
+      ),
+      title: InkWell(
+        onTap: onEditName,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                item.name,
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w500,
+                  color: item.isSelected ? Colors.black87 : Colors.grey[500],
+                ),
+              ),
+            ),
+            Icon(Icons.edit, size: 4.w, color: Colors.grey[400]),
+          ],
+        ),
+      ),
+      subtitle:
+          Text(item.unit, style: TextStyle(fontSize: 9.sp, color: Colors.grey[600])),
+      trailing: InkWell(
+        onTap: onEditRate,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
+          decoration: BoxDecoration(
+            color: Colors.green[50],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.green[200]!),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('₹${item.rate.toStringAsFixed(0)}',
+                  style: TextStyle(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green[700])),
+              SizedBox(width: 1.w),
+              Icon(Icons.edit, size: 3.5.w, color: Colors.green[700]),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

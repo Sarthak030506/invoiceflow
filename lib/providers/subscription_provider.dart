@@ -10,16 +10,13 @@ class SubscriptionProvider extends ChangeNotifier {
   String? _error;
   StreamSubscription<SubscriptionModel>? _subscriptionStream;
 
-  // TODO: Set to false before production release
-  static const bool _testPremiumMode = true;
-
   // Getters
   SubscriptionModel? get subscription => _subscription;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
   // Subscription state getters
-  bool get isPremium => _testPremiumMode || (_subscription?.isPremium ?? false);
+  bool get isPremium => _subscription?.isPremium ?? false;
   bool get isTrial => _subscription?.isTrial ?? false;
   bool get isActive => _subscription?.isActive ?? false;
   int get daysRemaining => _subscription?.daysRemaining ?? 0;

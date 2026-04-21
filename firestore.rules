@@ -1,404 +1,460 @@
 rules_version = '2';
 
+// ============================================================
 // InvoiceFlow Firestore Security Rules
-// Multi-tenant architecture: users/{uid}/collections/
-// Last updated: December 2024
+// ============================================================
+//
+// ARCHITECTURE: Multi-tenant, all user data lives under users/{uid}/.
+// The owning uid in the path IS the access control boundary — a user
+// can only reach their own subcollections.
+//
+// SUBSCRIPTION WRITE LOCK (critical security fix):
+//   users/{uid}/subscription/{doc} — allow read, DENY all writes.
+//   Firebase Admin SDK (Cloud Functions) bypasses security rules entirely,
+//   so "allow write: if false" still lets server-side Cloud Functions
+//   write subscription upgrades, expirations, and resets while
+//   completely blocking the Flutter client from self-promoting its tier.
+//
+// PRINCIPLE OF LEAST PRIVILEGE:
+//   Each collection grants only the specific operations (create / update /
+//   delete) that the client services actually call. Collections that the
+//   client only reads get read-only rules. Collections that are append-only
+//   audit logs (ai_usage, subscription_events, stock_movements) deny update
+//   and delete so records cannot be tampered with after creation.
+//
+// Last updated: 2026-04-20
+// ============================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ===========================================
-    // GLOBAL FUNCTIONS FOR VALIDATION
-    // ===========================================
+    // =====================================================
+    // SHARED HELPER FUNCTIONS
+    // =====================================================
 
-    // Check if user is authenticated
+    // Every rule delegates authentication through these helpers so the
+    // intent remains readable even as logic grows.
+
+    // Returns true when the request carries a valid Firebase Auth token.
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Check if the authenticated user owns this document path
+    // Returns true when the authenticated user's uid matches the uid segment
+    // in the document path. This is the multi-tenant isolation guarantee:
+    // user A's uid will never equal user B's uid, so user A can never
+    // satisfy isOwner(uidB).
     function isOwner(uid) {
       return isAuthenticated() && request.auth.uid == uid;
     }
 
-    // Validate that required fields exist and are not empty
-    function hasRequiredFields(data, fields) {
-      return fields.toSet().difference(data.keys().toSet()).size() == 0;
-    }
+    // =====================================================
+    // DATA VALIDATION HELPERS
+    // =====================================================
 
-    // Check if a string field is valid (not empty after trimming)
     function isValidString(field) {
       return field is string && field.size() > 0 && field.trim().size() > 0;
     }
 
-    // Validate phone number format (basic validation)
     function isValidPhone(phone) {
-      return phone is string && phone.matches('^[0-9+\\-\\s()]+$') && phone.size() >= 10;
+      return phone is string
+          && phone.matches('^[0-9+\\-\\s()]+$')
+          && phone.size() >= 10;
     }
 
-    // Validate invoice number format
-    function isValidInvoiceNumber(invoiceNumber) {
-      return isValidString(invoiceNumber) && invoiceNumber.size() <= 50;
-    }
-
-    // Validate invoice type
-    function isValidInvoiceType(type) {
-      return type in ['sales', 'purchase'];
-    }
-
-    // Validate invoice status
-    function isValidInvoiceStatus(status) {
-      return status in ['draft', 'posted', 'cancelled'];
-    }
-
-    // Validate payment method
-    function isValidPaymentMethod(method) {
-      return method in ['Cash', 'Online', 'Cheque', 'Bank Transfer', 'UPI', 'Card'];
-    }
-
-    // Validate that numeric fields are non-negative
     function isValidAmount(amount) {
       return amount is number && amount >= 0;
     }
 
-    // Validate timestamp format
-    function isValidTimestamp(timestamp) {
-      return timestamp is timestamp;
+    function isValidTimestamp(ts) {
+      return ts is timestamp;
     }
 
-    // ===========================================
-    // USER DOCUMENT RULES
-    // ===========================================
+    function isValidInvoiceType(t) {
+      return t in ['sales', 'purchase'];
+    }
 
-    // Allow users to read/write their own user profile
+    function isValidInvoiceStatus(s) {
+      return s in ['draft', 'posted', 'cancelled'];
+    }
+
+    function isValidPaymentMethod(m) {
+      return m in ['Cash', 'Online', 'Cheque', 'Bank Transfer', 'UPI', 'Card'];
+    }
+
+    function hasFields(data, fields) {
+      return fields.toSet().difference(data.keys().toSet()).size() == 0;
+    }
+
+    // =====================================================
+    // USER PROFILE DOCUMENT  —  users/{uid}
+    // =====================================================
+    // The root user document stores account-level profile data.
+    // Source: used by Firebase Auth integration; read on app start,
+    // written when profile is created or updated.
+    // Decision: allow read + write — only the owning user may touch it.
+
     match /users/{uid} {
       allow read, write: if isOwner(uid);
 
-      // ===========================================
-      // CUSTOMER COLLECTION RULES
-      // ===========================================
+      // =================================================
+      // CUSTOMERS  —  users/{uid}/customers/{customerId}
+      // =================================================
+      // Client operations confirmed in firestore_service.dart:
+      //   upsertCustomer  → doc.set(..., merge:true)   → create + update
+      //   getCustomer / getCustomerByPhone / getAllCustomers → read
+      //   deleteCustomer  → doc.delete()               → delete
+      // Decision: allow read, create, update, delete.
+      // Validation on create and update enforces required fields and
+      // prevents the immutable 'id' from being changed after creation.
 
       match /customers/{customerId} {
-        // Only allow access to the document owner
-        allow read, write: if isOwner(uid);
+        allow read: if isOwner(uid);
 
-        // Validation rules for customer creation/updates
-        allow create: if isOwner(uid) &&
-          validateCustomerData(resource.data);
+        allow create: if isOwner(uid)
+            && hasFields(request.resource.data, ['name', 'phoneNumber', 'createdAt', 'updatedAt'])
+            && isValidString(request.resource.data.name)
+            && request.resource.data.name.size() <= 100
+            && isValidPhone(request.resource.data.phoneNumber)
+            && isValidTimestamp(request.resource.data.createdAt)
+            && isValidTimestamp(request.resource.data.updatedAt)
+            && request.resource.data.updatedAt <= request.time;
 
-        allow update: if isOwner(uid) &&
-          validateCustomerData(resource.data) &&
-          // Ensure ID cannot be changed
-          resource.data.id == request.resource.data.id;
+        allow update: if isOwner(uid)
+            && isValidString(request.resource.data.name)
+            && request.resource.data.name.size() <= 100
+            && isValidPhone(request.resource.data.phoneNumber)
+            && isValidTimestamp(request.resource.data.updatedAt)
+            && request.resource.data.updatedAt <= request.time;
 
         allow delete: if isOwner(uid);
-
-        function validateCustomerData(data) {
-          return hasRequiredFields(data, ['id', 'name', 'phoneNumber', 'createdAt', 'updatedAt']) &&
-                 isValidString(data.id) &&
-                 isValidString(data.name) &&
-                 data.name.size() <= 100 &&
-                 isValidPhone(data.phoneNumber) &&
-                 data.phoneNumber.size() <= 20 &&
-                 isValidTimestamp(data.createdAt) &&
-                 isValidTimestamp(data.updatedAt) &&
-                 // Ensure updatedAt is not in the future
-                 data.updatedAt <= request.time &&
-                 // Validate optional pending return amount
-                 ((!('pendingReturnAmount' in data)) || isValidAmount(data.pendingReturnAmount));
-        }
       }
 
-      // ===========================================
-      // INVOICE COLLECTION RULES
-      // ===========================================
+      // =================================================
+      // INVOICES  —  users/{uid}/invoices/{invoiceId}
+      // =================================================
+      // Client operations confirmed in firestore_service.dart:
+      //   upsertInvoice         → doc.set(..., merge:true)   → create + update
+      //   clearInvoiceFields    → doc.update(...)             → update
+      //   adjustCustomerOutstandingBalance → batch.update(…) → update
+      //   getInvoice / getAllInvoices / getInvoicesByDateRange / etc. → read
+      //   deleteInvoice / deleteAllInvoices → doc.delete()   → delete
+      // Decision: allow read, create, update, delete.
+      // Validation guards the critical business fields on create.
+      // Updates intentionally use lighter validation because partial
+      // merge writes (clearInvoiceFields, adjustCustomerOutstandingBalance)
+      // only touch a subset of fields — full-document re-validation
+      // would reject those legitimate partial updates.
 
       match /invoices/{invoiceId} {
-        // Only allow access to the document owner
-        allow read, write: if isOwner(uid);
+        allow read: if isOwner(uid);
 
-        // Validation rules for invoice creation/updates
-        allow create: if isOwner(uid) &&
-          validateInvoiceData(resource.data);
+        allow create: if isOwner(uid)
+            && hasFields(request.resource.data, [
+                 'invoiceNumber', 'clientName', 'date', 'revenue',
+                 'status', 'createdAt', 'updatedAt', 'invoiceType'
+               ])
+            && isValidString(request.resource.data.invoiceNumber)
+            && request.resource.data.invoiceNumber.size() <= 50
+            && isValidString(request.resource.data.clientName)
+            && request.resource.data.clientName.size() <= 100
+            && isValidTimestamp(request.resource.data.date)
+            && isValidAmount(request.resource.data.revenue)
+            && request.resource.data.revenue <= 10000000
+            && isValidInvoiceStatus(request.resource.data.status)
+            && isValidInvoiceType(request.resource.data.invoiceType)
+            && isValidTimestamp(request.resource.data.createdAt)
+            && isValidTimestamp(request.resource.data.updatedAt)
+            && request.resource.data.updatedAt <= request.time;
 
-        allow update: if isOwner(uid) &&
-          validateInvoiceData(resource.data) &&
-          // Ensure critical fields cannot be changed after creation
-          resource.data.id == request.resource.data.id &&
-          resource.data.invoiceNumber == request.resource.data.invoiceNumber &&
-          resource.data.invoiceType == request.resource.data.invoiceType;
-
-        allow delete: if isOwner(uid);
-
-        function validateInvoiceData(data) {
-          return hasRequiredFields(data, [
-            'id', 'invoiceNumber', 'clientName', 'date', 'revenue',
-            'status', 'createdAt', 'updatedAt', 'invoiceType'
-          ]) &&
-          // Basic field validations
-          isValidString(data.id) &&
-          isValidInvoiceNumber(data.invoiceNumber) &&
-          isValidString(data.clientName) &&
-          data.clientName.size() <= 100 &&
-          isValidTimestamp(data.date) &&
-          isValidAmount(data.revenue) &&
-          data.revenue <= 10000000 && // Max invoice amount: 1 crore
-          isValidInvoiceStatus(data.status) &&
-          isValidInvoiceType(data.invoiceType) &&
-          isValidTimestamp(data.createdAt) &&
-          isValidTimestamp(data.updatedAt) &&
-          // Validate optional fields if present
-          ((!('customerPhone' in data)) || isValidPhone(data.customerPhone)) &&
-          ((!('customerId' in data)) || isValidString(data.customerId)) &&
-          ((!('amountPaid' in data)) || isValidAmount(data.amountPaid)) &&
-          ((!('paymentMethod' in data)) || isValidPaymentMethod(data.paymentMethod)) &&
-          ((!('notes' in data)) || (data.notes is string && data.notes.size() <= 500)) &&
-          // Ensure timestamps are logical
-          data.updatedAt <= request.time &&
-          data.createdAt <= data.updatedAt &&
-          // Validate amount paid doesn't exceed revenue by too much (allow small overpayment)
-          ((!('amountPaid' in data)) || data.amountPaid <= (data.revenue * 1.1)) &&
-          // Validate items array if present
-          ((!('items' in data)) || validateInvoiceItems(data.items));
-        }
-
-        function validateInvoiceItems(items) {
-          return items is list &&
-                 items.size() <= 100 && // Max 100 items per invoice
-                 items.hasAll(items.map(item => validateInvoiceItem(item)));
-        }
-
-        function validateInvoiceItem(item) {
-          return item is map &&
-                 hasRequiredFields(item, ['name', 'quantity', 'rate', 'amount']) &&
-                 isValidString(item.name) &&
-                 item.name.size() <= 100 &&
-                 item.quantity is number &&
-                 item.quantity > 0 &&
-                 item.quantity <= 10000 &&
-                 isValidAmount(item.rate) &&
-                 item.rate <= 1000000 && // Max rate per item: 10 lakh
-                 isValidAmount(item.amount) &&
-                 // Validate amount calculation (with small tolerance for floating point)
-                 math.abs(item.amount - (item.quantity * item.rate)) <= 0.01;
-        }
-      }
-
-      // ===========================================
-      // INVENTORY ITEMS COLLECTION RULES
-      // ===========================================
-
-      match /inventory_items/{itemId} {
-        // Only allow access to the document owner
-        allow read, write: if isOwner(uid);
-
-        // Validation rules for inventory item creation/updates
-        allow create: if isOwner(uid) &&
-          validateInventoryItemData(resource.data);
-
-        allow update: if isOwner(uid) &&
-          validateInventoryItemData(resource.data) &&
-          // Ensure ID and SKU cannot be changed
-          resource.data.id == request.resource.data.id &&
-          resource.data.sku == request.resource.data.sku;
+        // Lighter validation for updates: require ownership and that
+        // immutable keys are not altered. Partial field updates (payment
+        // adjustments, field deletions) must not be broken by full-doc checks.
+        allow update: if isOwner(uid)
+            // Invoice number and type are immutable once created
+            && (!('invoiceNumber' in request.resource.data)
+                || request.resource.data.invoiceNumber == resource.data.invoiceNumber)
+            && (!('invoiceType' in request.resource.data)
+                || request.resource.data.invoiceType == resource.data.invoiceType);
 
         allow delete: if isOwner(uid);
-
-        function validateInventoryItemData(data) {
-          return hasRequiredFields(data, [
-            'id', 'sku', 'name', 'unit', 'openingStock', 'currentStock',
-            'reorderPoint', 'avgCost', 'category', 'lastUpdated'
-          ]) &&
-          // Basic field validations
-          isValidString(data.id) &&
-          isValidString(data.sku) &&
-          data.sku.size() <= 50 &&
-          isValidString(data.name) &&
-          data.name.size() <= 100 &&
-          isValidString(data.unit) &&
-          data.unit.size() <= 20 &&
-          isValidAmount(data.openingStock) &&
-          isValidAmount(data.currentStock) &&
-          isValidAmount(data.reorderPoint) &&
-          isValidAmount(data.avgCost) &&
-          data.avgCost <= 1000000 && // Max cost per unit: 10 lakh
-          isValidString(data.category) &&
-          data.category.size() <= 50 &&
-          isValidTimestamp(data.lastUpdated) &&
-          data.lastUpdated <= request.time &&
-          // Validate optional barcode field
-          ((!('barcode' in data)) || (data.barcode is string && data.barcode.size() <= 50));
-        }
       }
 
-      // ===========================================
-      // RETURNS COLLECTION RULES
-      // ===========================================
+      // =================================================
+      // RETURNS  —  users/{uid}/returns/{returnId}
+      // =================================================
+      // Client operations confirmed in firestore_service.dart:
+      //   createReturn  → doc.set(...)                 → create
+      //   updateReturn  → doc.set(..., merge:true)     → update
+      //   getReturnById / getReturns / getReturnsByType /
+      //   getReturnsByCustomerId / getReturnsByInvoiceId → read
+      //   deleteReturn  → doc.delete()                 → delete
+      // Decision: allow read, create, update, delete.
 
       match /returns/{returnId} {
-        // Only allow access to the document owner
-        allow read, write: if isOwner(uid);
+        allow read: if isOwner(uid);
 
-        // Validation rules for return creation/updates
-        allow create: if isOwner(uid) &&
-          validateReturnData(resource.data);
+        allow create: if isOwner(uid)
+            && hasFields(request.resource.data, [
+                 'returnNumber', 'invoiceId', 'invoiceNumber', 'customerName',
+                 'invoiceDate', 'returnDate', 'returnType', 'returnReason',
+                 'totalReturnValue', 'refundAmount', 'createdAt', 'updatedAt'
+               ])
+            && isValidString(request.resource.data.returnNumber)
+            && request.resource.data.returnNumber.size() <= 50
+            && isValidString(request.resource.data.invoiceId)
+            && isValidString(request.resource.data.customerName)
+            && request.resource.data.customerName.size() <= 100
+            && isValidInvoiceType(request.resource.data.returnType)
+            && isValidString(request.resource.data.returnReason)
+            && request.resource.data.returnReason.size() <= 200
+            && isValidAmount(request.resource.data.totalReturnValue)
+            && request.resource.data.totalReturnValue <= 10000000
+            && isValidAmount(request.resource.data.refundAmount)
+            && request.resource.data.refundAmount <= 10000000
+            && isValidTimestamp(request.resource.data.createdAt)
+            && isValidTimestamp(request.resource.data.updatedAt)
+            && request.resource.data.updatedAt <= request.time;
 
-        allow update: if isOwner(uid) &&
-          validateReturnData(resource.data) &&
-          // Ensure critical fields cannot be changed
-          resource.data.id == request.resource.data.id &&
-          resource.data.returnNumber == request.resource.data.returnNumber &&
-          resource.data.invoiceId == request.resource.data.invoiceId;
+        // Updates must not change the immutable audit fields.
+        allow update: if isOwner(uid)
+            && (!('returnNumber' in request.resource.data)
+                || request.resource.data.returnNumber == resource.data.returnNumber)
+            && (!('invoiceId' in request.resource.data)
+                || request.resource.data.invoiceId == resource.data.invoiceId);
 
         allow delete: if isOwner(uid);
-
-        function validateReturnData(data) {
-          return hasRequiredFields(data, [
-            'id', 'returnNumber', 'invoiceId', 'invoiceNumber', 'customerName',
-            'invoiceDate', 'returnDate', 'returnType', 'returnReason',
-            'totalReturnValue', 'refundAmount', 'createdAt', 'updatedAt'
-          ]) &&
-          // Basic field validations
-          isValidString(data.id) &&
-          isValidString(data.returnNumber) &&
-          data.returnNumber.size() <= 50 &&
-          isValidString(data.invoiceId) &&
-          isValidString(data.invoiceNumber) &&
-          isValidString(data.customerName) &&
-          data.customerName.size() <= 100 &&
-          isValidTimestamp(data.invoiceDate) &&
-          isValidTimestamp(data.returnDate) &&
-          isValidInvoiceType(data.returnType) &&
-          isValidString(data.returnReason) &&
-          data.returnReason.size() <= 200 &&
-          isValidAmount(data.totalReturnValue) &&
-          isValidAmount(data.refundAmount) &&
-          data.totalReturnValue <= 10000000 &&
-          data.refundAmount <= 10000000 &&
-          isValidTimestamp(data.createdAt) &&
-          isValidTimestamp(data.updatedAt) &&
-          data.updatedAt <= request.time &&
-          data.createdAt <= data.updatedAt &&
-          // Validate optional fields
-          ((!('customerId' in data)) || isValidString(data.customerId)) &&
-          ((!('customerPhone' in data)) || isValidPhone(data.customerPhone)) &&
-          ((!('notes' in data)) || (data.notes is string && data.notes.size() <= 500)) &&
-          ((!('isApplied' in data)) || (data.isApplied is bool)) &&
-          // Validate items array if present
-          ((!('items' in data)) || validateReturnItems(data.items));
-        }
-
-        function validateReturnItems(items) {
-          return items is list &&
-                 items.size() <= 100 &&
-                 items.hasAll(items.map(item => validateReturnItem(item)));
-        }
-
-        function validateReturnItem(item) {
-          return item is map &&
-                 hasRequiredFields(item, ['name', 'quantity', 'price', 'totalValue']) &&
-                 isValidString(item.name) &&
-                 item.name.size() <= 100 &&
-                 item.quantity is number &&
-                 item.quantity > 0 &&
-                 item.quantity <= 10000 &&
-                 isValidAmount(item.price) &&
-                 item.price <= 1000000 &&
-                 isValidAmount(item.totalValue) &&
-                 // Validate amount calculation (with small tolerance)
-                 math.abs(item.totalValue - (item.quantity * item.price)) <= 0.01;
-        }
       }
 
-      // ===========================================
-      // STOCK MOVEMENTS COLLECTION RULES
-      // ===========================================
+      // =================================================
+      // SETTINGS  —  users/{uid}/settings/{doc}
+      // =================================================
+      // Used by BusinessProfileService to store business profile data and
+      // the onboardingCompletedAt flag (document: settings/business_profile).
+      // Decision: allow read + write for owner. No strict field validation —
+      // the document schema is flexible and extended over time.
+
+      match /settings/{doc} {
+        allow read, write: if isOwner(uid);
+      }
+
+      // =================================================
+      // ITEMS CATALOG  —  users/{uid}/items_catalog/{itemId}
+      // =================================================
+      // Single source of truth for the user's product catalogue.
+      // Client operations confirmed in items_service.dart:
+      //   addItem / findOrCreate → collection.add() or doc.set(merge:true) → create
+      //   updateItem             → doc.update(...)                         → update
+      //   getAllItems / getItemById / getItemBySku / searchByPrefix /
+      //   findByNormalizedName   → read
+      //   (no client-side delete currently exposed)
+      // Decision: allow read, create, update. Delete omitted for now.
+      // nameNormalized must be present on create — it powers prefix search.
+      // SKU is immutable once set (stable business identifier for inventory link).
+
+      match /items_catalog/{itemId} {
+        allow read: if isOwner(uid);
+
+        allow create: if isOwner(uid)
+            && hasFields(request.resource.data, [
+                 'name', 'nameNormalized', 'sku', 'rate',
+                 'unit', 'category', 'createdAt', 'updatedAt'
+               ])
+            && isValidString(request.resource.data.name)
+            && request.resource.data.name.size() <= 200
+            && isValidString(request.resource.data.nameNormalized)
+            && request.resource.data.nameNormalized.size() <= 200
+            && isValidString(request.resource.data.sku)
+            && request.resource.data.sku.size() <= 50
+            && isValidAmount(request.resource.data.rate)
+            && request.resource.data.rate <= 1000000
+            && isValidString(request.resource.data.unit)
+            && request.resource.data.unit.size() <= 20
+            && isValidString(request.resource.data.category)
+            && request.resource.data.category.size() <= 50
+            && isValidTimestamp(request.resource.data.createdAt)
+            && isValidTimestamp(request.resource.data.updatedAt)
+            && request.resource.data.updatedAt <= request.time;
+
+        allow update: if isOwner(uid)
+            // SKU is immutable — inventory_items link via catalogItemId
+            && (!('sku' in request.resource.data)
+                || request.resource.data.sku == resource.data.sku)
+            && isValidTimestamp(request.resource.data.updatedAt)
+            && request.resource.data.updatedAt <= request.time;
+
+        // delete: omitted — items are deactivated by convention, not deleted
+      }
+
+      // =================================================
+      // INVENTORY ITEMS  —  users/{uid}/inventory_items/{itemId}
+      // =================================================
+      // Client operations confirmed in inventory_firestore_service.dart:
+      //   insertItem  → doc.set(...)     → create
+      //   updateItem  → doc.update(...)  → update
+      //   getAllItems / getItemById / getItemBySku / getItemByName /
+      //   getLowStockItems               → read
+      //   deleteItem  → doc.delete()     → delete
+      // Decision: allow read, create, update, delete.
+      // Note: Firestore keys are snake_case (opening_stock, current_stock,
+      // reorder_point, avg_cost, last_updated) as written by _itemToFirestore.
+
+      match /inventory_items/{itemId} {
+        allow read: if isOwner(uid);
+
+        allow create: if isOwner(uid)
+            && hasFields(request.resource.data, [
+                 'sku', 'name', 'unit', 'opening_stock', 'current_stock',
+                 'reorder_point', 'avg_cost', 'category', 'last_updated'
+               ])
+            && isValidString(request.resource.data.sku)
+            && request.resource.data.sku.size() <= 50
+            && isValidString(request.resource.data.name)
+            && request.resource.data.name.size() <= 100
+            && isValidString(request.resource.data.unit)
+            && request.resource.data.unit.size() <= 20
+            && isValidAmount(request.resource.data.opening_stock)
+            && isValidAmount(request.resource.data.current_stock)
+            && isValidAmount(request.resource.data.reorder_point)
+            && isValidAmount(request.resource.data.avg_cost)
+            && request.resource.data.avg_cost <= 1000000
+            && isValidString(request.resource.data.category)
+            && request.resource.data.category.size() <= 50
+            && isValidTimestamp(request.resource.data.last_updated)
+            && request.resource.data.last_updated <= request.time;
+
+        allow update: if isOwner(uid)
+            // SKU is immutable — acts as a stable business identifier
+            && (!('sku' in request.resource.data)
+                || request.resource.data.sku == resource.data.sku)
+            && isValidTimestamp(request.resource.data.last_updated)
+            && request.resource.data.last_updated <= request.time;
+
+        allow delete: if isOwner(uid);
+      }
+
+      // =================================================
+      // STOCK MOVEMENTS  —  users/{uid}/stock_movements/{movementId}
+      // =================================================
+      // Client operations confirmed in inventory_firestore_service.dart:
+      //   insertMovement          → doc.set(...)   → create
+      //   reverseMovementsAtomically → batch.set() → create (new reversal docs)
+      //   getMovementsBySource / getMovementsByItem /
+      //   getMovementsAfterDate                    → read
+      //   (no update or delete anywhere in the codebase)
+      // Decision: allow read and create ONLY.
+      // Stock movements are an immutable audit trail. Preventing update and
+      // delete means the ledger cannot be altered after the fact — reversals
+      // are always new documents (REVERSAL_OUT type), never edits.
 
       match /stock_movements/{movementId} {
-        // Only allow access to the document owner
-        allow read, write: if isOwner(uid);
+        allow read: if isOwner(uid);
 
-        // Stock movements are typically created by the system, so stricter rules
-        allow create: if isOwner(uid) &&
-          validateStockMovementData(resource.data);
+        allow create: if isOwner(uid)
+            && hasFields(request.resource.data, [
+                 'id', 'itemId', 'type', 'quantity',
+                 'sourceRefType', 'sourceRefId', 'createdAt'
+               ])
+            && isValidString(request.resource.data.id)
+            && isValidString(request.resource.data.itemId)
+            && request.resource.data.type in [
+                 'IN', 'OUT', 'ADJUSTMENT',
+                 'RETURN_IN', 'RETURN_OUT', 'REVERSAL_OUT'
+               ]
+            && request.resource.data.quantity is number
+            && request.resource.data.quantity != 0
+            && isValidTimestamp(request.resource.data.createdAt)
+            && request.resource.data.createdAt <= request.time;
 
-        // Generally, stock movements should not be updated once created (audit trail)
-        // Allow only specific fields to be updated
-        allow update: if isOwner(uid) &&
-          validateStockMovementData(resource.data) &&
-          // Ensure critical audit fields cannot be changed
-          resource.data.id == request.resource.data.id &&
-          resource.data.itemId == request.resource.data.itemId &&
-          resource.data.movementType == request.resource.data.movementType &&
-          resource.data.quantity == request.resource.data.quantity &&
-          resource.data.createdAt == request.resource.data.createdAt;
-
-        allow delete: if isOwner(uid);
-
-        function validateStockMovementData(data) {
-          return hasRequiredFields(data, [
-            'id', 'itemId', 'movementType', 'quantity', 'createdAt'
-          ]) &&
-          // Basic field validations
-          isValidString(data.id) &&
-          isValidString(data.itemId) &&
-          isValidStockMovementType(data.movementType) &&
-          data.quantity is number &&
-          data.quantity != 0 && // Quantity cannot be zero
-          math.abs(data.quantity) <= 10000 && // Max movement quantity
-          isValidTimestamp(data.createdAt) &&
-          data.createdAt <= request.time &&
-          // Validate optional fields
-          ((!('reason' in data)) || (data.reason is string && data.reason.size() <= 200)) &&
-          ((!('invoiceId' in data)) || isValidString(data.invoiceId)) &&
-          ((!('notes' in data)) || (data.notes is string && data.notes.size() <= 200));
-        }
-
-        function isValidStockMovementType(type) {
-          return type in ['IN', 'OUT', 'ADJUSTMENT', 'RETURN_IN', 'RETURN_OUT', 'REVERSAL_OUT'];
-        }
+        // update: intentionally omitted — movements are immutable once written
+        // delete: intentionally omitted — reversals create new docs, not deletions
       }
 
-      // ===========================================
-      // CATALOG RATES COLLECTION RULES
-      // ===========================================
+      // =================================================
+      // SUBSCRIPTION  —  users/{uid}/subscription/{doc}
+      // =================================================
+      // Client operations confirmed in subscription_service.dart:
+      //   subscriptionStream() / getCurrentSubscription() → read (ALLOWED)
+      //
+      //   upgradeToPremium / cancelSubscription / reactivateSubscription /
+      //   startFreeTrial / checkAndExpireTrial / checkAndExpireSubscription /
+      //   decrementOCRScans / incrementAIInsightsCount / etc.
+      //   → these all call _subscriptionRef!.set() or .update() from the
+      //     Flutter client (THESE ARE THE SECURITY HOLE — MUST BE BLOCKED)
+      //
+      // WHY "allow write: if false":
+      //   Firebase Admin SDK (used by Cloud Functions) is exempt from
+      //   security rules. So denying all client writes here does NOT
+      //   prevent Cloud Functions from writing subscription upgrades,
+      //   expirations, or usage resets — it only prevents the Flutter
+      //   app from self-elevating its own subscription tier.
+      //
+      // MIGRATION NOTE:
+      //   subscription_service.dart currently contains client-side write
+      //   methods (upgradeToPremium, startFreeTrial, checkAndExpireTrial,
+      //   decrementOCRScans, etc.). These methods will throw permission-denied
+      //   errors once this rule is deployed. Each must be replaced by a
+      //   callable Cloud Function that performs the write server-side.
 
-      match /catalog_rates/{itemId} {
-        // Only allow access to the document owner
-        allow read, write: if isOwner(uid);
+      match /subscription/{doc} {
+        // Clients may stream or fetch their own subscription status.
+        allow read: if isOwner(uid);
 
-        // Validation rules for catalog rate creation/updates
-        allow create: if isOwner(uid) &&
-          validateCatalogRateData(resource.data);
-
-        allow update: if isOwner(uid) &&
-          validateCatalogRateData(resource.data) &&
-          // Ensure ID cannot be changed
-          resource.data.id == request.resource.data.id;
-
-        allow delete: if isOwner(uid);
-
-        function validateCatalogRateData(data) {
-          return hasRequiredFields(data, ['id', 'name', 'rate', 'updatedAt']) &&
-                 data.id is int &&
-                 data.id > 0 &&
-                 isValidString(data.name) &&
-                 data.name.size() <= 200 &&
-                 isValidAmount(data.rate) &&
-                 data.rate <= 1000000 && // Max rate: 10 lakh
-                 isValidTimestamp(data.updatedAt) &&
-                 data.updatedAt <= request.time;
-        }
+        // NO client writes — Admin SDK only.
+        // Cloud Functions bypass these rules and can still write freely.
+        allow write: if false;
       }
-    }
 
-    // ===========================================
-    // DENY ALL OTHER ACCESS
-    // ===========================================
+      // =================================================
+      // AI USAGE LOG  —  users/{uid}/ai_usage/{logId}
+      // =================================================
+      // Client operations confirmed in subscription_service.dart:
+      //   trackFeatureUsage → collection.add({...})  → create only
+      //   (no reads, updates, or deletes anywhere in codebase)
+      // Decision: allow create only.
+      // This is an append-only telemetry log; past entries must not be
+      // read back by the client (privacy/integrity) and must not be
+      // modified or deleted after creation.
 
-    // Explicitly deny access to any documents not covered by the above rules
+      match /ai_usage/{logId} {
+        allow create: if isOwner(uid)
+            && hasFields(request.resource.data, ['featureType', 'timestamp'])
+            && isValidString(request.resource.data.featureType);
+
+        // read, update, delete: intentionally omitted
+      }
+
+      // =================================================
+      // SUBSCRIPTION EVENTS  —  users/{uid}/subscription_events/{eventId}
+      // =================================================
+      // Client operations confirmed in subscription_service.dart:
+      //   _trackSubscriptionEvent → collection.add({...})  → create only
+      //   (no reads, updates, or deletes anywhere in codebase)
+      // Decision: allow create only.
+      // Append-only audit log of subscription lifecycle events
+      // (upgraded, cancelled, trial_started, expired, etc.).
+      // Clients should never read, modify, or delete these records.
+
+      match /subscription_events/{eventId} {
+        allow create: if isOwner(uid)
+            && hasFields(request.resource.data, ['event', 'timestamp'])
+            && isValidString(request.resource.data.event);
+
+        // read, update, delete: intentionally omitted
+      }
+
+    } // end match /users/{uid}
+
+    // =====================================================
+    // CATCH-ALL DENY
+    // =====================================================
+    // Any path not explicitly matched above is denied.
+    // This covers future collections that have not yet been added
+    // to these rules, preventing accidental open access.
+
     match /{document=**} {
       allow read, write: if false;
     }
+
   }
 }

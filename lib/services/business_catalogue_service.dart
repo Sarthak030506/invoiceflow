@@ -7,8 +7,6 @@ import '../data/catalogues/clothing_catalogue.dart';
 import '../data/catalogues/stationery_catalogue.dart';
 import '../data/catalogues/bakery_catalogue.dart';
 import '../data/catalogues/hardware_catalogue.dart';
-import '../models/catalog_item.dart';
-
 class BusinessCatalogueService {
   // Singleton implementation
   static BusinessCatalogueService? _instance;
@@ -78,46 +76,7 @@ class BusinessCatalogueService {
       color: Colors.brown,
       items: hardwareCatalogueItems,
     ),
-    BusinessCatalogueTemplate(
-      id: 'demo',
-      name: 'Demo Catalogue',
-      description: 'Hotel, restaurant, catering supplies with 133+ items',
-      icon: Icons.restaurant,
-      color: Colors.teal,
-      items: ItemCatalog.items
-          .map((item) => CatalogueTemplateItem(
-                name: item.name,
-                rate: item.rate,
-                category: _getCategoryForDemoItem(item.name),
-                unit: 'pcs',
-              ))
-          .toList(),
-    ),
   ];
-
-  // Get category for demo catalogue items
-  static String _getCategoryForDemoItem(String itemName) {
-    final name = itemName.toLowerCase();
-    if (name.contains('bag') || name.contains('pouch') || name.contains('container')) {
-      return 'Packaging';
-    } else if (name.contains('phenyl') || name.contains('cleaner') || name.contains('acid') ||
-        name.contains('liquid') || name.contains('sponge') || name.contains('mop') ||
-        name.contains('brush') || name.contains('duster')) {
-      return 'Cleaning Supplies';
-    } else if (name.contains('glass') || name.contains('cup') || name.contains('plate') ||
-        name.contains('spoon') || name.contains('straw')) {
-      return 'Disposables';
-    } else if (name.contains('foil') || name.contains('wrap')) {
-      return 'Kitchen Supplies';
-    } else if (name.contains('gloves') || name.contains('cap') || name.contains('apron') ||
-        name.contains('goggle')) {
-      return 'Safety & Apparel';
-    } else if (name.contains('paper') || name.contains('tissue') || name.contains('marker') ||
-        name.contains('pen')) {
-      return 'Stationery';
-    }
-    return 'General';
-  }
 
   // Get template by ID
   BusinessCatalogueTemplate? getTemplateById(String id) {
@@ -245,32 +204,6 @@ class BusinessCatalogueService {
     }
 
     return results;
-  }
-
-  // Convert template item to ProductCatalogItem for saving
-  static Future<List<dynamic>> convertToProductCatalogItems(
-      List<CatalogueTemplateItem> items) async {
-    final products = <Map<String, dynamic>>[];
-
-    for (int i = 0; i < items.length; i++) {
-      final item = items[i];
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-
-      products.add({
-        'id': '${timestamp}_template_$i',
-        'name': item.name,
-        'sku': 'ITEM${(timestamp + i).toString().substring(8)}',
-        'category': item.category,
-        'unit': item.unit,
-        'rate': item.rate,
-        'barcode': '',
-        'description': item.description ?? '',
-        'createdAt': DateTime.now().toIso8601String(),
-        'updatedAt': DateTime.now().toIso8601String(),
-      });
-    }
-
-    return products;
   }
 
   // Get statistics about a selection

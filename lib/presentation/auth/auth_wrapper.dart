@@ -8,7 +8,7 @@ import '../../../services/onboarding_service.dart';
 import '../../utils/csv_path_utils.dart' show getCsvPath;
 import 'login_screen.dart';
 import '../home_dashboard/home_dashboard.dart';
-import '../onboarding/items_setup_onboarding_screen.dart';
+import '../catalogue/business_type_selection_screen.dart';
 
 /// WHY THIS VERSION?
 /// ------------------------------------------------------------
@@ -113,9 +113,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
             debugPrint('AuthWrapper: init OK, shouldShowOnboarding=${data.shouldShowOnboarding}, csvPath=${data.csvPath}');
 
             if (data.shouldShowOnboarding) {
-              return const ItemsSetupOnboardingScreen(
-                isFirstTimeSetup: true,
-              );
+              return const BusinessTypeSelectionScreen();
             }
 
             return HomeDashboard(csvPath: data.csvPath);

@@ -1,6 +1,6 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
-import 'package:invoiceflow/services/subscription_service.dart';
 import 'package:invoiceflow/models/ocr_scan_model.dart';
 
 class PaymentService {
@@ -21,10 +21,11 @@ class PaymentService {
   static const int MONTHLY_PRICE_PAISE = MONTHLY_PRICE * 100; // 29900 paise
   static const int YEARLY_PRICE_PAISE = YEARLY_PRICE * 100; // 299900 paise
 
-  // Razorpay API keys (these should be in environment variables in production)
-  // For now, using test keys - REPLACE WITH YOUR KEYS
-  static const String _razorpayKeyId = 'rzp_test_1234567890'; // REPLACE THIS
-  static const String _razorpayKeySecret = 'YOUR_SECRET_KEY'; // REPLACE THIS
+  // Injected at build time via --dart-define=RAZORPAY_KEY_ID=<key>
+  // Dev:  scripts/build.sh dev   (uses rzp_test_* key)
+  // Prod: scripts/build.sh prod  (reads RAZORPAY_LIVE_KEY_ID from env)
+  // The key secret never lives in the client — verification is server-side.
+  static const String _razorpayKeyId = String.fromEnvironment('RAZORPAY_KEY_ID');
 
   /// Initialize Razorpay
   Future<void> initializeRazorpay({
@@ -52,7 +53,15 @@ class PaymentService {
     _isInitialized = true;
   }
 
-  /// Create and open subscription payment
+  /// Create a server-side Razorpay order then open checkout.
+  ///
+  /// Step 1 — calls [createRazorpayOrder] Cloud Function, which POSTs to
+  /// Razorpay's Orders API using the key secret stored in Secret Manager.
+  /// Returns an orderId from Razorpay.
+  ///
+  /// Step 2 — opens Razorpay checkout with `order_id` in the options map.
+  /// With an orderId present the SDK returns non-null orderId + signature
+  /// on success, enabling HMAC-SHA256 verification in [verifyRazorpayPayment].
   Future<void> createSubscriptionOrder({
     required String plan, // 'monthly' or 'yearly'
     required String userEmail,
@@ -68,8 +77,27 @@ class PaymentService {
         ? 'InvoiceFlow Premium - Yearly'
         : 'InvoiceFlow Premium - Monthly';
 
-    var options = {
+    // Step 1: create order server-side — required for non-null orderId + signature
+    final String orderId;
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('createRazorpayOrder')
+          .call<Map<String, dynamic>>({
+        'amount': amount,
+        'currency': 'INR',
+        'planType': plan,
+      });
+      orderId = result.data['orderId'] as String;
+    } on FirebaseFunctionsException catch (e) {
+      throw PaymentException('Failed to create order: ${e.message}');
+    } catch (e) {
+      throw PaymentException('Failed to create order: $e');
+    }
+
+    // Step 2: open checkout with orderId so SDK populates orderId + signature
+    final options = {
       'key': _razorpayKeyId,
+      'order_id': orderId,
       'amount': amount,
       'name': 'InvoiceFlow',
       'description': description,
@@ -82,7 +110,7 @@ class PaymentService {
         'user_name': userName,
       },
       'theme': {
-        'color': '#2196F3', // Blue theme
+        'color': '#2196F3',
       },
       'currency': 'INR',
       'send_sms_hash': true,
@@ -124,23 +152,33 @@ class PaymentService {
     }
   }
 
-  /// Verify payment and upgrade subscription
+  /// Verify payment signature server-side and upgrade subscription.
+  ///
+  /// Calls the [verifyRazorpayPayment] Cloud Function which:
+  ///  1. Verifies HMAC-SHA256(orderId|paymentId) against the signature using
+  ///     RAZORPAY_KEY_SECRET stored in Secret Manager — the secret never
+  ///     touches the client.
+  ///  2. Writes the subscription upgrade to Firestore via Admin SDK on success.
+  ///
+  /// Throws [PaymentException] on signature mismatch or any server error.
   Future<void> verifyAndUpgradeSubscription({
     required String paymentId,
+    required String orderId,
+    required String signature,
     required String plan,
   }) async {
     try {
-      // In production, you should verify the payment signature with your backend
-      // For now, we'll trust the client-side success callback
-      // TODO: Add server-side verification
-
-      // Upgrade subscription
-      await SubscriptionService.instance.upgradeToPremium(
-        paymentId,
-        plan: plan,
-      );
-
-      debugPrint('Subscription upgraded successfully');
+      await FirebaseFunctions.instance
+          .httpsCallable('verifyRazorpayPayment')
+          .call<Map<String, dynamic>>({
+        'paymentId': paymentId,
+        'orderId': orderId,
+        'signature': signature,
+        'plan': plan,
+      });
+      debugPrint('Subscription upgraded: paymentId=$paymentId plan=$plan');
+    } on FirebaseFunctionsException catch (e) {
+      throw PaymentException('Payment verification failed: ${e.message}');
     } catch (e) {
       throw PaymentException('Failed to verify payment: $e');
     }
@@ -153,6 +191,8 @@ class PaymentService {
   ) async {
     await verifyAndUpgradeSubscription(
       paymentId: response.paymentId ?? '',
+      orderId: response.orderId ?? '',
+      signature: response.signature ?? '',
       plan: plan,
     );
   }

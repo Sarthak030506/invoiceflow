@@ -5,8 +5,10 @@ import 'package:sizer/sizer.dart';
 import '../../core/app_export.dart';
 import '../../models/customer_model.dart';
 import '../../models/invoice_model.dart';
+import '../../models/business_profile_model.dart';
 import '../../services/customer_service.dart';
 import '../../services/analytics_service.dart';
+import '../../services/business_profile_service.dart';
 import '../../widgets/app_loading_indicator.dart';
 import './widgets/customer_invoice_item.dart';
 import './widgets/whatsapp_due_reminder_button.dart';
@@ -32,11 +34,15 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
   bool _isLoading = true;
   double _totalOutstanding = 0.0;
   Map<String, dynamic>? _customerAnalytics;
-  
+  BusinessProfileModel? _businessProfile;
+
   @override
   void initState() {
     super.initState();
     _loadCustomerData();
+    BusinessProfileService.instance.getProfile().then((p) {
+      if (mounted) setState(() => _businessProfile = p);
+    });
   }
   
   Future<void> _loadCustomerData() async {
@@ -310,7 +316,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                         return CustomerInvoiceItem(
                           invoice: invoice,
                           onTap: () => _onInvoiceTap(invoice),
-                          shopName: 'Your Shop Name', // Replace with actual shop name from settings
+                          shopName: _businessProfile?.shopName ?? 'Your Shop',
                         );
                       },
                     ),

@@ -14,7 +14,8 @@ class ReturnModel {
   final String? notes;
   final double totalReturnValue;
   final double refundAmount;
-  final bool isApplied; // Whether the return has been applied to customer's account
+  final bool isApplied; // Whether the return has been fully applied to customer's account
+  final double amountApplied; // How much of refundAmount has been applied so far
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -35,6 +36,7 @@ class ReturnModel {
     required this.totalReturnValue,
     required this.refundAmount,
     this.isApplied = false,
+    this.amountApplied = 0.0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -57,6 +59,7 @@ class ReturnModel {
       'totalReturnValue': totalReturnValue,
       'refundAmount': refundAmount,
       'isApplied': isApplied ? 1 : 0,
+      'amountApplied': amountApplied,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -82,6 +85,7 @@ class ReturnModel {
       totalReturnValue: map['totalReturnValue'],
       refundAmount: map['refundAmount'],
       isApplied: (map['isApplied'] ?? 0) == 1,
+      amountApplied: (map['amountApplied'] ?? 0.0).toDouble(),
       createdAt: DateTime.parse(map['createdAt']),
       updatedAt: DateTime.parse(map['updatedAt']),
     );
@@ -105,6 +109,7 @@ class ReturnModel {
       'totalReturnValue': totalReturnValue,
       'refundAmount': refundAmount,
       'isApplied': isApplied,
+      'amountApplied': amountApplied,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -130,6 +135,7 @@ class ReturnModel {
       totalReturnValue: json['totalReturnValue'].toDouble(),
       refundAmount: json['refundAmount'].toDouble(),
       isApplied: json['isApplied'] ?? false,
+      amountApplied: (json['amountApplied'] ?? 0.0).toDouble(),
       createdAt: DateTime.parse(json['createdAt']),
       updatedAt: DateTime.parse(json['updatedAt']),
     );
@@ -152,6 +158,7 @@ class ReturnModel {
     double? totalReturnValue,
     double? refundAmount,
     bool? isApplied,
+    double? amountApplied,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -172,6 +179,7 @@ class ReturnModel {
       totalReturnValue: totalReturnValue ?? this.totalReturnValue,
       refundAmount: refundAmount ?? this.refundAmount,
       isApplied: isApplied ?? this.isApplied,
+      amountApplied: amountApplied ?? this.amountApplied,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

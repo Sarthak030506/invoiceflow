@@ -327,9 +327,12 @@ class SubscriptionScreen extends StatelessWidget {
                   Icon(Icons.close, color: Colors.grey[400], size: 20),
                 if (freeDetail != null) ...[
                   const SizedBox(width: 4),
-                  Text(
-                    freeDetail,
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  Flexible(
+                    child: Text(
+                      freeDetail,
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ],
@@ -344,9 +347,12 @@ class SubscriptionScreen extends StatelessWidget {
                   Icon(Icons.close, color: Colors.grey[400], size: 20),
                 if (premiumDetail != null) ...[
                   const SizedBox(width: 4),
-                  Text(
-                    premiumDetail,
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  Flexible(
+                    child: Text(
+                      premiumDetail,
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ],

@@ -9,6 +9,8 @@ enum PaymentStatus {
 enum InvoiceStatus {
   draft,
   posted,
+  partial,
+  paid,
   cancelled,
 }
 
@@ -91,12 +93,12 @@ class InvoiceModel {
   bool get isOverpaid => amountPaid > adjustedTotal;
 
   // Check if invoice is fully paid
-  bool get isFullyPaid => (adjustedTotal - amountPaid).abs() < 0.01; // Using small epsilon for floating point comparison
+  bool get isFullyPaid => (adjustedTotal - amountPaid).abs() <= 0.01; // Using small epsilon for floating point comparison
 
   // Get payment status display text
   String get paymentStatusDisplay {
     final remaining = adjustedTotal - amountPaid;
-    if (remaining.abs() < 0.01) {
+    if (remaining.abs() <= 0.01) {
       return "Paid in Full";
     } else if (remaining > 0) {
       return "Balance Due: ₹${remaining.toStringAsFixed(2)}";
@@ -108,7 +110,7 @@ class InvoiceModel {
   // Get payment status for UI styling
   PaymentStatus get paymentStatus {
     final remaining = adjustedTotal - amountPaid;
-    if (remaining.abs() < 0.01) {
+    if (remaining.abs() <= 0.01) {
       return PaymentStatus.paidInFull;
     } else if (remaining > 0) {
       return PaymentStatus.balanceDue;
@@ -176,7 +178,7 @@ class InvoiceModel {
           ? DateTime.tryParse(json['date']) ?? DateTime.now()
           : json['date'] ?? DateTime.now(),
       revenue: (json['revenue'] ?? json['total_amount'] ?? 0.0).toDouble(),
-      status: json['status'] ?? 'pending',
+      status: json['status'] ?? 'posted',
       items: (json['items'] as List?)
               ?.map((item) => InvoiceItem.fromJson(item))
               .toList() ??
@@ -266,16 +268,14 @@ class InvoiceModel {
   }
 
   static String _parseStatus(dynamic statusValue) {
-    if (statusValue == null) return 'pending';
+    if (statusValue == null) return 'posted';
 
     final status = statusValue.toString().toLowerCase();
-    const validStatuses = ['paid', 'pending', 'overdue', 'draft'];
+    const canonical = {'draft', 'posted', 'partial', 'paid', 'cancelled'};
 
-    if (validStatuses.contains(status)) {
-      return status;
-    }
-
-    return 'pending';
+    if (canonical.contains(status)) return status;
+    if (status == 'pending' || status == 'overdue') return 'posted';
+    return 'posted';
   }
 
   Map<String, dynamic> toJson() {
@@ -360,16 +360,12 @@ class InvoiceModel {
   // Helper method to get status color
   String getStatusColor() {
     switch (status.toLowerCase()) {
-      case 'paid':
-        return '#4CAF50';
-      case 'pending':
-        return '#FF9800';
-      case 'overdue':
-        return '#F44336';
-      case 'draft':
-        return '#9E9E9E';
-      default:
-        return '#FF9800';
+      case 'paid':      return '#4CAF50';
+      case 'partial':   return '#2196F3';
+      case 'posted':    return '#FF9800';
+      case 'draft':     return '#9E9E9E';
+      case 'cancelled': return '#F44336';
+      default:          return '#FF9800';
     }
   }
 }

@@ -1,9 +1,8 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:invoiceflow/models/ocr_scan_model.dart';
 import 'package:invoiceflow/services/subscription_service.dart';
 import 'package:invoiceflow/services/ai/fuzzy_matcher_service.dart';
@@ -18,12 +17,6 @@ class OCRService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final SubscriptionService _subscriptionService = SubscriptionService.instance;
   final FuzzyMatcherService _fuzzyMatcher = FuzzyMatcherService.instance;
-
-  // Firebase Function URL (UPDATE THIS with your deployed function URL)
-  // For local testing: http://127.0.0.1:5001/YOUR_PROJECT_ID/us-central1/processOCR
-  // For production: https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net/processOCR
-  static const String _functionUrl =
-      'https://us-central1-invoiceflow-deafa.cloudfunctions.net/processOCR';
 
   String? get _currentUserId => _auth.currentUser?.uid;
 
@@ -147,44 +140,28 @@ class OCRService {
     }
   }
 
-  /// Call Firebase Function to process OCR with Gemini Vision API
+  /// Call Firebase Function to process OCR with Gemini Vision API.
+  /// Uses httpsCallable so the SDK auto-attaches Auth + App Check tokens.
   Future<Map<String, dynamic>> _callOCRFunction(
     String imageUrl,
     String scanId,
   ) async {
     try {
-      final response = await http.post(
-        Uri.parse(_functionUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          // Add auth token if using callable functions
-          if (_auth.currentUser != null)
-            'Authorization': 'Bearer ${await _auth.currentUser!.getIdToken()}',
-        },
-        body: jsonEncode({
-          'imageUrl': imageUrl,
-          'scanId': scanId,
-        }),
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          throw OCRException('OCR processing timed out');
-        },
+      final callable = FirebaseFunctions.instance.httpsCallable(
+        'processOCR',
+        options: HttpsCallableOptions(timeout: const Duration(seconds: 30)),
       );
-
-      if (response.statusCode != 200) {
-        throw OCRException(
-          'OCR processing failed: ${response.statusCode} - ${response.body}',
-        );
+      final result = await callable.call({
+        'imageUrl': imageUrl,
+        'scanId': scanId,
+      });
+      final data = Map<String, dynamic>.from(result.data as Map);
+      if (data['success'] != true) {
+        throw OCRException('OCR processing failed: ${data['error'] ?? 'Unknown error'}');
       }
-
-      final result = jsonDecode(response.body);
-
-      if (result['success'] != true) {
-        throw OCRException('OCR processing failed: ${result['error']}');
-      }
-
-      return result['data'] as Map<String, dynamic>;
+      return Map<String, dynamic>.from(data['data'] as Map);
+    } on FirebaseFunctionsException catch (e) {
+      throw OCRException('OCR processing failed: ${e.message}');
     } catch (e) {
       if (e is OCRException) rethrow;
       throw OCRException('Failed to call OCR function: $e');

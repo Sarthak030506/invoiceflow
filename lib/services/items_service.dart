@@ -1,7 +1,7 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../models/catalog_item.dart';
-
 /// ItemsService manages the product catalog (items that can be sold)
 /// This is separate from inventory which tracks stock levels
 class ItemsService {
@@ -111,8 +111,10 @@ class ItemsService {
     for (final itemMap in itemMaps) {
       final map = itemMap as Map<String, dynamic>;
       final id = map['id'] as String;
+      final name = map['name'] as String;
       final data = {
-        'name': map['name'],
+        'name': name,
+        'nameNormalized': ProductCatalogItem.normalize(name),
         'sku': map['sku'],
         'category': map['category'],
         'unit': map['unit'],
@@ -128,18 +130,94 @@ class ItemsService {
     await batch.commit();
   }
 
-  // Search items by name
+  // Search items by name (in-memory contains-match across name/sku/category)
   Future<List<ProductCatalogItem>> searchItems(String query) async {
-    final uid = _requireUid();
-    // Note: Firestore doesn't have full-text search, so we'll get all items
-    // and filter in-memory for now. For production, consider using Algolia.
     final items = await getAllItems();
     final lowerQuery = query.toLowerCase();
-    return items.where((item) => 
+    return items.where((item) =>
       item.name.toLowerCase().contains(lowerQuery) ||
       item.sku.toLowerCase().contains(lowerQuery) ||
       item.category.toLowerCase().contains(lowerQuery)
     ).toList();
+  }
+
+  // Find a catalogue item by exact normalized name (case-insensitive dedup key)
+  Future<ProductCatalogItem?> findByNormalizedName(String name) async {
+    final uid = _requireUid();
+    final normalized = ProductCatalogItem.normalize(name);
+    final q = await _itemsCol(uid)
+        .where('nameNormalized', isEqualTo: normalized)
+        .limit(1)
+        .get();
+    if (q.docs.isEmpty) return null;
+    final d = q.docs.first;
+    return _itemFromFirestore(d.data()..['id'] = d.id);
+  }
+
+  // Server-side prefix search on nameNormalized for autocomplete
+  Future<List<ProductCatalogItem>> searchByPrefix(String prefix,
+      {int limit = 20}) async {
+    final uid = _requireUid();
+    final p = ProductCatalogItem.normalize(prefix);
+    if (p.isEmpty) return [];
+    final q = await _itemsCol(uid)
+        .where('nameNormalized', isGreaterThanOrEqualTo: p)
+        .where('nameNormalized', isLessThan: '$p\uf8ff')
+        .limit(limit)
+        .get();
+    return q.docs
+        .map((d) => _itemFromFirestore(d.data()..['id'] = d.id))
+        .toList();
+  }
+
+  // Find existing item by normalized name OR create a new one with auto-id and
+  // a short-uuid SKU. Best-effort dedup (small race window if two devices add
+  // the same name simultaneously — accepted trade-off, dedup utility can sweep).
+  Future<ProductCatalogItem> findOrCreateByName({
+    required String name,
+    required double rate,
+    String category = 'General',
+    String unit = 'pcs',
+    String? barcode,
+    String? description,
+  }) async {
+    final existing = await findByNormalizedName(name);
+    if (existing != null) return existing;
+
+    final uid = _requireUid();
+    final docRef = _itemsCol(uid).doc();
+    final sku = await _generateUniqueSku();
+    final now = DateTime.now();
+    final item = ProductCatalogItem(
+      id: docRef.id,
+      name: name.trim(),
+      sku: sku,
+      category: category,
+      unit: unit,
+      rate: rate,
+      barcode: barcode,
+      description: description,
+      createdAt: now,
+      updatedAt: now,
+    );
+    await docRef.set(_itemToFirestore(item));
+    return item;
+  }
+
+  // Generate a short-uuid SKU and verify uniqueness within tenant via lookup.
+  // 4 random bytes = 8 hex chars = 16M values per tenant — collision astronomical.
+  Future<String> _generateUniqueSku() async {
+    final rng = Random.secure();
+    for (int attempt = 0; attempt < 5; attempt++) {
+      final bytes = List<int>.generate(4, (_) => rng.nextInt(256));
+      final hex = bytes
+          .map((b) => b.toRadixString(16).padLeft(2, '0'))
+          .join()
+          .toUpperCase();
+      final sku = 'SKU-$hex';
+      if (await getItemBySku(sku) == null) return sku;
+    }
+    throw StateError('Failed to generate unique SKU after 5 attempts');
   }
 
   // Get unique categories
@@ -166,6 +244,7 @@ class ItemsService {
   // Converters
   Map<String, dynamic> _itemToFirestore(ProductCatalogItem item) => {
     'name': item.name,
+    'nameNormalized': item.nameNormalized,
     'sku': item.sku,
     'category': item.category,
     'unit': item.unit,
@@ -215,6 +294,11 @@ class ProductCatalogItem {
     required this.createdAt,
     required this.updatedAt,
   });
+
+  String get nameNormalized => normalize(name);
+
+  static String normalize(String name) =>
+      name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
   ProductCatalogItem copyWith({
     String? id,

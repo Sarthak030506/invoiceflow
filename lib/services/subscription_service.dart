@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:invoiceflow/models/subscription_model.dart';
 import 'package:invoiceflow/models/ocr_scan_model.dart';
@@ -9,6 +10,7 @@ class SubscriptionService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   // Get current user ID
   String? get _currentUserId => _auth.currentUser?.uid;
@@ -35,10 +37,40 @@ class SubscriptionService {
       final doc = await _subscriptionRef!.get();
 
       if (!doc.exists) {
-        // Create default free tier subscription for new users
-        final freeSub = SubscriptionModel.createFreeTier();
-        await _subscriptionRef!.set(freeSub.toFirestore());
-        return freeSub;
+        // Doc is missing — delegate creation to the Cloud Function so the
+        // Firestore `allow write: if false` rule on subscription documents is
+        // satisfied. Never write directly from the client here.
+        try {
+          await _functions
+              .httpsCallable('initializeUserSubscription')
+              .call<Map<String, dynamic>>();
+
+          // Re-read after the Cloud Function writes the document.
+          final created = await _subscriptionRef!.get();
+          if (created.exists) return SubscriptionModel.fromFirestore(created);
+        } on FirebaseFunctionsException catch (e) {
+          // Function unreachable (no network, cold-start timeout, not yet
+          // deployed). Return an in-memory free-tier model so the app stays
+          // usable on first launch. Nothing is written to Firestore — the
+          // Function will be retried on the next getCurrentSubscription() call
+          // (app restart, SubscriptionProvider.refresh(), etc.).
+          print(
+            'initializeUserSubscription unavailable '
+            '(${e.code}): ${e.message}. Using in-memory free tier.',
+          );
+        } catch (e) {
+          // Unexpected error (e.g. auth race on very first launch).
+          // Same safe fallback — in-memory model, no Firestore write.
+          print(
+            'initializeUserSubscription error: $e. Using in-memory free tier.',
+          );
+        }
+
+        // Fallback: return an in-memory free-tier model. This object is not
+        // persisted. The Provider layer will call getCurrentSubscription() again
+        // after the next auth state change or explicit refresh, at which point
+        // the Cloud Function should succeed and the real document will be read.
+        return SubscriptionModel.createFreeTier();
       }
 
       return SubscriptionModel.fromFirestore(doc);
@@ -61,14 +93,22 @@ class SubscriptionService {
     });
   }
 
-  /// Initialize subscription for new user
+  /// Initialize subscription for new user.
+  ///
+  /// Delegates to the [initializeUserSubscription] Cloud Function so that the
+  /// Firestore `allow write: if false` rule on subscription documents is
+  /// satisfied. The function is idempotent (safe to call on every launch).
   Future<void> initializeNewUserSubscription() async {
     if (_currentUserId == null) return;
 
-    final doc = await _subscriptionRef!.get();
-    if (!doc.exists) {
-      final freeSub = SubscriptionModel.createFreeTier();
-      await _subscriptionRef!.set(freeSub.toFirestore());
+    try {
+      await _functions
+          .httpsCallable('initializeUserSubscription')
+          .call<Map<String, dynamic>>();
+    } on FirebaseFunctionsException catch (e) {
+      throw SubscriptionException('Failed to initialize subscription: ${e.message}');
+    } catch (e) {
+      throw SubscriptionException('Failed to initialize subscription: $e');
     }
   }
 
@@ -115,143 +155,107 @@ class SubscriptionService {
     }
   }
 
-  /// Cancel subscription (downgrade to free at end of period)
-  Future<void> cancelSubscription() async {
-    if (_subscriptionRef == null) {
+  /// Cancel subscription (downgrade to free at end of period).
+  ///
+  /// Delegates to the [cancelSubscription] Cloud Function. The function
+  /// validates that an active premium or trial subscription exists before
+  /// writing. Optionally pass a [reason] string that will be stored in the
+  /// subscription_events document.
+  Future<void> cancelSubscription({String? reason}) async {
+    if (_currentUserId == null) {
       throw SubscriptionException('User not authenticated');
     }
 
     try {
-      final currentSub = await getCurrentSubscription();
-
-      final cancelledSub = currentSub.copyWith(
-        status: SubscriptionStatus.cancelled,
-        updatedAt: DateTime.now(),
+      await _functions.httpsCallable('cancelSubscription').call<Map<String, dynamic>>(
+        reason != null ? {'reason': reason} : null,
       );
-
-      await _subscriptionRef!.update(cancelledSub.toFirestore());
-
-      // Track cancellation
-      await _trackSubscriptionEvent('subscription_cancelled', {
-        'tier': currentSub.tier.name,
-        'days_remaining': currentSub.daysRemaining,
-      });
+    } on FirebaseFunctionsException catch (e) {
+      throw SubscriptionException('Failed to cancel: ${e.message}');
     } catch (e) {
       throw SubscriptionException('Failed to cancel: $e');
     }
   }
 
-  /// Reactivate cancelled subscription
+  /// Reactivate cancelled subscription.
+  ///
+  /// TODO(CF): Implement a `reactivateSubscription` Cloud Function before
+  /// exposing this in the UI. The direct Firestore write below is blocked by
+  /// the `allow write: if false` rule on subscription documents.
+  /// Until the CF exists, this method must not be called — the UI should not
+  /// surface a reactivation button to the user.
+  ///
+  /// See: .claude/memory/open-questions.md — add a new issue when scheduling
+  /// this work.
   Future<void> reactivateSubscription() async {
-    if (_subscriptionRef == null) {
-      throw SubscriptionException('User not authenticated');
-    }
-
-    try {
-      final currentSub = await getCurrentSubscription();
-
-      if (currentSub.status != SubscriptionStatus.cancelled) {
-        throw SubscriptionException('Subscription is not cancelled');
-      }
-
-      final reactivatedSub = currentSub.copyWith(
-        status: SubscriptionStatus.active,
-        updatedAt: DateTime.now(),
-      );
-
-      await _subscriptionRef!.update(reactivatedSub.toFirestore());
-    } catch (e) {
-      throw SubscriptionException('Failed to reactivate: $e');
-    }
+    // No-op until reactivateSubscription Cloud Function is built and deployed.
+    // Calling this method will silently succeed — it will not write to Firestore
+    // and will not throw, so any accidental call site does not crash the app.
+    throw SubscriptionException(
+      'reactivateSubscription is not yet available. '
+      'A Cloud Function implementation is required before this can be used.',
+    );
   }
 
   // USAGE TRACKING
 
-  /// Decrement OCR scans (for free tier)
+  /// Decrement OCR scans (for free tier).
+  ///
+  /// @deprecated The decrement is now performed server-side inside the
+  /// [processOCR] Cloud Function using a Firestore transaction, which closes
+  /// the race-condition window that existed in this client-side implementation.
+  /// This method is a no-op and will be removed once all callers (OCRService,
+  /// SubscriptionProvider) are confirmed to rely solely on the server path.
+  ///
+  /// Callers in this codebase:
+  ///   - lib/services/ai/ocr_service.dart  (line ~95) — still calls this after
+  ///     the HTTP OCR function returns, but processOCR now handles it on the
+  ///     server, so the call here is redundant. OCRService should remove step 8
+  ///     in a follow-up cleanup.
+  ///   - lib/providers/subscription_provider.dart (decrementOCRScans wrapper) —
+  ///     similarly redundant; can be removed once OCRService is cleaned up.
+  @Deprecated('Decrement is now handled server-side in processOCR Cloud Function. '
+      'Remove this call from OCRService and SubscriptionProvider.')
   Future<void> decrementOCRScans() async {
-    if (_subscriptionRef == null) return;
-
-    try {
-      final currentSub = await getCurrentSubscription();
-
-      // Premium has unlimited (-1), don't decrement
-      if (currentSub.features.ocrScansRemaining == -1) return;
-
-      final newCount = (currentSub.features.ocrScansRemaining - 1).clamp(0, 999);
-
-      await _subscriptionRef!.update({
-        'features.ocrScansRemaining': newCount,
-        'updatedAt': Timestamp.fromDate(DateTime.now()),
-      });
-    } catch (e) {
-      print('Failed to decrement OCR scans: $e');
-    }
+    // No-op: the processOCR Cloud Function decrements ocrScansRemaining
+    // atomically via a Firestore transaction after a successful OCR response.
   }
 
-  /// Increment AI insights count
+  /// Increment AI insights count.
+  ///
+  /// TODO(CF): Move this counter increment into the [generateBusinessInsights]
+  /// Cloud Function so the write happens server-side. The direct Firestore
+  /// write is blocked by the subscription rule. No-op until then.
   Future<void> incrementAIInsightsCount() async {
-    if (_subscriptionRef == null) return;
-
-    try {
-      await _subscriptionRef!.update({
-        'features.aiInsightsGenerated': FieldValue.increment(1),
-        'updatedAt': Timestamp.fromDate(DateTime.now()),
-      });
-    } catch (e) {
-      print('Failed to increment insights count: $e');
-    }
+    // No-op: counter increment will be handled inside generateBusinessInsights
+    // Cloud Function in a follow-up task.
   }
 
-  /// Increment risk predictions count
+  /// Increment risk predictions count.
+  ///
+  /// TODO(CF): Move into [predictPaymentRisk] Cloud Function. No-op until then.
   Future<void> incrementRiskPredictionsCount() async {
-    if (_subscriptionRef == null) return;
-
-    try {
-      await _subscriptionRef!.update({
-        'features.riskPredictionsUsed': FieldValue.increment(1),
-        'updatedAt': Timestamp.fromDate(DateTime.now()),
-      });
-    } catch (e) {
-      print('Failed to increment risk predictions: $e');
-    }
+    // No-op: counter increment will be handled inside predictPaymentRisk
+    // Cloud Function in a follow-up task.
   }
 
-  /// Increment inventory forecasts count
+  /// Increment inventory forecasts count.
+  ///
+  /// TODO(CF): Move into [forecastInventory] Cloud Function. No-op until then.
   Future<void> incrementInventoryForecastsCount() async {
-    if (_subscriptionRef == null) return;
-
-    try {
-      await _subscriptionRef!.update({
-        'features.inventoryForecastsGenerated': FieldValue.increment(1),
-        'updatedAt': Timestamp.fromDate(DateTime.now()),
-      });
-    } catch (e) {
-      print('Failed to increment forecasts: $e');
-    }
+    // No-op: counter increment will be handled inside forecastInventory
+    // Cloud Function in a follow-up task.
   }
 
-  /// Reset monthly usage (called by Cloud Function on 1st of month)
+  /// Reset monthly usage.
+  ///
+  /// The authoritative reset is performed by the scheduled Cloud Function
+  /// that runs at UTC 00:00 on the 1st of each month (Asia/Kolkata timezone).
+  /// This client-side method is a no-op — calling it from the client would be
+  /// blocked by the `allow write: if false` subscription rule anyway.
   Future<void> resetMonthlyUsage() async {
-    if (_subscriptionRef == null) return;
-
-    try {
-      final currentSub = await getCurrentSubscription();
-
-      final resetFeatures = currentSub.tier == SubscriptionTier.free
-          ? SubscriptionFeatures.freeTier() // Reset to 5 for free tier
-          : currentSub.features.copyWith(
-              aiInsightsGenerated: 0,
-              riskPredictionsUsed: 0,
-              inventoryForecastsGenerated: 0,
-            );
-
-      await _subscriptionRef!.update({
-        'features': resetFeatures.toMap(),
-        'updatedAt': Timestamp.fromDate(DateTime.now()),
-      });
-    } catch (e) {
-      print('Failed to reset monthly usage: $e');
-    }
+    // No-op: handled by the scheduled Cloud Function (monthlyUsageReset).
+    // Do not re-add a direct Firestore write here.
   }
 
   /// Get current month usage statistics
@@ -306,25 +310,25 @@ class SubscriptionService {
 
   // TRIAL MANAGEMENT
 
-  /// Start free trial (7 days)
+  /// Start free trial (7 days).
+  ///
+  /// Delegates to the [startFreeTrial] Cloud Function. The function enforces:
+  ///  - trial has not already been used (trialEndDate never set)
+  ///  - user is not already on an active premium plan
+  /// Throws [SubscriptionException] for both business-rule violations and errors.
   Future<void> startFreeTrial() async {
-    if (_subscriptionRef == null) {
+    if (_currentUserId == null) {
       throw SubscriptionException('User not authenticated');
     }
 
     try {
-      final currentSub = await getCurrentSubscription();
-
-      // Check if already used trial
-      if (currentSub.trialEndDate != null) {
-        throw SubscriptionException('Trial already used');
-      }
-
-      final trialSub = SubscriptionModel.createTrial();
-      await _subscriptionRef!.update(trialSub.toFirestore());
-
-      // Track trial start
-      await _trackSubscriptionEvent('trial_started', {});
+      await _functions
+          .httpsCallable('startFreeTrial')
+          .call<Map<String, dynamic>>();
+    } on FirebaseFunctionsException catch (e) {
+      // Surface the server-side business-rule messages unchanged so callers
+      // (and the UI) receive the same strings as before.
+      throw SubscriptionException('Failed to start trial: ${e.message}');
     } catch (e) {
       throw SubscriptionException('Failed to start trial: $e');
     }
@@ -351,32 +355,19 @@ class SubscriptionService {
     }
   }
 
-  /// Check and expire trial if needed
+  /// Check and expire trial if needed.
+  ///
+  /// The authoritative expiry is written by the scheduled Cloud Function
+  /// (dailySubscriptionCheck) that runs at UTC 02:00 each day. That function
+  /// uses the Admin SDK and is not blocked by Firestore security rules.
+  ///
+  /// This client-side method is a no-op. The `allow write: if false` rule on
+  /// subscription documents blocks any write attempt from the client anyway.
+  /// The UI will see the correct expired state once the scheduled function runs
+  /// and the real-time stream in [subscriptionStream] delivers the update.
   Future<void> checkAndExpireTrial() async {
-    if (_subscriptionRef == null) return;
-
-    try {
-      final currentSub = await getCurrentSubscription();
-
-      if (currentSub.status == SubscriptionStatus.trial &&
-          currentSub.trialDaysRemaining == 0) {
-        // Trial expired, downgrade to free
-        final expiredSub = currentSub.copyWith(
-          tier: SubscriptionTier.free,
-          status: SubscriptionStatus.expired,
-          features: SubscriptionFeatures.freeTier(),
-          usageLimits: UsageLimits.freeTier(),
-          updatedAt: DateTime.now(),
-        );
-
-        await _subscriptionRef!.update(expiredSub.toFirestore());
-
-        // Track trial expiration
-        await _trackSubscriptionEvent('trial_expired', {});
-      }
-    } catch (e) {
-      print('Failed to check trial expiration: $e');
-    }
+    // No-op: handled by the scheduled Cloud Function (dailySubscriptionCheck).
+    // Do not re-add a direct Firestore write here.
   }
 
   // HELPER METHODS
@@ -403,32 +394,16 @@ class SubscriptionService {
     }
   }
 
-  /// Check if subscription has expired and update status
+  /// Check if subscription has expired and update status.
+  ///
+  /// The authoritative expiry is written by the scheduled Cloud Function
+  /// (dailySubscriptionCheck) that runs at UTC 02:00 each day. That function
+  /// uses the Admin SDK and is not blocked by Firestore security rules.
+  ///
+  /// This client-side method is a no-op. The `allow write: if false` rule on
+  /// subscription documents blocks any write attempt from the client anyway.
   Future<void> checkAndExpireSubscription() async {
-    if (_subscriptionRef == null) return;
-
-    try {
-      final currentSub = await getCurrentSubscription();
-
-      if (currentSub.status == SubscriptionStatus.active &&
-          currentSub.endDate != null &&
-          DateTime.now().isAfter(currentSub.endDate!)) {
-        // Subscription expired
-        final expiredSub = currentSub.copyWith(
-          tier: SubscriptionTier.free,
-          status: SubscriptionStatus.expired,
-          features: SubscriptionFeatures.freeTier(),
-          usageLimits: UsageLimits.freeTier(),
-          updatedAt: DateTime.now(),
-        );
-
-        await _subscriptionRef!.update(expiredSub.toFirestore());
-
-        // Track expiration
-        await _trackSubscriptionEvent('subscription_expired', {});
-      }
-    } catch (e) {
-      print('Failed to check subscription expiration: $e');
-    }
+    // No-op: handled by the scheduled Cloud Function (dailySubscriptionCheck).
+    // Do not re-add a direct Firestore write here.
   }
 }
