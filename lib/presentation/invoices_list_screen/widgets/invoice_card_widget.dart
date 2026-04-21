@@ -30,7 +30,11 @@ class InvoiceCardWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final bool isCancelled = invoice.status.toLowerCase() == 'cancelled';
+
+    return Opacity(
+      opacity: isCancelled ? 0.6 : 1.0,
+      child: Container(
       margin: EdgeInsets.only(bottom: 2.h),
       child: Dismissible(
         key: Key(invoice.id as String),
@@ -62,7 +66,9 @@ class InvoiceCardWidget extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(24.0),
               side: BorderSide(
-                color: invoice.invoiceType == 'sales' ? Colors.blue : Colors.green,
+                color: isCancelled
+                    ? Colors.grey.shade400
+                    : (invoice.invoiceType == 'sales' ? Colors.blue : Colors.green),
                 width: 2,
               ),
             ),
@@ -233,7 +239,8 @@ class InvoiceCardWidget extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ),     // Container (Opacity child)
+    );     // Opacity
   }
 
   Widget _buildStatusBadge(BuildContext context, String status) {
@@ -259,10 +266,14 @@ class InvoiceCardWidget extends StatelessWidget {
     switch (status.toLowerCase()) {
       case 'paid':
         return AppTheme.getSuccessColor(false);
-      case 'pending':
+      case 'partial':
+        return Colors.blue.shade600;
+      case 'posted':
         return AppTheme.getWarningColor(false);
-      case 'overdue':
-        return AppTheme.errorLight;
+      case 'draft':
+        return AppTheme.textSecondaryLight;
+      case 'cancelled':
+        return Colors.red.shade700;
       default:
         return AppTheme.textSecondaryLight;
     }
