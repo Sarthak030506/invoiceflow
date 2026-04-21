@@ -1,26 +1,39 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { defineSecret } from 'firebase-functions/params';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import axios from 'axios';
+import * as crypto from 'crypto';
 
 // Initialize Firebase Admin
 admin.initializeApp();
 
-// Initialize Gemini AI
-// Get API key from Firebase Functions config: firebase functions:config:set gemini.apikey="YOUR_KEY"
-const genAI = new GoogleGenerativeAI(
-  functions.config().gemini?.apikey || process.env.GEMINI_API_KEY || ''
-);
+// Secret declarations — resolved at invocation time, not module load.
+// Create secrets once with:
+//   firebase functions:secrets:set GEMINI_API_KEY
+//   firebase functions:secrets:set RAZORPAY_KEY_SECRET
+// Each function that uses a secret must declare it in runWith({ secrets: [...] }).
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
+const RAZORPAY_KEY_ID = defineSecret('RAZORPAY_KEY_ID');
+const RAZORPAY_KEY_SECRET = defineSecret('RAZORPAY_KEY_SECRET');
 
 /**
  * Process OCR - Extract invoice data from receipt image using Gemini Vision API
  */
-export const processOCR = functions.https.onCall(async (data, context) => {
+export const processOCR = functions
+  .runWith({ secrets: ['GEMINI_API_KEY'] })
+  .https.onCall(async (data, context) => {
   // Verify authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(
       'unauthenticated',
       'User must be authenticated to use OCR'
+    );
+  }
+  if (!context.app) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'App Check token is missing or invalid.'
     );
   }
 
@@ -39,8 +52,10 @@ export const processOCR = functions.https.onCall(async (data, context) => {
     // Download image from Firebase Storage URL
     const imageBuffer = await downloadImage(imageUrl);
 
-    // Call Gemini Vision API
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    // Call Gemini Vision API — genAI initialised here (not at module level)
+    // because GEMINI_API_KEY secret is only available at invocation time.
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY.value());
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const prompt = `
 Analyze this invoice/receipt image (Indian business format) and extract the following information:
@@ -131,6 +146,51 @@ If any field is not found, use null. Ensure all numbers are numeric, not strings
         },
       });
 
+    // --- Decrement ocrScansRemaining (server-authoritative, replaces client-side decrementOCRScans) ---
+    // RACE CONDITION NOTE: Between the client's canAccessFeature() check and this decrement, a second
+    // device on the same account could consume the last remaining scan. FieldValue.increment(-1) is
+    // atomic but does not enforce a floor of 0. We use a Firestore transaction here: read the current
+    // count, validate it is still > 0, then decrement atomically. If the count has dropped to 0 by the
+    // time we enter the transaction the function throws resource-exhausted, leaving the scan fee to the
+    // caller (OCR Gemini call already ran). A pre-function quota gate in a separate onCall is the proper
+    // long-term fix, but this transaction closes the duplicate-decrement window.
+    const subRef = admin
+      .firestore()
+      .collection('users')
+      .doc(context.auth.uid)
+      .collection('subscription')
+      .doc('current');
+
+    await admin.firestore().runTransaction(async (txn) => {
+      const subSnap = await txn.get(subRef);
+      if (!subSnap.exists) {
+        // No subscription doc yet — nothing to decrement (free-tier initialisation
+        // may not have run; don't block OCR result from returning).
+        return;
+      }
+
+      const remaining = subSnap.data()?.features?.ocrScansRemaining ?? 0;
+
+      if (remaining === -1) {
+        // -1 means unlimited (premium tier) — skip decrement entirely.
+        return;
+      }
+
+      if (remaining === 0) {
+        // Guard: should have been caught before calling OCR, but a race brought us here.
+        throw new functions.https.HttpsError(
+          'resource-exhausted',
+          'OCR scan limit reached'
+        );
+      }
+
+      // remaining > 0: decrement atomically inside the transaction.
+      txn.update(subRef, {
+        'features.ocrScansRemaining': admin.firestore.FieldValue.increment(-1),
+        'features.updatedAt': admin.firestore.Timestamp.now(),
+      });
+    });
+
     console.log(
       `OCR completed successfully: ${normalizedData.items.length} items detected`
     );
@@ -141,6 +201,11 @@ If any field is not found, use null. Ensure all numbers are numeric, not strings
     };
   } catch (error: any) {
     console.error('OCR processing error:', error);
+
+    // Re-throw HttpsErrors as-is (resource-exhausted, etc.)
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
 
     // Return user-friendly error
     throw new functions.https.HttpsError(
@@ -301,9 +366,14 @@ export const checkExpiredSubscriptions = functions.pubsub
 /**
  * Generate AI Business Insights using Gemini
  */
-export const generateBusinessInsights = functions.https.onCall(async (data, context) => {
+export const generateBusinessInsights = functions
+  .runWith({ secrets: ['GEMINI_API_KEY'] })
+  .https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  if (!context.app) {
+    throw new functions.https.HttpsError('failed-precondition', 'App Check token is missing or invalid.');
   }
 
   const { invoiceData, customerData, inventoryData } = data;
@@ -311,7 +381,8 @@ export const generateBusinessInsights = functions.https.onCall(async (data, cont
   try {
     console.log(`Generating AI insights for user ${context.auth.uid}`);
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY.value());
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const prompt = `
 You are a business analyst AI for an Indian small business. Analyze the following business data and provide actionable insights.
@@ -388,9 +459,14 @@ Use Indian Rupee (₹) for currency. Be specific with numbers.
 /**
  * Predict Payment Risk using Gemini AI
  */
-export const predictPaymentRisk = functions.https.onCall(async (data, context) => {
+export const predictPaymentRisk = functions
+  .runWith({ secrets: ['GEMINI_API_KEY'] })
+  .https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  if (!context.app) {
+    throw new functions.https.HttpsError('failed-precondition', 'App Check token is missing or invalid.');
   }
 
   const { customers } = data;
@@ -398,7 +474,8 @@ export const predictPaymentRisk = functions.https.onCall(async (data, context) =
   try {
     console.log(`Predicting payment risk for user ${context.auth.uid}`);
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY.value());
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const prompt = `
 You are a credit risk analyst AI for an Indian small business. Analyze customer payment data and predict payment risk.
@@ -481,9 +558,14 @@ Be specific with amounts in ₹ and provide actionable recommendations.
 /**
  * Forecast Inventory Demand using Gemini AI
  */
-export const forecastInventory = functions.https.onCall(async (data, context) => {
+export const forecastInventory = functions
+  .runWith({ secrets: ['GEMINI_API_KEY'] })
+  .https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  if (!context.app) {
+    throw new functions.https.HttpsError('failed-precondition', 'App Check token is missing or invalid.');
   }
 
   const { inventoryData, currentMonth } = data;
@@ -491,7 +573,8 @@ export const forecastInventory = functions.https.onCall(async (data, context) =>
   try {
     console.log(`Forecasting inventory for user ${context.auth.uid}`);
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY.value());
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const monthName = new Date(2024, (currentMonth || new Date().getMonth()) - 1, 1)
       .toLocaleString('en-IN', { month: 'long' });
@@ -581,5 +664,589 @@ Be specific with quantities and provide actionable insights.
   } catch (error: any) {
     console.error('Inventory forecast error:', error);
     throw new functions.https.HttpsError('internal', `Forecast failed: ${error.message}`);
+  }
+});
+
+/**
+ * Verify Razorpay payment signature and upgrade subscription to premium
+ *
+ * Resolves BLOCKER 3 — No Server-Side Payment Verification.
+ * The signature check uses HMAC-SHA256 with timing-safe comparison so the
+ * Razorpay key secret is never exposed to the client.
+ */
+export const verifyRazorpayPayment = functions
+  .runWith({ secrets: ['RAZORPAY_KEY_SECRET'] })
+  .https.onCall(async (data, context) => {
+  // --- Auth guard ---
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated',
+      'User must be authenticated to verify payment'
+    );
+  }
+  if (!context.app) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'App Check token is missing or invalid.'
+    );
+  }
+
+  const uid = context.auth.uid;
+  const { paymentId, orderId, signature, plan } = data;
+
+  // --- Input validation ---
+  if (!paymentId || !orderId || !signature || !plan) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'paymentId, orderId, signature, and plan are all required'
+    );
+  }
+
+  if (plan !== 'monthly' && plan !== 'yearly') {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'plan must be "monthly" or "yearly"'
+    );
+  }
+
+  // --- Razorpay signature verification ---
+  // Spec: HMAC-SHA256(orderId + '|' + paymentId, keySecret)
+  const razorpayKeySecret = RAZORPAY_KEY_SECRET.value().trim();
+
+  const expectedSignature = crypto
+    .createHmac('sha256', razorpayKeySecret)
+    .update(`${orderId}|${paymentId}`)
+    .digest('hex');
+
+  // Timing-safe comparison — prevents timing-based attacks against the HMAC
+  let signaturesMatch = false;
+  try {
+    signaturesMatch = crypto.timingSafeEqual(
+      Buffer.from(expectedSignature, 'hex'),
+      Buffer.from(signature, 'hex')
+    );
+  } catch {
+    // timingSafeEqual throws if buffer lengths differ — treat as mismatch
+    signaturesMatch = false;
+  }
+
+  if (!signaturesMatch) {
+    console.warn(`Payment verification failed for uid=${uid} orderId=${orderId}`);
+    throw new functions.https.HttpsError(
+      'permission-denied',
+      'Payment verification failed'
+    );
+  }
+
+  // --- Check for already-active premium subscription ---
+  const subscriptionRef = admin
+    .firestore()
+    .collection('users')
+    .doc(uid)
+    .collection('subscription')
+    .doc('current');
+
+  try {
+    const subDoc = await subscriptionRef.get();
+
+    if (subDoc.exists) {
+      const subData = subDoc.data();
+      const currentTier = subData?.tier;
+      const currentStatus = subData?.status;
+      const endDate = subData?.endDate;
+      const now = admin.firestore.Timestamp.now();
+
+      // Active premium that has not yet expired = already subscribed
+      if (
+        currentTier === 'premium' &&
+        currentStatus === 'active' &&
+        endDate &&
+        endDate.toMillis() > now.toMillis()
+      ) {
+        throw new functions.https.HttpsError(
+          'already-exists',
+          'Subscription already active'
+        );
+      }
+    }
+
+    // --- Compute subscription dates ---
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    if (plan === 'yearly') {
+      endDate.setDate(endDate.getDate() + 365);
+    } else {
+      endDate.setDate(endDate.getDate() + 30);
+    }
+
+    // --- Firestore update — mirrors SubscriptionModel.toFirestore() after upgradeToPremium() ---
+    // upgradeToPremium() calls .update() with copyWith(), so createdAt is NOT changed here.
+    // Field names and values match toFirestore(), SubscriptionFeatures.premiumTier(),
+    // and UsageLimits.premiumTier() exactly.
+    await subscriptionRef.update({
+      tier: 'premium',
+      status: 'active',
+      startDate: admin.firestore.Timestamp.fromDate(startDate),
+      endDate: admin.firestore.Timestamp.fromDate(endDate),
+      trialEndDate: null,
+      paymentProvider: 'razorpay',
+      subscriptionId: paymentId,
+      features: {
+        ocrScansRemaining: -1,          // Unlimited for premium
+        aiInsightsGenerated: 0,
+        riskPredictionsUsed: 0,
+        inventoryForecastsGenerated: 0,
+      },
+      usageLimits: {
+        ocrScansPerMonth: -1,           // Unlimited for premium
+        aiInsightsPerMonth: -1,         // Unlimited for premium
+        riskPredictionsEnabled: true,
+        inventoryForecastEnabled: true,
+      },
+      updatedAt: admin.firestore.Timestamp.fromDate(startDate),
+    });
+
+    // --- Track upgrade event (mirrors _trackSubscriptionEvent in SubscriptionService) ---
+    await admin
+      .firestore()
+      .collection('users')
+      .doc(uid)
+      .collection('subscription_events')
+      .add({
+        event: 'subscription_upgraded',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        parameters: {
+          plan: plan,
+          payment_id: paymentId,
+          order_id: orderId,
+        },
+      });
+
+    console.log(
+      `Subscription upgraded: uid=${uid} plan=${plan} paymentId=${paymentId}`
+    );
+
+    return {
+      success: true,
+      tier: 'premium',
+      endDate: endDate.toISOString(),
+    };
+  } catch (error: any) {
+    // Re-throw HttpsErrors as-is (auth, validation, already-exists, permission-denied)
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+
+    console.error(`verifyRazorpayPayment unexpected error for uid=${uid}:`, error);
+    throw new functions.https.HttpsError(
+      'internal',
+      'An unexpected error occurred. Please try again.'
+    );
+  }
+});
+
+/**
+ * Create a Razorpay order server-side before opening checkout.
+ *
+ * Must be called BEFORE opening the Razorpay checkout SDK. Passing the
+ * returned orderId into checkout options causes the SDK to return non-null
+ * orderId + signature on success, which verifyRazorpayPayment can then
+ * authenticate with HMAC-SHA256(orderId|paymentId).
+ *
+ * Without a pre-created order, the SDK returns null orderId and null
+ * signature — making server-side verification impossible.
+ */
+export const createRazorpayOrder = functions
+  .runWith({ secrets: ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET'] })
+  .https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated',
+      'User must be authenticated to create an order'
+    );
+  }
+  if (!context.app) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'App Check token is missing or invalid.'
+    );
+  }
+
+  const { amount, currency = 'INR', planType } = data;
+
+  if (!amount || !planType) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'amount and planType are required'
+    );
+  }
+
+  if (planType !== 'monthly' && planType !== 'yearly') {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'planType must be "monthly" or "yearly"'
+    );
+  }
+
+  const keyId = RAZORPAY_KEY_ID.value().trim();
+  const keySecret = RAZORPAY_KEY_SECRET.value().trim();
+  const uid = context.auth.uid;
+
+  // Debug: log secret lengths to catch whitespace/encoding issues (not values)
+  console.log(`createRazorpayOrder: keyId len=${keyId.length} keySecret len=${keySecret.length} plan=${planType} amount=${amount}`);
+
+  try {
+    const response = await axios.post(
+      'https://api.razorpay.com/v1/orders',
+      {
+        amount,
+        currency,
+        receipt: `rzp_${Date.now()}`,
+        notes: { plan: planType },
+      },
+      {
+        auth: { username: keyId, password: keySecret },
+      }
+    );
+
+    console.log(`Razorpay order created: ${response.data.id} uid=${uid} plan=${planType}`);
+
+    return {
+      orderId: response.data.id,
+      amount: response.data.amount,
+      currency: response.data.currency,
+    };
+  } catch (error: any) {
+    const razorpayMsg = error?.response?.data?.error?.description || error.message;
+    console.error(`createRazorpayOrder failed uid=${uid}: status=${error?.response?.status} msg=${razorpayMsg} fullError=${JSON.stringify(error?.response?.data)}`);
+    throw new functions.https.HttpsError('internal', `Failed to create order: ${razorpayMsg}`);
+  }
+});
+
+/**
+ * Initialize subscription document for a new user (free tier).
+ *
+ * Called by the client on every signup / first launch. The function is
+ * idempotent: if the document already exists it returns { alreadyExists: true }
+ * and makes no writes.
+ *
+ * Field values mirror SubscriptionModel.createFreeTier().toFirestore():
+ *   tier: 'free', status: 'active', startDate/createdAt/updatedAt: now,
+ *   endDate: null, trialEndDate: null, subscriptionId: null,
+ *   paymentProvider: 'razorpay',
+ *   features: { ocrScansRemaining: 5, aiInsightsGenerated: 0, riskPredictionsUsed: 0,
+ *               inventoryForecastsGenerated: 0 },
+ *   usageLimits: { ocrScansPerMonth: 5, aiInsightsPerMonth: 0,
+ *                  riskPredictionsEnabled: false, inventoryForecastEnabled: false }
+ *
+ * RACE CONDITION NOTE: The idempotency check (read existing doc) and the
+ * subsequent set() are NOT wrapped in a transaction. Two simultaneous first-launch
+ * calls (e.g. app killed and reopened within milliseconds) could both pass the
+ * existence check and both attempt the set(). Because both would write identical
+ * field values this is safe (last-write-wins is harmless here), but it is not
+ * strictly atomic. A Firestore transaction or create()-on-missing would fully close
+ * this window if stricter guarantees are needed in the future.
+ */
+export const initializeUserSubscription = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated',
+      'User must be authenticated to initialize subscription'
+    );
+  }
+  if (!context.app) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'App Check token is missing or invalid.'
+    );
+  }
+
+  const uid = context.auth.uid;
+
+  const subRef = admin
+    .firestore()
+    .collection('users')
+    .doc(uid)
+    .collection('subscription')
+    .doc('current');
+
+  try {
+    const existing = await subRef.get();
+
+    // Idempotency guard: if a tier field is already present the doc exists.
+    if (existing.exists && existing.data()?.tier) {
+      return { alreadyExists: true };
+    }
+
+    const now = admin.firestore.Timestamp.now();
+
+    // Field values exactly match SubscriptionModel.createFreeTier().toFirestore()
+    const freeTierDoc = {
+      tier: 'free',
+      status: 'active',
+      startDate: now,
+      endDate: null,
+      trialEndDate: null,
+      paymentProvider: 'razorpay',
+      subscriptionId: null,
+      features: {
+        ocrScansRemaining: 5,
+        aiInsightsGenerated: 0,
+        riskPredictionsUsed: 0,
+        inventoryForecastsGenerated: 0,
+      },
+      usageLimits: {
+        ocrScansPerMonth: 5,
+        aiInsightsPerMonth: 0,
+        riskPredictionsEnabled: false,
+        inventoryForecastEnabled: false,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await subRef.set(freeTierDoc);
+
+    // Mirror _trackSubscriptionEvent('subscription_initialized', {}) from SubscriptionService
+    await admin
+      .firestore()
+      .collection('users')
+      .doc(uid)
+      .collection('subscription_events')
+      .add({
+        event: 'subscription_initialized',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        parameters: {},
+      });
+
+    console.log(`initializeUserSubscription: free tier created for uid=${uid}`);
+
+    return { success: true, tier: 'free' };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) throw error;
+
+    console.error(`initializeUserSubscription error for uid=${uid}:`, error);
+    throw new functions.https.HttpsError(
+      'internal',
+      'Failed to initialize subscription. Please try again.'
+    );
+  }
+});
+
+/**
+ * Start a 7-day free trial for the authenticated user.
+ *
+ * Guards:
+ *  - trialEndDate already set  → failed-precondition 'Free trial already used'
+ *  - tier=premium AND status=active → failed-precondition 'Already on premium plan'
+ *
+ * Field values mirror SubscriptionModel.createTrial().toFirestore():
+ *   tier: 'premium', status: 'trial',
+ *   startDate: now, trialEndDate: now+7d, endDate: now+7d,
+ *   features: SubscriptionFeatures.premiumTier() → ocrScansRemaining: -1, others: 0
+ *   usageLimits: UsageLimits.premiumTier() → ocrScansPerMonth: -1, aiInsightsPerMonth: -1,
+ *                riskPredictionsEnabled: true, inventoryForecastEnabled: true
+ *
+ * Uses update() (not set()) so createdAt is preserved.
+ */
+export const startFreeTrial = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated',
+      'User must be authenticated to start a free trial'
+    );
+  }
+  if (!context.app) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'App Check token is missing or invalid.'
+    );
+  }
+
+  const uid = context.auth.uid;
+
+  const subRef = admin
+    .firestore()
+    .collection('users')
+    .doc(uid)
+    .collection('subscription')
+    .doc('current');
+
+  try {
+    const subDoc = await subRef.get();
+
+    if (subDoc.exists) {
+      const subData = subDoc.data()!;
+
+      // Trial already used (trialEndDate was ever set)
+      if (subData.trialEndDate != null) {
+        throw new functions.https.HttpsError(
+          'failed-precondition',
+          'Free trial already used'
+        );
+      }
+
+      // Already on an active premium plan — no need to trial
+      if (subData.tier === 'premium' && subData.status === 'active') {
+        throw new functions.https.HttpsError(
+          'failed-precondition',
+          'Already on premium plan'
+        );
+      }
+    }
+
+    const now = new Date();
+    const trialEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // +7 days
+
+    const nowTs = admin.firestore.Timestamp.fromDate(now);
+    const trialEndTs = admin.firestore.Timestamp.fromDate(trialEnd);
+
+    // Field values exactly match SubscriptionModel.createTrial().toFirestore().
+    // update() preserves createdAt (matching the Dart implementation which also
+    // calls _subscriptionRef!.update(trialSub.toFirestore())).
+    await subRef.update({
+      tier: 'premium',
+      status: 'trial',
+      startDate: nowTs,
+      trialEndDate: trialEndTs,
+      endDate: trialEndTs,
+      paymentProvider: 'razorpay',
+      subscriptionId: null,
+      features: {
+        ocrScansRemaining: -1,   // Unlimited during trial
+        aiInsightsGenerated: 0,
+        riskPredictionsUsed: 0,
+        inventoryForecastsGenerated: 0,
+      },
+      usageLimits: {
+        ocrScansPerMonth: -1,    // Unlimited during trial
+        aiInsightsPerMonth: -1,
+        riskPredictionsEnabled: true,
+        inventoryForecastEnabled: true,
+      },
+      updatedAt: nowTs,
+    });
+
+    // Mirror _trackSubscriptionEvent('trial_started', {}) from SubscriptionService
+    await admin
+      .firestore()
+      .collection('users')
+      .doc(uid)
+      .collection('subscription_events')
+      .add({
+        event: 'trial_started',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        parameters: {},
+      });
+
+    console.log(`startFreeTrial: trial started for uid=${uid}, ends ${trialEnd.toISOString()}`);
+
+    return { success: true, trialEndDate: trialEnd.toISOString() };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) throw error;
+
+    console.error(`startFreeTrial error for uid=${uid}:`, error);
+    throw new functions.https.HttpsError(
+      'internal',
+      'Failed to start free trial. Please try again.'
+    );
+  }
+});
+
+/**
+ * Cancel the authenticated user's active subscription.
+ *
+ * Guard: subscription must be premium and active (or trial); otherwise
+ * throws failed-precondition 'No active subscription to cancel'.
+ *
+ * Writes: update() sets status='cancelled' and updatedAt=now.
+ * The user retains premium access until the existing endDate (handled by
+ * checkExpiredSubscriptions scheduled function).
+ *
+ * Optional input: { reason: string } — stored in the subscription_events entry.
+ */
+export const cancelSubscription = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      'unauthenticated',
+      'User must be authenticated to cancel subscription'
+    );
+  }
+  if (!context.app) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'App Check token is missing or invalid.'
+    );
+  }
+
+  const uid = context.auth.uid;
+  const reason: string | undefined = data?.reason;
+
+  const subRef = admin
+    .firestore()
+    .collection('users')
+    .doc(uid)
+    .collection('subscription')
+    .doc('current');
+
+  try {
+    const subDoc = await subRef.get();
+
+    if (!subDoc.exists) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'No active subscription to cancel'
+      );
+    }
+
+    const subData = subDoc.data()!;
+    const isPremiumOrTrial =
+      subData.tier === 'premium' &&
+      (subData.status === 'active' || subData.status === 'trial');
+
+    if (!isPremiumOrTrial) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'No active subscription to cancel'
+      );
+    }
+
+    // update() — only status and updatedAt change, matching the Dart copyWith() pattern
+    await subRef.update({
+      status: 'cancelled',
+      updatedAt: admin.firestore.Timestamp.now(),
+    });
+
+    // Mirror _trackSubscriptionEvent('subscription_cancelled', {...}) from SubscriptionService
+    const eventParameters: Record<string, any> = {
+      tier: subData.tier,
+      previous_status: subData.status,
+    };
+    if (reason) {
+      eventParameters.reason = reason;
+    }
+
+    await admin
+      .firestore()
+      .collection('users')
+      .doc(uid)
+      .collection('subscription_events')
+      .add({
+        event: 'subscription_cancelled',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        parameters: eventParameters,
+      });
+
+    console.log(`cancelSubscription: cancelled for uid=${uid}${reason ? ` reason=${reason}` : ''}`);
+
+    return { success: true };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) throw error;
+
+    console.error(`cancelSubscription error for uid=${uid}:`, error);
+    throw new functions.https.HttpsError(
+      'internal',
+      'Failed to cancel subscription. Please try again.'
+    );
   }
 });
