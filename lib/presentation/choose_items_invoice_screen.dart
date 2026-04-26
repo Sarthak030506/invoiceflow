@@ -41,6 +41,8 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
   /// so the same item can't appear twice.
   final Map<String, _SelectedRow> _selected = {};
 
+  List<InventoryItem> _inventory = const [];
+
   String _customerName = '';
   String _customerPhone = '';
   String? _customerId;
@@ -56,6 +58,16 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
     _customerService = CustomerService.instance;
     _returnService = ReturnService.instance;
     _inventoryService = InventoryService();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadBrowseData());
+  }
+
+  Future<void> _loadBrowseData() async {
+    if (!mounted) return;
+    context.read<CatalogueProvider>().load();
+    try {
+      final items = await _inventoryService.getAllItems();
+      if (mounted) setState(() => _inventory = items);
+    } catch (_) {}
   }
 
   // --- Selection -----------------------------------------------------------
@@ -604,7 +616,14 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
             ),
             Expanded(
               child: _selected.isEmpty
-                  ? _EmptyState(isSales: _isSales)
+                  ? _CatalogBrowseList(
+                      isSales: _isSales,
+                      accent: _accent,
+                      inventory: _inventory,
+                      onSelected: _handleSelection,
+                      onOutOfStockTapped:
+                          _isSales ? _handleOutOfStockTap : null,
+                    )
                   : ListView(
                       children: _selected.entries
                           .map((e) => _SelectedRowTile(
@@ -1031,30 +1050,171 @@ class _SeedStockSheetState extends State<_SeedStockSheet> {
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.isSales});
+// ---------------------------------------------------------------------------
+// Catalogue browse list — shown when no items are selected yet
+// ---------------------------------------------------------------------------
+
+class _BrowseRow {
+  const _BrowseRow({required this.catalogueItem, this.inventoryItem});
+  final ProductCatalogItem catalogueItem;
+  final InventoryItem? inventoryItem;
+}
+
+class _CatalogBrowseList extends StatelessWidget {
+  const _CatalogBrowseList({
+    required this.isSales,
+    required this.accent,
+    required this.inventory,
+    required this.onSelected,
+    this.onOutOfStockTapped,
+  });
+
   final bool isSales;
+  final Color accent;
+  final List<InventoryItem> inventory;
+  final ValueChanged<ItemAutocompleteResult> onSelected;
+  final ValueChanged<ProductCatalogItem>? onOutOfStockTapped;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isSales ? Icons.shopping_cart_outlined : Icons.inventory_outlined,
-            size: 18.w,
-            color: Colors.grey.shade400,
-          ),
-          SizedBox(height: 2.h),
-          Text(
-            isSales
-                ? 'Search for items you want to sell'
-                : 'Search or add items to purchase',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13.sp),
-          ),
-        ],
-      ),
+    return Consumer<CatalogueProvider>(
+      builder: (context, provider, _) {
+        if (provider.isLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final catalogue = provider.items;
+
+        if (catalogue.isEmpty && inventory.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isSales
+                      ? Icons.shopping_cart_outlined
+                      : Icons.inventory_outlined,
+                  size: 18.w,
+                  color: Colors.grey.shade400,
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  'No items yet. Type a name above to add your first item.',
+                  textAlign: TextAlign.center,
+                  style:
+                      TextStyle(color: Colors.grey.shade600, fontSize: 13.sp),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Build fast lookups: catalogue item → matching inventory item.
+        final byCatalogId = <String, InventoryItem>{
+          for (final inv in inventory)
+            if (inv.catalogItemId != null) inv.catalogItemId!: inv,
+        };
+        final byName = <String, InventoryItem>{
+          for (final inv in inventory) inv.name.toLowerCase().trim(): inv,
+        };
+
+        final rows = catalogue.map((cat) {
+          final inv = byCatalogId[cat.id] ??
+              byName[cat.name.toLowerCase().trim()];
+          return _BrowseRow(catalogueItem: cat, inventoryItem: inv);
+        }).toList();
+
+        // Sales: in-stock items first, then alphabetical within each group.
+        rows.sort((a, b) {
+          if (isSales) {
+            final aStock = (a.inventoryItem?.currentStock ?? 0) > 0;
+            final bStock = (b.inventoryItem?.currentStock ?? 0) > 0;
+            if (aStock != bStock) return aStock ? -1 : 1;
+          }
+          return a.catalogueItem.name
+              .compareTo(b.catalogueItem.name);
+        });
+
+        return ListView.builder(
+          itemCount: rows.length,
+          itemBuilder: (context, i) {
+            final row = rows[i];
+            final cat = row.catalogueItem;
+            final inv = row.inventoryItem;
+            final stock = inv?.currentStock ?? 0;
+            final inStock = stock > 0;
+            final greyed = isSales && !inStock;
+
+            return ListTile(
+              title: Text(
+                cat.name,
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: greyed ? Colors.black38 : null,
+                ),
+              ),
+              subtitle: Text(
+                inv != null
+                    ? '${cat.sku} • Stock: ${stock == stock.roundToDouble() ? stock.toInt() : stock} ${cat.unit}'
+                    : '${cat.sku} • ${cat.category}',
+                style: TextStyle(
+                    color: greyed ? Colors.black26 : Colors.grey.shade600),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '₹${(inv?.avgCost ?? cat.rate).toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: greyed ? Colors.black38 : accent,
+                    ),
+                  ),
+                  SizedBox(width: 2.w),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: inStock
+                          ? Colors.green.shade100
+                          : Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      inStock ? 'In stock' : 'No stock',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: inStock
+                            ? Colors.green.shade700
+                            : Colors.grey.shade600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              onTap: () {
+                if (isSales && !inStock) {
+                  onOutOfStockTapped?.call(cat);
+                  return;
+                }
+                onSelected(ItemAutocompleteResult(
+                  kind: inv != null
+                      ? AutocompleteResultKind.inventory
+                      : AutocompleteResultKind.catalogue,
+                  name: cat.name,
+                  sku: cat.sku,
+                  rate: inv?.avgCost ?? cat.rate,
+                  unit: cat.unit,
+                  category: cat.category,
+                  inventoryItem: inv,
+                  catalogueItem: cat,
+                ));
+              },
+            );
+          },
+        );
+      },
     );
   }
 }
