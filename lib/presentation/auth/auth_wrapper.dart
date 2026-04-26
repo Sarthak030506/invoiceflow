@@ -5,6 +5,7 @@ import '../../../providers/auth_provider.dart';
 
 import '../../../services/invoice_service.dart';
 import '../../../services/onboarding_service.dart';
+import '../../../services/background_service.dart';
 import '../../utils/csv_path_utils.dart' show getCsvPath;
 import 'login_screen.dart';
 import '../home_dashboard/home_dashboard.dart';
@@ -35,14 +36,15 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   void _maybePrepareInit(AuthProvider auth) {
     debugPrint('AuthWrapper: _maybePrepareInit called - isAuthenticated: ${auth.isAuthenticated}, user: ${auth.user?.uid}, isLoading: ${auth.isLoading}');
-    
+
     // If not authenticated, clear any previous future (avoid stale work)
     if (!auth.isAuthenticated || auth.user == null) {
       if (_initFuture != null || _lastUserId != null) {
         debugPrint('AuthWrapper: cleared init future (signed out)');
-        setState(() {
-          _initFuture = null;
-          _lastUserId = null;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() { _initFuture = null; _lastUserId = null; });
+          }
         });
       }
       return;
@@ -58,9 +60,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
     }
 
     debugPrint('AuthWrapper: preparing init future for uid=$uid');
-    setState(() {
-      _lastUserId = uid;
-      _initFuture = _initializeAppAndCheckOnboarding(uid);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _lastUserId = uid;
+          _initFuture = _initializeAppAndCheckOnboarding(uid);
+        });
+      }
     });
   }
 
@@ -169,6 +175,11 @@ Future<_InitResult> _initializeAppAndCheckOnboarding(String uid) async {
   final onboardingService = OnboardingService.instance;
   final shouldShowOnboarding = await onboardingService.shouldShowItemsOnboarding();
   debugPrint('AuthWrapper: shouldShowOnboarding=$shouldShowOnboarding for uid=$uid');
+
+  if (!shouldShowOnboarding) {
+    // Fire-and-forget — notification init must not block app startup.
+    BackgroundService.initialize();
+  }
 
   return _InitResult(
     csvPath: csvPath,
