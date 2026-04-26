@@ -273,7 +273,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         await context.read<AuthProvider>().signOut();
       }
 
-      // Navigate to root (AuthGate will handle showing LoginScreen)
       if (mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/',
