@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../services/analytics_service.dart';
 import '../services/auth_service.dart';
 import '../services/business_profile_service.dart';
+import '../services/invoice_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -129,6 +131,8 @@ class AuthProvider extends ChangeNotifier {
     try {
       _setLoading(true);
       _error = null;
+      await AnalyticsService().invalidateCache();
+      InvoiceService.reset();
       await _authService.signOut();
     } catch (e) {
       _setError(e.toString());
