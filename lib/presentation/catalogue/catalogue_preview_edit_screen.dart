@@ -6,6 +6,7 @@ import '../../models/business_catalogue_template.dart';
 import '../../providers/catalogue_provider.dart';
 import '../../services/business_catalogue_service.dart';
 import '../../services/business_profile_service.dart';
+import '../../services/items_service.dart';
 
 class CataloguePreviewEditScreen extends StatefulWidget {
   final List<String> selectedTemplateIds;
@@ -112,19 +113,21 @@ class _CataloguePreviewEditScreenState
     if (selected.isEmpty) return;
 
     setState(() => _isSaving = true);
+    final provider = context.read<CatalogueProvider>();
     try {
-      final provider = context.read<CatalogueProvider>();
-
-      // findOrCreate deduplicates by normalised name — safe to call for all.
-      for (final item in selected) {
-        await provider.findOrCreate(
-          name: item.name,
-          rate: item.rate,
-          category: item.category,
-          unit: item.unit,
-          description: item.description,
-        );
-      }
+      // One Firestore read + one batch write instead of 3 round-trips per item.
+      await ItemsService().bulkFindOrCreate(
+        selected
+            .map((item) => {
+                  'name': item.name,
+                  'rate': item.rate,
+                  'category': item.category,
+                  'unit': item.unit,
+                  'description': item.description,
+                })
+            .toList(),
+      );
+      provider.invalidate();
 
       await BusinessProfileService.instance.markOnboardingComplete();
       if (!mounted) return;
