@@ -7,6 +7,7 @@ import '../../core/app_export.dart';
 import '../../theme/app_theme.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../providers/remote_config_provider.dart';
 import '../invoice_type_selection_screen.dart';
 import '../catalogue/business_type_selection_screen.dart';
 import '../../models/invoice_model.dart';
@@ -601,10 +602,14 @@ class _HomeDashboardState extends State<HomeDashboard> {
                             // Top spacing to avoid header overlap
                             SizedBox(height: 2.h),
 
-                            // AI Hub Card
-                            Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 3.w),
-                              child: _buildAIHubCard(),
+                            // AI Hub Card — shown only when Remote Config flag is on
+                            Consumer<RemoteConfigProvider>(
+                              builder: (context, rc, _) => rc.aiHubEnabled
+                                  ? Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 3.w),
+                                      child: _buildAIHubCard(),
+                                    )
+                                  : const SizedBox.shrink(),
                             ),
 
                             SizedBox(height: 3.h),
