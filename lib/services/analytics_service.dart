@@ -1,8 +1,8 @@
 import '../models/customer_model.dart';
 import '../models/invoice_model.dart';
 import '../models/product_categories.dart';
-import '../models/return_model.dart';
 import './firestore_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
@@ -12,10 +12,18 @@ class AnalyticsService {
   // Cache expiry duration (30 minutes for better performance, still reasonable for multi-device sync)
   static const int _cacheExpiryMinutes = 30;
 
-  /// Invalidate all analytics cache
+  // Cache keys are namespaced by UID — prevents one user seeing another user's
+  // cached analytics on a shared device (B6 fix).
+  String get _uidCachePrefix {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anon';
+    return 'analytics_cache_${uid}_';
+  }
+
+  /// Invalidate all analytics cache for the current signed-in user.
   Future<void> invalidateCache() async {
     final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys().where((k) => k.startsWith('analytics_cache_')).toList();
+    final prefix = _uidCachePrefix;
+    final keys = prefs.getKeys().where((k) => k.startsWith(prefix)).toList();
     for (final key in keys) {
       await prefs.remove(key);
     }
@@ -23,21 +31,20 @@ class AnalyticsService {
   }
 
   /// Force refresh analytics (bypasses cache)
-  /// Call this when user explicitly requests fresh data
   Future<List<Map<String, dynamic>>> refreshFilteredAnalytics(String dateRange, {bool salesOnly = true}) async {
-    // Invalidate cache first
     await invalidateCache();
-    // Then compute fresh
     return await getFilteredAnalytics(dateRange, salesOnly: salesOnly);
   }
 
-  /// Get cached data or compute and cache
+  /// Get cached data or compute and cache.
+  /// Never writes to cache on compute failure — a network blip does not
+  /// overwrite valid prior data with an empty result (B9 fix).
   Future<T?> _getCached<T>(String cacheKey, Future<T> Function() compute) async {
     final prefs = await SharedPreferences.getInstance();
-    final cachedJson = prefs.getString('analytics_cache_$cacheKey');
-    final cachedTime = prefs.getInt('analytics_cache_time_$cacheKey');
+    final storageKey = '${_uidCachePrefix}$cacheKey';
+    final cachedJson = prefs.getString(storageKey);
+    final cachedTime = prefs.getInt('${storageKey}_time');
 
-    // Check if cache is valid
     if (cachedJson != null && cachedTime != null) {
       final age = DateTime.now().millisecondsSinceEpoch - cachedTime;
       if (age < _cacheExpiryMinutes * 60 * 1000) {
@@ -49,13 +56,17 @@ class AnalyticsService {
       }
     }
 
-    // Compute fresh data
-    final result = await compute();
-
-    // Cache the result
+    T result;
     try {
-      await prefs.setString('analytics_cache_$cacheKey', jsonEncode(result));
-      await prefs.setInt('analytics_cache_time_$cacheKey', DateTime.now().millisecondsSinceEpoch);
+      result = await compute();
+    } catch (_) {
+      // Compute failed — return null without caching so the next call retries.
+      return null;
+    }
+
+    try {
+      await prefs.setString(storageKey, jsonEncode(result));
+      await prefs.setInt('${storageKey}_time', DateTime.now().millisecondsSinceEpoch);
     } catch (e) {
       print('Cache encode error for $cacheKey: $e');
     }
@@ -119,119 +130,132 @@ class AnalyticsService {
   }
 
   Future<List<Map<String, dynamic>>> _computeFilteredAnalytics(String dateRange, bool salesOnly) async {
-    try {
-      // SCALABILITY FIX: Use date-filtered query instead of fetching all invoices
-      final DateTime startDate = _calculateStartDate(dateRange);
+    // No outer try/catch — exceptions propagate to _getCached, which discards
+    // the failure without caching an empty result (B9 fix).
+    final DateTime startDate = _calculateStartDate(dateRange);
 
-      final invoices = await _fs.getInvoicesByDateRange(
-        startDate: startDate,
-        invoiceType: salesOnly ? 'sales' : null,
-        limit: 5000, // Safety limit
-      );
+    final invoices = await _fs.getInvoicesByDateRange(
+      startDate: startDate,
+      invoiceType: salesOnly ? 'sales' : null,
+      limit: 5000,
+    );
 
-      print('Found ${invoices.length} invoices for date range: $dateRange (salesOnly: $salesOnly)');
+    print('Found ${invoices.length} invoices for date range: $dateRange (salesOnly: $salesOnly)');
 
-      // Warn if result may be truncated
-      if (invoices.length >= 5000) {
-        print('⚠️ WARNING: Analytics may be incomplete. Result limit (5000) reached. Consider narrower date range.');
-      }
-      
-      if (invoices.isEmpty) {
-        print('No invoices found for the selected date range');
-        return [];
-      }
-      
-      // Track items by name AND invoice type (so same item in sales and purchase is tracked separately)
-      final Map<String, Map<String, dynamic>> itemAnalytics = {};
+    if (invoices.length >= 5000) {
+      print('⚠️ WARNING: Analytics may be incomplete. Result limit (5000) reached. Consider narrower date range.');
+    }
 
-      for (final invoice in invoices) {
-        if (invoice.items.isEmpty) {
-          print('Invoice ${invoice.id} has no items');
-          continue;
-        }
-
-        // Skip non-sales invoices when salesOnly is true (should be handled by the filter above)
-        if (salesOnly && invoice.invoiceType.toLowerCase() != 'sales') {
-          continue;
-        }
-
-        for (final item in invoice.items) {
-          final quantity = item.quantity;
-          final price = item.price;
-
-          // Skip items with zero or negative quantity
-          if (quantity <= 0) {
-            continue;
-          }
-
-          final itemName = item.name.trim();
-          if (itemName.isEmpty) {
-            print('Skipping empty item name');
-            continue;
-          }
-
-          final itemTotal = price * quantity;
-
-          // Use composite key: itemName + invoiceType to track sales and purchases separately
-          final itemKey = '${itemName}_${invoice.invoiceType}';
-
-          print('Processing item: $itemName, Qty: $quantity, Price: $price, Total: $itemTotal');
-
-          if (!itemAnalytics.containsKey(itemKey)) {
-            itemAnalytics[itemKey] = {
-              'itemName': itemName,
-              'quantitySold': 0,
-              'revenue': 0.0,
-              'averagePrice': 0.0,
-              'invoiceType': invoice.invoiceType, // Add invoice type for table filtering
-            };
-          }
-
-          itemAnalytics[itemKey]!['quantitySold'] = (itemAnalytics[itemKey]!['quantitySold'] as int) + quantity;
-          itemAnalytics[itemKey]!['revenue'] = (itemAnalytics[itemKey]!['revenue'] as double) + itemTotal;
-
-          // Recalculate average price
-          final totalQuantity = itemAnalytics[itemKey]!['quantitySold'] as int;
-          final totalRevenue = itemAnalytics[itemKey]!['revenue'] as double;
-          final avgPrice = (totalQuantity > 0 && totalRevenue > 0) ? (totalRevenue / totalQuantity) : 0.0;
-          itemAnalytics[itemKey]!['averagePrice'] = double.parse(avgPrice.toStringAsFixed(2));
-
-          print('Item: $itemName, Qty: $totalQuantity, Revenue: $totalRevenue, AvgPrice: $avgPrice');
-        }
-      }
-      
-      // Skip returns processing for now to debug average price issue
-      print('Skipping returns processing for debugging');
-
-      // Filter out any items that somehow ended up with 0 or negative quantity
-      final filteredResult = itemAnalytics.values
-          .where((item) => (item['quantitySold'] as int) > 0)
-          .map((item) {
-            final itemMap = Map<String, dynamic>.from(item);
-            // Ensure average price is calculated correctly for final result
-            final qty = itemMap['quantitySold'] as int;
-            final rev = itemMap['revenue'] as double;
-            final calculatedAvgPrice = (qty > 0 && rev > 0) ? (rev / qty) : 0.0;
-            itemMap['averagePrice'] = double.parse(calculatedAvgPrice.toStringAsFixed(2));
-            
-            print('Final mapping - ${itemMap['itemName']}: Qty=$qty, Rev=$rev, CalculatedAvg=$calculatedAvgPrice, FinalAvg=${itemMap['averagePrice']}');
-            return itemMap;
-          })
-          .toList();
-
-      // Sort by revenue (highest first)
-      filteredResult.sort((a, b) => (b['revenue'] as double).compareTo(a['revenue'] as double));
-
-      print('Returning ${filteredResult.length} items with analytics data (after returns adjustment)');
-      for (final item in filteredResult) {
-        print('Item: ${item['itemName']}, Qty: ${item['quantitySold']}, Revenue: ${item['revenue']}');
-      }
-
-      return filteredResult;
-    } catch (e) {
-      print('Error in getFilteredAnalytics: $e');
+    if (invoices.isEmpty) {
+      print('No invoices found for the selected date range');
       return [];
     }
+
+    // Track items by name AND invoice type so same item in sales vs purchase is separate.
+    final Map<String, Map<String, dynamic>> itemAnalytics = {};
+
+    for (final invoice in invoices) {
+      if (invoice.items.isEmpty) {
+        print('Invoice ${invoice.id} has no items');
+        continue;
+      }
+
+      if (salesOnly && invoice.invoiceType.toLowerCase() != 'sales') {
+        continue;
+      }
+
+      // Scale item revenue proportionally by any refund adjustment on this invoice
+      // so item-level totals match the invoice's adjustedTotal, not the gross total (B7 fix).
+      final refundScale = invoice.total > 0
+          ? (invoice.adjustedTotal / invoice.total).clamp(0.0, 1.0)
+          : 0.0;
+
+      for (final item in invoice.items) {
+        final quantity = item.quantity;
+        final price = item.price;
+
+        if (quantity <= 0) continue;
+
+        final itemName = item.name.trim();
+        if (itemName.isEmpty) {
+          print('Skipping empty item name');
+          continue;
+        }
+
+        final itemTotal = price * quantity * refundScale;
+        final itemKey = '${itemName}_${invoice.invoiceType}';
+
+        print('Processing item: $itemName, Qty: $quantity, Price: $price, Total: $itemTotal');
+
+        if (!itemAnalytics.containsKey(itemKey)) {
+          itemAnalytics[itemKey] = {
+            'itemName': itemName,
+            'quantitySold': 0,
+            'revenue': 0.0,
+            'averagePrice': 0.0,
+            'invoiceType': invoice.invoiceType,
+          };
+        }
+
+        itemAnalytics[itemKey]!['quantitySold'] = (itemAnalytics[itemKey]!['quantitySold'] as int) + quantity;
+        itemAnalytics[itemKey]!['revenue'] = (itemAnalytics[itemKey]!['revenue'] as double) + itemTotal;
+
+        final totalQuantity = itemAnalytics[itemKey]!['quantitySold'] as int;
+        final totalRevenue = itemAnalytics[itemKey]!['revenue'] as double;
+        final avgPrice = (totalQuantity > 0 && totalRevenue > 0) ? (totalRevenue / totalQuantity) : 0.0;
+        itemAnalytics[itemKey]!['averagePrice'] = double.parse(avgPrice.toStringAsFixed(2));
+
+        print('Item: $itemName, Qty: $totalQuantity, Revenue: $totalRevenue, AvgPrice: $avgPrice');
+      }
+    }
+
+    // Deduct returned quantities and revenue from item totals (B8 fix: re-enables
+    // the returns processing that was disabled during a debugging session).
+    try {
+      final allReturns = await _fs.getReturns();
+      final returnsInDateRange = allReturns.where((ret) =>
+          ret.returnDate.isAfter(startDate) &&
+          (salesOnly ? ret.returnType == 'sales' : true)).toList();
+
+      for (final returnModel in returnsInDateRange) {
+        for (final returnItem in returnModel.items) {
+          final itemKey = '${returnItem.name.trim()}_${returnModel.returnType}';
+          if (itemAnalytics.containsKey(itemKey)) {
+            itemAnalytics[itemKey]!['quantitySold'] =
+                ((itemAnalytics[itemKey]!['quantitySold'] as int) - returnItem.quantity)
+                .clamp(0, 999999999);
+            itemAnalytics[itemKey]!['revenue'] =
+                ((itemAnalytics[itemKey]!['revenue'] as double) - returnItem.totalValue)
+                .clamp(0.0, double.infinity);
+          }
+        }
+      }
+    } catch (_) {
+      // Returns fetch failure is non-fatal; item analytics remains valid without deduction.
+    }
+
+    final filteredResult = itemAnalytics.values
+        .where((item) => (item['quantitySold'] as int) > 0)
+        .map((item) {
+          final itemMap = Map<String, dynamic>.from(item);
+          final qty = itemMap['quantitySold'] as int;
+          final rev = itemMap['revenue'] as double;
+          final calculatedAvgPrice = (qty > 0 && rev > 0) ? (rev / qty) : 0.0;
+          itemMap['averagePrice'] = double.parse(calculatedAvgPrice.toStringAsFixed(2));
+
+          print('Final mapping - ${itemMap['itemName']}: Qty=$qty, Rev=$rev, CalculatedAvg=$calculatedAvgPrice, FinalAvg=${itemMap['averagePrice']}');
+          return itemMap;
+        })
+        .toList();
+
+    filteredResult.sort((a, b) => (b['revenue'] as double).compareTo(a['revenue'] as double));
+
+    print('Returning ${filteredResult.length} items with analytics data (after returns adjustment)');
+    for (final item in filteredResult) {
+      print('Item: ${item['itemName']}, Qty: ${item['quantitySold']}, Revenue: ${item['revenue']}');
+    }
+
+    return filteredResult;
   }
   
   Future<Map<String, dynamic>> getChartAnalytics(String dateRange) async {
@@ -723,13 +747,7 @@ class AnalyticsService {
         customerAnalytics[customerId]!['totalPaid'] = (customerAnalytics[customerId]!['totalPaid'] as double) + invoice.amountPaid;
         customerAnalytics[customerId]!['outstandingAmount'] = (customerAnalytics[customerId]!['outstandingAmount'] as double) + invoice.remainingAmount;
 
-        // Debug logging for Dadu (Tejas)
-        if (customerName.toLowerCase().contains('dadu') || customerName.toLowerCase().contains('tejas')) {
-          print('DEBUG ${customerName} Invoice: ${invoice.invoiceNumber}');
-          print('  Total: ${invoice.total}, RefundAdj: ${invoice.refundAdjustment}, Paid: ${invoice.amountPaid}');
-          print('  AdjustedTotal: ${invoice.adjustedTotal}, RemainingAmount: ${invoice.remainingAmount}');
-          print('  Running Outstanding: ${customerAnalytics[customerId]!['outstandingAmount']}');
-        }
+
       }
 
       // Add pending refunds tracking
@@ -769,11 +787,6 @@ class AnalyticsService {
 
       // Sort by revenue (highest first)
       filteredResult.sort((a, b) => (b['totalRevenue'] as double).compareTo(a['totalRevenue'] as double));
-
-      print('Returning ${filteredResult.length} customers with revenue data');
-      for (final customer in filteredResult.take(5)) {
-        print('Customer: ${customer['customerName']}, Invoices: ${customer['invoiceCount']}, Revenue: ${customer['totalRevenue']}, Paid: ${customer['totalPaid']}, Outstanding: ${customer['outstandingAmount']}, Pending Refunds: ${customer['pendingRefunds']}');
-      }
 
       return filteredResult;
     } catch (e) {
@@ -866,6 +879,7 @@ class AnalyticsService {
         // Update item buckets
         for (final item in invoice.items) {
           if (item.quantity <= 0) continue;
+          if (invoice.total == 0) continue; // cannot apportion item amounts on a zero-total invoice
 
           final itemName = item.name;
           final itemAmount = (item.price * item.quantity) * (remainingAmount / invoice.total);
