@@ -220,6 +220,61 @@ class ItemsService {
     throw StateError('Failed to generate unique SKU after 5 attempts');
   }
 
+  // Bulk find-or-create for catalogue imports.
+  // One read (all existing items) + one batch write per 499 new items.
+  // SKU uniqueness is skipped — 16M values, <0.1% collision for any realistic batch.
+  Future<List<ProductCatalogItem>> bulkFindOrCreate(
+      List<Map<String, dynamic>> requests) async {
+    final uid = _requireUid();
+    final existing = await getAllItems();
+    final byNorm = {for (final e in existing) e.nameNormalized: e};
+
+    final result = <ProductCatalogItem>[];
+    final toWrite = <ProductCatalogItem>[];
+    final rng = Random.secure();
+
+    for (final req in requests) {
+      final name = req['name'] as String;
+      final norm = ProductCatalogItem.normalize(name);
+      final found = byNorm[norm];
+      if (found != null) {
+        result.add(found);
+        continue;
+      }
+      final docRef = _itemsCol(uid).doc();
+      final bytes = List<int>.generate(4, (_) => rng.nextInt(256));
+      final hex =
+          bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join().toUpperCase();
+      final now = DateTime.now();
+      final item = ProductCatalogItem(
+        id: docRef.id,
+        name: name.trim(),
+        sku: 'SKU-$hex',
+        category: req['category'] as String? ?? 'General',
+        unit: req['unit'] as String? ?? 'pcs',
+        rate: (req['rate'] as num).toDouble(),
+        description: req['description'] as String?,
+        createdAt: now,
+        updatedAt: now,
+      );
+      toWrite.add(item);
+      result.add(item);
+      byNorm[norm] = item; // prevent dupes within same batch
+    }
+
+    const chunkSize = 499;
+    for (var i = 0; i < toWrite.length; i += chunkSize) {
+      final chunk = toWrite.sublist(i, min(i + chunkSize, toWrite.length));
+      final batch = _fs.batch();
+      for (final item in chunk) {
+        batch.set(_itemsCol(uid).doc(item.id), _itemToFirestore(item));
+      }
+      await batch.commit();
+    }
+
+    return result;
+  }
+
   // Get unique categories
   Future<List<String>> getCategories() async {
     final items = await getAllItems();
