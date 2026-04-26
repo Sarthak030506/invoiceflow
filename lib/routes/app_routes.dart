@@ -18,6 +18,8 @@ import '../presentation/items_screen/items_screen.dart';
 import '../presentation/subscription/subscription_screen.dart';
 import '../presentation/invoice_ocr/ocr_scan_screen.dart';
 import '../presentation/ai_hub/ai_hub_screen.dart';
+import '../providers/remote_config_provider.dart';
+import 'package:provider/provider.dart';
 
 class AppRoutes {
   static const String initial = '/';
@@ -64,6 +66,16 @@ class AppRoutes {
     itemCatalog: (context) => const ItemsScreen(),
     subscriptionScreen: (context) => const SubscriptionScreen(),
     ocrScanScreen: (context) => const OCRScanScreen(),
-    aiHubScreen: (context) => const AIHubScreen(),
+    aiHubScreen: (context) {
+      final enabled = context.read<RemoteConfigProvider>().aiHubEnabled;
+      if (!enabled) {
+        // Flag is off — pop back immediately rather than showing a broken screen.
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => Navigator.of(context).pop(),
+        );
+        return const SizedBox.shrink();
+      }
+      return const AIHubScreen();
+    },
   };
 }

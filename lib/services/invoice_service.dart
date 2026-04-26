@@ -23,6 +23,12 @@ class InvoiceService {
     return _instance!;
   }
 
+  // Clears the singleton so a new user session starts fresh.
+  // Call this on sign-out before any new initialize() call.
+  static void reset() {
+    _instance = null;
+  }
+
   // A one-time setup method to be called from main().
   static Future<void> initialize({required String csvPath}) async {
     if (_instance != null) return; // Already initialized

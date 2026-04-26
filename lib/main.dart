@@ -9,6 +9,8 @@ import 'package:invoiceflow/providers/auth_provider.dart';
 import 'package:invoiceflow/providers/catalogue_provider.dart';
 import 'package:invoiceflow/providers/inventory_provider.dart';
 import 'package:invoiceflow/providers/subscription_provider.dart';
+import 'package:invoiceflow/providers/remote_config_provider.dart';
+import 'package:invoiceflow/services/remote_config_service.dart';
 
 import 'package:invoiceflow/presentation/auth/auth_wrapper.dart';
 import 'package:invoiceflow/presentation/home_dashboard/home_dashboard.dart';
@@ -23,6 +25,7 @@ import 'package:invoiceflow/utils/app_logger.dart';
 
 import 'package:invoiceflow/routes/app_routes.dart';
 import 'package:invoiceflow/presentation/inventory_screen/inventory_detail_screen.dart';
+import 'package:invoiceflow/core/navigator_key.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,6 +52,7 @@ void main() async {
     await GoogleSignIn().signInSilently();
 
     await InvoiceService.initialize(csvPath: 'assets/images/data/invoices.csv');
+    await RemoteConfigService.instance.initialize();
     AppLogger.info('Firebase and Google Services initialized successfully', 'App');
   } catch (e) {
     AppLogger.error('Initialization error', 'App', e);
@@ -90,8 +94,10 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
         ChangeNotifierProvider(create: (_) => CatalogueProvider()),
+        ChangeNotifierProvider(create: (_) => RemoteConfigProvider()),
       ],
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         title: 'InvoiceFlow',
         builder: (context, child) {
           // Wrap with ResponsiveFramework for desktop support

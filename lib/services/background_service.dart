@@ -1,28 +1,27 @@
+import '../utils/app_logger.dart';
 import './notification_service.dart';
 
 class BackgroundService {
+  static const String _tag = 'BackgroundService';
+
   static Future<void> initialize() async {
-    final notificationService = NotificationService();
-    await notificationService.init();
-    
-    // Schedule both types of daily notifications
-    await notificationService.scheduleAllDailyNotifications();
-    
-    print('BackgroundService: All daily notifications scheduled');
+    final svc = NotificationService();
+    await svc.init();
+    await svc.scheduleAllDailyNotifications();
+    AppLogger.debug('All daily notifications scheduled', _tag);
   }
 
   static Future<void> refreshNotifications() async {
-    final notificationService = NotificationService();
-    await notificationService.scheduleAllDailyNotifications();
-    print('BackgroundService: Notifications refreshed');
+    await NotificationService().scheduleAllDailyNotifications();
+    AppLogger.debug('Notifications refreshed', _tag);
   }
 
   static Future<void> cancelAllTasks() async {
     await NotificationService().cancelAllNotifications();
-    print('BackgroundService: All notifications cancelled');
+    AppLogger.debug('All notifications cancelled', _tag);
   }
 
   static Future<Map<String, dynamic>> getStatus() async {
-    return await NotificationService().getNotificationStatus();
+    return NotificationService().getNotificationStatus();
   }
 }
