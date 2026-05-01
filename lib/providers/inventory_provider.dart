@@ -33,6 +33,7 @@ class InventoryProvider extends ChangeNotifier {
 
   /// Load item and its movements from InventoryService
   Future<void> load(String itemId) async {
+    if (_id == itemId && !_isLoading && _title.isNotEmpty) return;
     _isLoading = true;
     notifyListeners();
 
