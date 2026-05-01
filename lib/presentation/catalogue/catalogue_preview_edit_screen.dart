@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 
 import '../../models/business_catalogue_template.dart';
 import '../../providers/catalogue_provider.dart';
+import '../../routes/app_routes.dart';
 import '../../services/business_catalogue_service.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/items_service.dart';
@@ -141,7 +142,8 @@ class _CataloguePreviewEditScreenState
       );
 
       if (widget.isFirstTimeSetup) {
-        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+        Navigator.of(context).pushNamedAndRemoveUntil(
+            AppRoutes.homeDashboard, (route) => false);
       } else {
         Navigator.of(context).pop(true);
       }
@@ -163,7 +165,9 @@ class _CataloguePreviewEditScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: !_isSaving,
+      child: Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: Text(widget.isCustomMode
@@ -203,6 +207,7 @@ class _CataloguePreviewEditScreenState
               ],
             ),
       bottomNavigationBar: _buildBottomBar(),
+    ),
     );
   }
 
@@ -347,7 +352,7 @@ class _CataloguePreviewEditScreenState
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
