@@ -12,6 +12,15 @@ class ItemsService {
   final FirebaseFirestore _fs = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  List<ProductCatalogItem>? _itemsCache;
+  DateTime? _itemsCacheTime;
+  static const Duration _cacheTtl = Duration(minutes: 5);
+
+  void _invalidateCache() {
+    _itemsCache = null;
+    _itemsCacheTime = null;
+  }
+
   String _requireUid() {
     final uid = _auth.currentUser?.uid;
     if (uid == null) {
@@ -25,9 +34,16 @@ class ItemsService {
 
   // Get all items in the catalog
   Future<List<ProductCatalogItem>> getAllItems() async {
+    if (_itemsCache != null &&
+        _itemsCacheTime != null &&
+        DateTime.now().difference(_itemsCacheTime!) < _cacheTtl) {
+      return _itemsCache!;
+    }
     final uid = _requireUid();
     final q = await _itemsCol(uid).get();
-    return q.docs.map((d) => _itemFromFirestore(d.data()..['id'] = d.id)).toList();
+    _itemsCache = q.docs.map((d) => _itemFromFirestore(d.data()..['id'] = d.id)).toList();
+    _itemsCacheTime = DateTime.now();
+    return _itemsCache!;
   }
 
   // Get item by ID
@@ -59,6 +75,7 @@ class ItemsService {
     final uid = _requireUid();
     final data = _itemToFirestore(item);
     await _itemsCol(uid).doc(item.id).set(data);
+    _invalidateCache();
   }
 
   // Update an existing item
@@ -66,12 +83,14 @@ class ItemsService {
     final uid = _requireUid();
     final data = _itemToFirestore(item);
     await _itemsCol(uid).doc(item.id).update(data);
+    _invalidateCache();
   }
 
   // Delete an item from the catalog
   Future<void> deleteItem(String itemId) async {
     final uid = _requireUid();
     await _itemsCol(uid).doc(itemId).delete();
+    _invalidateCache();
   }
 
   // Batch add multiple items (useful for demo data import)
@@ -85,6 +104,7 @@ class ItemsService {
     }
 
     await batch.commit();
+    _invalidateCache();
   }
 
   // Batch add multiple items from maps (for template imports)
@@ -112,13 +132,17 @@ class ItemsService {
       final map = itemMap as Map<String, dynamic>;
       final id = map['id'] as String;
       final name = map['name'] as String;
+      final sellingPrice = (map['sellingPrice'] ?? map['rate'] ?? 0.0) as num;
+      final costPrice = (map['costPrice'] ?? 0.0) as num;
       final data = {
         'name': name,
         'nameNormalized': ProductCatalogItem.normalize(name),
         'sku': map['sku'],
         'category': map['category'],
         'unit': map['unit'],
-        'rate': map['rate'],
+        'selling_price': sellingPrice.toDouble(),
+        'cost_price': costPrice.toDouble(),
+        'rate': sellingPrice.toDouble(), // backward compat
         'barcode': map['barcode'] ?? '',
         'description': map['description'] ?? '',
         'createdAt': Timestamp.fromDate(DateTime.parse(map['createdAt'])),
@@ -128,6 +152,7 @@ class ItemsService {
     }
 
     await batch.commit();
+    _invalidateCache();
   }
 
   // Search items by name (in-memory contains-match across name/sku/category)
@@ -194,7 +219,7 @@ class ItemsService {
       sku: sku,
       category: category,
       unit: unit,
-      rate: rate,
+      sellingPrice: rate,
       barcode: barcode,
       description: description,
       createdAt: now,
@@ -252,7 +277,8 @@ class ItemsService {
         sku: 'SKU-$hex',
         category: req['category'] as String? ?? 'General',
         unit: req['unit'] as String? ?? 'pcs',
-        rate: (req['rate'] as num).toDouble(),
+        sellingPrice: (req['rate'] as num? ?? req['sellingPrice'] as num? ?? 0).toDouble(),
+        costPrice: (req['costPrice'] as num? ?? 0).toDouble(),
         description: req['description'] as String?,
         createdAt: now,
         updatedAt: now,
@@ -272,6 +298,7 @@ class ItemsService {
       await batch.commit();
     }
 
+    if (toWrite.isNotEmpty) _invalidateCache();
     return result;
   }
 
@@ -303,7 +330,9 @@ class ItemsService {
     'sku': item.sku,
     'category': item.category,
     'unit': item.unit,
-    'rate': item.rate,
+    'selling_price': item.sellingPrice,
+    'cost_price': item.costPrice,
+    'rate': item.sellingPrice, // kept for backward compat with old Firestore docs
     'barcode': item.barcode,
     'description': item.description,
     'createdAt': Timestamp.fromDate(item.createdAt),
@@ -316,7 +345,9 @@ class ItemsService {
     sku: data['sku'] as String? ?? '',
     category: data['category'] as String? ?? 'General',
     unit: data['unit'] as String? ?? 'pcs',
-    rate: (data['rate'] as num?)?.toDouble() ?? 0.0,
+    // migration: old docs only have 'rate'; new docs have 'selling_price'
+    sellingPrice: (data['selling_price'] as num? ?? data['rate'] as num?)?.toDouble() ?? 0.0,
+    costPrice: (data['cost_price'] as num?)?.toDouble() ?? 0.0,
     barcode: data['barcode'] as String?,
     description: data['description'] as String?,
     createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -331,7 +362,8 @@ class ProductCatalogItem {
   final String sku;
   final String category;
   final String unit;
-  final double rate; // selling price
+  final double sellingPrice; // price charged to customers
+  final double costPrice; // purchase/cost price (0 until first purchase)
   final String? barcode;
   final String? description;
   final DateTime createdAt;
@@ -343,12 +375,16 @@ class ProductCatalogItem {
     required this.sku,
     required this.category,
     required this.unit,
-    required this.rate,
+    required this.sellingPrice,
+    this.costPrice = 0.0,
     this.barcode,
     this.description,
     required this.createdAt,
     required this.updatedAt,
   });
+
+  // Backward-compat alias — callers using .rate still work.
+  double get rate => sellingPrice;
 
   String get nameNormalized => normalize(name);
 
@@ -361,7 +397,8 @@ class ProductCatalogItem {
     String? sku,
     String? category,
     String? unit,
-    double? rate,
+    double? sellingPrice,
+    double? costPrice,
     String? barcode,
     String? description,
     DateTime? createdAt,
@@ -373,7 +410,8 @@ class ProductCatalogItem {
       sku: sku ?? this.sku,
       category: category ?? this.category,
       unit: unit ?? this.unit,
-      rate: rate ?? this.rate,
+      sellingPrice: sellingPrice ?? this.sellingPrice,
+      costPrice: costPrice ?? this.costPrice,
       barcode: barcode ?? this.barcode,
       description: description ?? this.description,
       createdAt: createdAt ?? this.createdAt,
@@ -388,7 +426,9 @@ class ProductCatalogItem {
       'sku': sku,
       'category': category,
       'unit': unit,
-      'rate': rate,
+      'sellingPrice': sellingPrice,
+      'costPrice': costPrice,
+      'rate': sellingPrice, // backward compat
       'barcode': barcode,
       'description': description,
       'createdAt': createdAt.toIso8601String(),
@@ -403,7 +443,8 @@ class ProductCatalogItem {
       sku: json['sku'],
       category: json['category'],
       unit: json['unit'],
-      rate: json['rate']?.toDouble() ?? 0.0,
+      sellingPrice: (json['sellingPrice'] ?? json['selling_price'] ?? json['rate'])?.toDouble() ?? 0.0,
+      costPrice: (json['costPrice'] ?? json['cost_price'])?.toDouble() ?? 0.0,
       barcode: json['barcode'],
       description: json['description'],
       createdAt: DateTime.parse(json['createdAt']),
