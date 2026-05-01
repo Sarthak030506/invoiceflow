@@ -1,6 +1,6 @@
 name: invoiceflow
 description: Professional invoice management and business analytics app for small businesses and freelancers.
-version: 1.0.0+3
+version: 1.0.0+5
 environment: 
   sdk: ^3.6.0
 dependencies:
