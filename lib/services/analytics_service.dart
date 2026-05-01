@@ -193,12 +193,19 @@ class AnalyticsService {
             'quantitySold': 0,
             'revenue': 0.0,
             'averagePrice': 0.0,
+            'grossMargin': 0.0,
             'invoiceType': invoice.invoiceType,
           };
         }
 
         itemAnalytics[itemKey]!['quantitySold'] = (itemAnalytics[itemKey]!['quantitySold'] as int) + quantity;
         itemAnalytics[itemKey]!['revenue'] = (itemAnalytics[itemKey]!['revenue'] as double) + itemTotal;
+        // grossMargin: only accumulate when unitCost is known — excludes old invoices (unitCost=0)
+        if (item.unitCost > 0) {
+          final itemCostTotal = item.unitCost * quantity * refundScale;
+          itemAnalytics[itemKey]!['grossMargin'] =
+              (itemAnalytics[itemKey]!['grossMargin'] as double) + (itemTotal - itemCostTotal);
+        }
 
         final totalQuantity = itemAnalytics[itemKey]!['quantitySold'] as int;
         final totalRevenue = itemAnalytics[itemKey]!['revenue'] as double;
@@ -221,6 +228,14 @@ class AnalyticsService {
         for (final returnItem in returnModel.items) {
           final itemKey = '${returnItem.name.trim()}_${returnModel.returnType}';
           if (itemAnalytics.containsKey(itemKey)) {
+            // Deduct grossMargin proportionally (must be computed before revenue is modified)
+            final priorRevenue = itemAnalytics[itemKey]!['revenue'] as double;
+            final priorMargin = itemAnalytics[itemKey]!['grossMargin'] as double;
+            if (priorRevenue > 0 && priorMargin > 0) {
+              final marginDeduct = priorMargin * (returnItem.totalValue / priorRevenue);
+              itemAnalytics[itemKey]!['grossMargin'] =
+                  (priorMargin - marginDeduct).clamp(0.0, double.infinity);
+            }
             itemAnalytics[itemKey]!['quantitySold'] =
                 ((itemAnalytics[itemKey]!['quantitySold'] as int) - returnItem.quantity)
                 .clamp(0, 999999999);
@@ -259,8 +274,18 @@ class AnalyticsService {
   }
   
   Future<Map<String, dynamic>> getChartAnalytics(String dateRange) async {
-    try {
-      // SCALABILITY FIX: Use date-filtered query
+    final cacheKey = 'chart_analytics_$dateRange';
+    final cached = await _getCached<Map<String, dynamic>>(cacheKey, () => _computeChartAnalytics(dateRange));
+    return cached ?? {
+      'salesVsPurchases': {'sales': 0.0, 'purchases': 0.0},
+      'revenueTrend': [],
+      'topSellingItems': [],
+      'outstandingPayments': {'paid': 0.0, 'remaining': 0.0},
+    };
+  }
+
+  Future<Map<String, dynamic>> _computeChartAnalytics(String dateRange) async {
+    // SCALABILITY FIX: Use date-filtered query
       final DateTime startDate = _calculateStartDate(dateRange);
       final filteredInvoices = await _fs.getInvoicesByDateRange(
         startDate: startDate,
@@ -394,18 +419,15 @@ class AnalyticsService {
           'remaining': totalRemaining,
         },
       };
-    } catch (e) {
-      print('Error in getChartAnalytics: $e');
-      return {
-        'salesVsPurchases': {'sales': 0.0, 'purchases': 0.0},
-        'revenueTrend': [],
-        'topSellingItems': [],
-        'outstandingPayments': {'paid': 0.0, 'remaining': 0.0},
-      };
-    }
   }
-  
+
   Future<Map<String, dynamic>> fetchPerformanceInsights(String dateRange) async {
+    final cacheKey = 'performance_insights_$dateRange';
+    final cached = await _getCached<Map<String, dynamic>>(cacheKey, () => _computePerformanceInsights(dateRange));
+    return cached ?? {};
+  }
+
+  Future<Map<String, dynamic>> _computePerformanceInsights(String dateRange) async {
     // SCALABILITY FIX: Use date-filtered query
     final DateTime startDate = _calculateStartDate(dateRange);
     final invoices = await _fs.getInvoicesByDateRange(
@@ -681,9 +703,14 @@ class AnalyticsService {
 
   // Get customer-wise revenue breakdown with date range filtering
   Future<List<Map<String, dynamic>>> getCustomerWiseRevenue(String dateRange, {bool salesOnly = true}) async {
-    try {
-      // SCALABILITY FIX: Use date-filtered query
-      final DateTime startDate = _calculateStartDate(dateRange);
+    final cacheKey = 'customer_wise_revenue_${dateRange}_$salesOnly';
+    final cached = await _getCached<List<dynamic>>(cacheKey, () => _computeCustomerWiseRevenue(dateRange, salesOnly: salesOnly));
+    return cached?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  Future<List<Map<String, dynamic>>> _computeCustomerWiseRevenue(String dateRange, {bool salesOnly = true}) async {
+    // SCALABILITY FIX: Use date-filtered query
+    final DateTime startDate = _calculateStartDate(dateRange);
 
       final invoices = await _fs.getInvoicesByDateRange(
         startDate: startDate,
@@ -697,8 +724,6 @@ class AnalyticsService {
       if (invoices.length >= 5000) {
         print('⚠️ WARNING: Customer-wise revenue may be incomplete. Result limit (5000) reached.');
       }
-
-      final allCustomers = await _fs.getAllCustomers();
 
       if (invoices.isEmpty) {
         print('No invoices found for the selected date range');
@@ -789,17 +814,18 @@ class AnalyticsService {
       filteredResult.sort((a, b) => (b['totalRevenue'] as double).compareTo(a['totalRevenue'] as double));
 
       return filteredResult;
-    } catch (e) {
-      print('Error in getCustomerWiseRevenue: $e');
-      return [];
-    }
   }
 
   /// Get overdue payments organized by aging buckets (customer and item view)
   Future<Map<String, dynamic>> getOverduePaymentsBuckets() async {
-    try {
-      final invoices = await _fs.getAllInvoices();
-      final now = DateTime.now();
+    const cacheKey = 'overdue_payments_buckets';
+    final cached = await _getCached<Map<String, dynamic>>(cacheKey, _computeOverduePaymentsBuckets);
+    return cached ?? {'customerBuckets': {}, 'itemBuckets': {}, 'customers': [], 'items': []};
+  }
+
+  Future<Map<String, dynamic>> _computeOverduePaymentsBuckets() async {
+    final invoices = await _fs.getAllInvoices();
+    final now = DateTime.now();
 
       // Customer buckets data
       Map<String, Map<String, dynamic>> customerBuckets = {
@@ -954,15 +980,6 @@ class AnalyticsService {
         'customers': customersList,
         'items': itemsList,
       };
-    } catch (e) {
-      print('Error in getOverduePaymentsBuckets: $e');
-      return {
-        'customerBuckets': {},
-        'itemBuckets': {},
-        'customers': [],
-        'items': [],
-      };
-    }
   }
 
   String _formatDate(DateTime date) {
