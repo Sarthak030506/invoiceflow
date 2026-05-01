@@ -39,6 +39,23 @@
         { "fieldPath": "returnType", "order": "ASCENDING" },
         { "fieldPath": "returnDate", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "stock_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "itemId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stock_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sourceRefType", "order": "ASCENDING" },
+        { "fieldPath": "sourceRefId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
