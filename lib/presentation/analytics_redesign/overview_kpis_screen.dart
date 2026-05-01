@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import '../../services/analytics_service.dart';
 import '../../services/inventory_service.dart';
-import '../../services/firestore_service.dart';
 import './widgets/skeleton_loader.dart';
 
 class OverviewKpisScreen extends StatefulWidget {
@@ -35,29 +34,25 @@ class _OverviewKpisScreenState extends State<OverviewKpisScreen> {
     try {
       final analyticsService = AnalyticsService();
       final inventoryService = InventoryService();
-      final fs = FirestoreService.instance;
-      
+
       String serviceRange = _mapDateRangeToService(widget.selectedDateRange);
 
       final results = await Future.wait([
         analyticsService.getChartAnalytics(serviceRange),
         analyticsService.fetchPerformanceInsights(serviceRange),
         inventoryService.getInventoryAnalytics(),
-        fs.getAllInvoices(),
-        fs.getAllCustomers(),
       ]);
-      
+
       final chartData = results[0] as Map<String, dynamic>;
       final performanceInsights = results[1] as Map<String, dynamic>;
       final inventoryAnalytics = results[2] as Map<String, dynamic>;
-      final allInvoices = results[3] as List<dynamic>;
-      final allCustomers = results[4] as List<dynamic>;
-      
+
       final salesVsPurchases = chartData['salesVsPurchases'] as Map<String, dynamic>? ?? {};
       final outstandingPayments = chartData['outstandingPayments'] as Map<String, dynamic>? ?? {};
-      final insights = performanceInsights['insights'] as Map<String, dynamic>? ?? {};
       final trends = performanceInsights['trends'] as Map<String, dynamic>? ?? {};
-      
+      final insights = performanceInsights['insights'] as Map<String, dynamic>? ?? {};
+      final invoiceBreakdown = performanceInsights['invoiceTypeBreakdown'] as Map<String, dynamic>? ?? {};
+
       setState(() {
         kpiData = {
           'totalRevenue': {
@@ -66,23 +61,23 @@ class _OverviewKpisScreenState extends State<OverviewKpisScreen> {
           },
           'totalPurchases': {
             'value': salesVsPurchases['purchases'] ?? 0.0,
-            'change': 0.0 // Purchase trend not available
+            'change': 0.0
           },
           'outstanding': {
             'value': outstandingPayments['remaining'] ?? 0.0,
-            'change': 0.0 // Outstanding trend not available
+            'change': 0.0
           },
           'totalClients': {
-            'value': allCustomers.length,
-            'change': 0.0 // Client growth trend not available
+            'value': (insights['totalClients'] as num? ?? 0).toInt(),
+            'change': 0.0
           },
           'totalInvoices': {
-            'value': allInvoices.length,
-            'change': 0.0 // Invoice trend not available
+            'value': ((invoiceBreakdown['salesCount'] as num? ?? 0) + (invoiceBreakdown['purchaseCount'] as num? ?? 0)).toInt(),
+            'change': 0.0
           },
           'totalItems': {
             'value': inventoryAnalytics['totalItems'] ?? 0,
-            'change': 0.0 // Item count trend not available
+            'change': 0.0
           },
         };
         _isLoading = false;
