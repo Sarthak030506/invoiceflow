@@ -124,6 +124,11 @@ class InvoiceService {
     return await _fsService.getAllInvoices();
   }
 
+  Future<List<InvoiceModel>> fetchDashboardInvoices() async {
+    final startDate = DateTime.now().subtract(const Duration(days: 90));
+    return await _fsService.getInvoicesByDateRange(startDate: startDate, limit: 500);
+  }
+
   /// Fetch invoices with pagination for better performance
   /// Returns a map with 'invoices', 'lastDocument', and 'hasMore' keys
   Future<Map<String, dynamic>> fetchInvoicesPaginated({
@@ -153,7 +158,10 @@ class InvoiceService {
     // Update denormalized customer stats for fast queries
     if (invoice.customerId != null && invoice.customerId!.isNotEmpty) {
       try {
-        await CustomerService.instance.updateCustomerStats(invoice.customerId!);
+        await CustomerService.instance.updateCustomerStatsWithDelta(
+          customerId: invoice.customerId!,
+          addedInvoice: invoice,
+        );
       } catch (e) {
         AppLogger.warning('Failed to update customer stats after addInvoice', 'InvoiceService');
         rethrow;
@@ -184,7 +192,11 @@ class InvoiceService {
     // Update denormalized customer stats
     if (invoice.customerId != null && invoice.customerId!.isNotEmpty) {
       try {
-        await CustomerService.instance.updateCustomerStats(invoice.customerId!);
+        await CustomerService.instance.updateCustomerStatsWithDelta(
+          customerId: invoice.customerId!,
+          oldVersion: oldInvoice,
+          newVersion: invoice,
+        );
       } catch (e) {
         AppLogger.warning('Failed to update customer stats after updateInvoice', 'InvoiceService');
         rethrow;
@@ -208,7 +220,10 @@ class InvoiceService {
         await _reverseInvoiceInventory(invoice);
         await _fsService.deleteInvoice(invoiceId);
         if (invoice.customerId != null && invoice.customerId!.isNotEmpty) {
-          await CustomerService.instance.updateCustomerStats(invoice.customerId!);
+          await CustomerService.instance.updateCustomerStatsWithDelta(
+            customerId: invoice.customerId!,
+            removedInvoice: invoice,
+          );
         }
       } else {
         await _fsService.deleteInvoice(invoiceId);
@@ -331,7 +346,10 @@ class InvoiceService {
 
     if (cancelledInvoice.customerId != null && cancelledInvoice.customerId!.isNotEmpty) {
       try {
-        await CustomerService.instance.updateCustomerStats(cancelledInvoice.customerId!);
+        await CustomerService.instance.updateCustomerStatsWithDelta(
+          customerId: cancelledInvoice.customerId!,
+          removedInvoice: invoice,
+        );
       } catch (e) {
         AppLogger.warning('Failed to update customer stats after cancellation', 'InvoiceService');
         rethrow;
@@ -399,6 +417,7 @@ class InvoiceService {
         itemNameToFinalId[item.name] = existingItem.id;
       } else {
         // Queue new item for batch creation
+        final isPurchase = invoice.invoiceType == 'purchase';
         final newItem = InventoryItem(
           id: itemId,
           sku: itemId.toUpperCase(),
@@ -407,7 +426,8 @@ class InvoiceService {
           openingStock: 0.0,
           currentStock: 0.0,
           reorderPoint: 10.0,
-          avgCost: item.price,
+          avgCost: isPurchase ? item.unitCost : 0.0,
+          sellingPrice: isPurchase ? item.price : item.price,
           category: 'General',
           lastUpdated: DateTime.now(),
         );
@@ -433,7 +453,7 @@ class InvoiceService {
             inventoryService.receiveStockWithoutRefresh(
               finalItemId,
               item.quantity.toDouble(),
-              item.price,
+              item.unitCost > 0 ? item.unitCost : item.price,
               'invoice:${invoice.id}'
             )
           );
@@ -489,7 +509,8 @@ class InvoiceService {
       
       try {
         if (returnType == 'sales_return') {
-          await inventoryService.receiveStock(itemId, item.quantity.toDouble(), item.price, 'return:$returnId');
+          // Use avgCost not selling price — returning goods at purchase cost preserves weighted average
+          await inventoryService.receiveStock(itemId, item.quantity.toDouble(), existingItem?.avgCost ?? 0.0, 'return:$returnId');
         } else if (returnType == 'purchase_return') {
           await inventoryService.issueStock(itemId, item.quantity.toDouble(), 'return:$returnId');
         }
@@ -525,6 +546,14 @@ class InvoiceService {
   Future<void> _reverseInvoiceInventory(InvoiceModel invoice) async {
     final inventoryService = InventoryService();
     await inventoryService.reverseInvoiceMovements('invoice', invoice.id);
+    // For purchase invoices, unblend the weighted-average cost that was blended on receive
+    if (invoice.invoiceType == 'purchase') {
+      for (final item in invoice.items) {
+        final itemId = _generateItemId(item.name);
+        await inventoryService.unblendAvgCostAfterCancellation(
+            itemId, item.quantity.toDouble(), item.unitCost);
+      }
+    }
   }
 
   String _generateItemId(String itemName) {

@@ -46,6 +46,7 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
               name: item.name,
               quantity: item.quantity.toDouble(),
               price: item.price.toDouble(),
+              unitCost: item.unitCost,
             ))
         .toList();
   }
@@ -93,6 +94,7 @@ class _EditInvoiceDialogState extends State<EditInvoiceDialog> {
                   name: item.name,
                   quantity: item.quantity.toInt(),
                   price: item.price.toDouble(),
+                  unitCost: item.unitCost,
                 ))
             .toList(),
         date: _selectedDate,
@@ -676,10 +678,12 @@ class EditableInvoiceItem {
   String name;
   double quantity;
   double price;
+  double unitCost;
 
   EditableInvoiceItem({
     required this.name,
     required this.quantity,
     required this.price,
+    this.unitCost = 0.0,
   });
 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
 
@@ -8,6 +7,7 @@ import '../../providers/catalogue_provider.dart';
 import '../../services/business_profile_service.dart';
 import '../../services/inventory_service.dart';
 import '../../services/items_service.dart';
+import '../../widgets/catalogue_browse_list.dart';
 import '../../widgets/item_autocomplete_field.dart';
 
 /// Add items directly to inventory (without raising a purchase invoice).
@@ -26,16 +26,24 @@ class AddItemsDirectlyScreen extends StatefulWidget {
 class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
   final InventoryService _inventoryService = InventoryService();
 
-  /// Keyed by a stable selection key (catalog id or inventory id) so the same
-  /// item can't appear twice in the list.
+  /// Keyed by stable selection key (`inv:<id>` / `cat:<id>` / `name:<lower>`).
   final Map<String, _SelectedRow> _selected = {};
+  List<InventoryItem> _inventory = const [];
   bool _submitting = false;
 
-  void _handleSelection(ItemAutocompleteResult result) {
-    final key = _keyFor(result);
-    setState(() {
-      _selected.putIfAbsent(key, () => _SelectedRow.fromResult(result));
-    });
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadBrowseData());
+  }
+
+  Future<void> _loadBrowseData() async {
+    if (!mounted) return;
+    context.read<CatalogueProvider>().load();
+    try {
+      final items = await _inventoryService.getAllItems();
+      if (mounted) setState(() => _inventory = items);
+    } catch (_) {}
   }
 
   String _keyFor(ItemAutocompleteResult r) {
@@ -44,13 +52,17 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
     return 'name:${r.name.toLowerCase()}';
   }
 
+  void _handleSelection(ItemAutocompleteResult result) {
+    final key = _keyFor(result);
+    setState(() {
+      _selected.putIfAbsent(key, () => _SelectedRow.fromResult(result));
+    });
+  }
+
   Future<void> _submit() async {
     if (_selected.isEmpty || _submitting) return;
     setState(() => _submitting = true);
     try {
-      // Snapshot existing inventory so we can match catalogue picks that have
-      // already been promoted to inventory under the hood (e.g. catalogItemId
-      // link) without creating duplicates.
       final inventory = await _inventoryService.getAllItems();
       final byCatalogId = <String, InventoryItem>{
         for (final i in inventory)
@@ -136,26 +148,31 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
                 mode: AutocompleteMode.purchase,
                 autofocus: true,
                 onSelected: _handleSelection,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: 'Search or add a new item',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.search, color: Colors.green),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
                 ),
               ),
             ),
             Expanded(
-              child: _selected.isEmpty
-                  ? const _EmptyState()
-                  : ListView(
-                      children: _selected.entries
-                          .map((e) => _SelectedRowTile(
-                                key: ValueKey(e.key),
-                                row: e.value,
-                                onChanged: () => setState(() {}),
-                                onRemove: () => setState(() => _selected.remove(e.key)),
-                              ))
-                          .toList(),
-                    ),
+              child: CatalogueBrowseList(
+                isSales: false,
+                accent: Colors.green,
+                inventory: _inventory,
+                selectedQtys: {
+                  for (final e in _selected.entries) e.key: e.value.quantity
+                },
+                onSelected: _handleSelection,
+                onDeselected: (key) => setState(() => _selected.remove(key)),
+                onQtyChanged: (key, qty) => setState(() {
+                  if (_selected.containsKey(key)) _selected[key]!.quantity = qty;
+                }),
+              ),
             ),
             if (_selected.isNotEmpty)
               SafeArea(
@@ -180,7 +197,8 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation(Colors.white),
                               ),
                             )
                           : const Icon(Icons.add_box),
@@ -203,6 +221,10 @@ class _AddItemsDirectlyScreenState extends State<AddItemsDirectlyScreen> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Data model for a selected inventory-receive row
+// ---------------------------------------------------------------------------
 
 class _SelectedRow {
   _SelectedRow({
@@ -232,158 +254,4 @@ class _SelectedRow {
         inventoryItem: r.inventoryItem,
         catalogueItem: r.catalogueItem,
       );
-}
-
-class _SelectedRowTile extends StatefulWidget {
-  const _SelectedRowTile({
-    super.key,
-    required this.row,
-    required this.onChanged,
-    required this.onRemove,
-  });
-
-  final _SelectedRow row;
-  final VoidCallback onChanged;
-  final VoidCallback onRemove;
-
-  @override
-  State<_SelectedRowTile> createState() => _SelectedRowTileState();
-}
-
-class _SelectedRowTileState extends State<_SelectedRowTile> {
-  late final TextEditingController _qtyCtrl;
-  late final TextEditingController _costCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _qtyCtrl = TextEditingController(text: _fmt(widget.row.quantity));
-    _costCtrl = TextEditingController(text: _fmt(widget.row.unitCost));
-  }
-
-  @override
-  void dispose() {
-    _qtyCtrl.dispose();
-    _costCtrl.dispose();
-    super.dispose();
-  }
-
-  String _fmt(double v) =>
-      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
-
-  @override
-  Widget build(BuildContext context) {
-    final isNew = widget.row.inventoryItem == null;
-    return Card(
-      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.w),
-      child: Padding(
-        padding: EdgeInsets.all(3.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(widget.row.name,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text('${widget.row.sku} • ${widget.row.unit}',
-                          style: TextStyle(
-                              fontSize: 11.sp, color: Colors.grey.shade600)),
-                    ],
-                  ),
-                ),
-                if (isNew)
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 2.w, vertical: 0.4.h),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text('New',
-                        style: TextStyle(
-                            fontSize: 10.sp,
-                            color: Colors.blue.shade800,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: widget.onRemove,
-                ),
-              ],
-            ),
-            SizedBox(height: 1.h),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _qtyCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Quantity',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (v) {
-                      widget.row.quantity = double.tryParse(v) ?? 0;
-                      widget.onChanged();
-                    },
-                  ),
-                ),
-                SizedBox(width: 3.w),
-                Expanded(
-                  child: TextField(
-                    controller: _costCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Unit cost (₹)',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (v) {
-                      widget.row.unitCost = double.tryParse(v) ?? 0;
-                      widget.onChanged();
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.inventory_2_outlined,
-              size: 18.w, color: Colors.grey.shade400),
-          SizedBox(height: 2.h),
-          Text(
-            'Search above to start adding items',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13.sp),
-          ),
-        ],
-      ),
-    );
-  }
 }

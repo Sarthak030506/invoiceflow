@@ -11,6 +11,9 @@ class BusinessProfileService {
   final FirebaseFirestore _fs = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  bool? _profileCompleteCache;
+  DateTime? _profileCompleteCacheTime;
+
   String _requireUid() {
     final user = _auth.currentUser;
     if (user == null) throw StateError('No authenticated user.');
@@ -39,8 +42,20 @@ class BusinessProfileService {
   }
 
   Future<bool> isProfileComplete() async {
+    if (_profileCompleteCache != null &&
+        _profileCompleteCacheTime != null &&
+        DateTime.now().difference(_profileCompleteCacheTime!).inSeconds < 60) {
+      return _profileCompleteCache!;
+    }
     final profile = await getProfile();
-    return profile != null && profile.isComplete;
+    _profileCompleteCache = profile != null && profile.isComplete;
+    _profileCompleteCacheTime = DateTime.now();
+    return _profileCompleteCache!;
+  }
+
+  void invalidateProfileCache() {
+    _profileCompleteCache = null;
+    _profileCompleteCacheTime = null;
   }
 
   Future<void> markOnboardingComplete() async {

@@ -626,6 +626,7 @@ class FirestoreService {
                 'name': it.name,
                 'quantity': it.quantity,
                 'price': it.price,
+                'unitCost': it.unitCost,
               })
           .toList(),
     }..removeWhere((key, value) => value == null);
@@ -638,6 +639,7 @@ class FirestoreService {
             name: m['name'] as String? ?? '',
             quantity: (m['quantity'] as num?)?.toInt() ?? 1,
             price: (m['price'] as num?)?.toDouble() ?? 0.0,
+            unitCost: (m['unitCost'] as num?)?.toDouble() ?? 0.0,
           );
         }).toList() ??
         [];

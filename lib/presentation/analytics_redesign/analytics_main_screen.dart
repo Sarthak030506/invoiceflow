@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
 import 'analytics_redesign_scaffold.dart';
 import 'overview_kpis_screen.dart';
+import '../../providers/remote_config_provider.dart';
 import '../../widgets/enhanced_bottom_nav.dart';
 
 class AnalyticsMainScreen extends StatefulWidget {
@@ -30,10 +32,14 @@ class _AnalyticsMainScreenState extends State<AnalyticsMainScreen> {
         elevation: theme.appBarTheme.elevation,
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.auto_awesome),
-            tooltip: 'AI Hub',
-            onPressed: () => Navigator.pushNamed(context, '/ai-hub'),
+          Consumer<RemoteConfigProvider>(
+            builder: (context, rc, _) => rc.aiHubEnabled
+                ? IconButton(
+                    icon: const Icon(Icons.auto_awesome),
+                    tooltip: 'AI Hub',
+                    onPressed: () => Navigator.pushNamed(context, '/ai-hub'),
+                  )
+                : const SizedBox.shrink(),
           ),
         ],
       ),
@@ -44,9 +50,16 @@ class _AnalyticsMainScreenState extends State<AnalyticsMainScreen> {
             child: ListView(
               padding: EdgeInsets.all(4.w),
               children: [
-                // AI Hub Card - Premium Feature
-                _buildAIHubCard(),
-                SizedBox(height: 3.w),
+                Consumer<RemoteConfigProvider>(
+                  builder: (context, rc, _) => rc.aiHubEnabled
+                      ? Column(
+                          children: [
+                            _buildAIHubCard(),
+                            SizedBox(height: 3.w),
+                          ],
+                        )
+                      : const SizedBox.shrink(),
+                ),
                 _buildAnalyticsCard(
                   'Overview KPIs',
                   'Key performance metrics',

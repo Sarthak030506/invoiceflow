@@ -33,18 +33,32 @@ class InventoryFirestoreService {
   }
 
   Future<List<Map<String, dynamic>>> getSellableItems() async {
-    // Assuming all items are sellable in current model
     final items = await getAllItems();
     return items
         .map((i) => {
               'id': i.id,
               'name': i.name,
               'sku': i.sku,
-              'rate': i.avgCost,
+              'rate': i.sellingPrice > 0 ? i.sellingPrice : i.avgCost,
               'currentStock': i.currentStock,
               'category': i.category,
             })
         .toList();
+  }
+
+  Future<void> updateSellingPriceByCatalogId(
+      String catalogItemId, double sellingPrice) async {
+    final uid = _requireUid();
+    final q = await _itemsCol(uid)
+        .where('catalog_item_id', isEqualTo: catalogItemId)
+        .get();
+    if (q.docs.isEmpty) return;
+    final batch = _fs.batch();
+    final now = Timestamp.fromDate(DateTime.now());
+    for (final d in q.docs) {
+      batch.update(d.reference, {'selling_price': sellingPrice, 'last_updated': now});
+    }
+    await batch.commit();
   }
 
   Future<InventoryItem?> getItemById(String itemId) async {
@@ -127,6 +141,77 @@ class InventoryFirestoreService {
     return q.docs.map((d) => _movementFromFirestore(d.data())).toList();
   }
 
+  /// Issues stock atomically — reads currentStock, guards against oversell, writes movement
+  /// and updates currentStock all inside one Firestore transaction.
+  Future<void> issueStockTransactional(
+      String itemId, double qty, StockMovement movement) async {
+    final uid = _requireUid();
+    final itemRef = _itemsCol(uid).doc(itemId);
+    final movRef = _movementsCol(uid).doc(movement.id);
+
+    await _fs.runTransaction((tx) async {
+      final snap = await tx.get(itemRef);
+      if (!snap.exists) throw Exception('Inventory item not found: $itemId');
+      final item = _itemFromFirestore(snap.data()!..['id'] = itemId);
+
+      if (item.currentStock < qty) {
+        throw Exception(
+            'Insufficient stock for ${item.name}. '
+            'Available: ${item.currentStock}, Required: $qty');
+      }
+
+      tx.set(movRef, _movementToFirestore(movement));
+      tx.update(itemRef, {
+        'current_stock': item.currentStock - qty,
+        'last_updated': Timestamp.fromDate(DateTime.now()),
+      });
+    });
+  }
+
+  /// Receives stock atomically — writes movement and updates currentStock + avgCost
+  /// all inside one Firestore transaction, preventing concurrent-write avgCost corruption.
+  Future<void> receiveStockTransactional(
+      String itemId, double qty, double unitCost, StockMovement movement) async {
+    final uid = _requireUid();
+    final itemRef = _itemsCol(uid).doc(itemId);
+    final movRef = _movementsCol(uid).doc(movement.id);
+
+    await _fs.runTransaction((tx) async {
+      final snap = await tx.get(itemRef);
+      if (!snap.exists) throw Exception('Inventory item not found: $itemId');
+      final item = _itemFromFirestore(snap.data()!..['id'] = itemId);
+
+      final prevStock = item.currentStock;
+      final newStock = prevStock + qty;
+      final newAvgCost = (prevStock > 0 && unitCost > 0)
+          ? (prevStock * item.avgCost + qty * unitCost) / newStock
+          : (unitCost > 0 ? unitCost : item.avgCost);
+
+      tx.set(movRef, _movementToFirestore(movement));
+      tx.update(itemRef, {
+        'current_stock': newStock,
+        'avg_cost': newAvgCost,
+        'last_updated': Timestamp.fromDate(DateTime.now()),
+      });
+    });
+  }
+
+  /// Syncs currentStock to a computed value inside a transaction so that concurrent
+  /// reconciliation loops cannot clobber each other's writes.
+  Future<void> syncCurrentStockTransactional(
+      String itemId, double computedStock) async {
+    final uid = _requireUid();
+    final itemRef = _itemsCol(uid).doc(itemId);
+    await _fs.runTransaction((tx) async {
+      final snap = await tx.get(itemRef);
+      if (!snap.exists) return;
+      tx.update(itemRef, {
+        'current_stock': computedStock,
+        'last_updated': Timestamp.fromDate(DateTime.now()),
+      });
+    });
+  }
+
   Future<void> reverseMovementsAtomically(String sourceType, String sourceId) async {
     final uid = _requireUid();
     final batch = _fs.batch();
@@ -138,10 +223,18 @@ class InventoryFirestoreService {
     for (final d in q.docs) {
       final data = d.data();
       final movement = _movementFromFirestore(data);
+
+      // IN-type movements add stock; their reversal must subtract → REVERSAL_OUT +qty
+      // OUT-type movements subtract stock; their reversal must add → REVERSAL_OUT -qty
+      //   (computeCurrentStock does total -= qty, so -qty means total += |qty|)
+      final isInType = movement.type == StockMovementType.IN ||
+          movement.type == StockMovementType.RETURN_IN;
+      final reversalQty = isInType ? movement.quantity : -movement.quantity;
+
       final reversal = movement.copyWith(
         id: '${movement.id}_rev',
         type: StockMovementType.REVERSAL_OUT,
-        quantity: -movement.quantity,
+        quantity: reversalQty,
         reversalOfMovementId: movement.id,
         reversalFlag: true,
         createdAt: DateTime.now(),
@@ -184,6 +277,7 @@ class InventoryFirestoreService {
         'current_stock': item.currentStock,
         'reorder_point': item.reorderPoint,
         'avg_cost': item.avgCost,
+        'selling_price': item.sellingPrice,
         'category': item.category,
         'last_updated': Timestamp.fromDate(item.lastUpdated),
         'barcode': item.barcode,
@@ -199,6 +293,7 @@ class InventoryFirestoreService {
         currentStock: (data['current_stock'] as num?)?.toDouble() ?? 0.0,
         reorderPoint: (data['reorder_point'] as num?)?.toDouble() ?? 0.0,
         avgCost: (data['avg_cost'] as num?)?.toDouble() ?? 0.0,
+        sellingPrice: (data['selling_price'] as num?)?.toDouble() ?? 0.0,
         category: data['category'] as String? ?? 'General',
         lastUpdated: (data['last_updated'] as Timestamp?)?.toDate() ?? DateTime.now(),
         barcode: data['barcode'] as String?,

@@ -376,6 +376,7 @@ class InvoiceItem {
       'name': name,
       'quantity': quantity,
       'price': price,
+      'unitCost': unitCost,
     };
   }
   static InvoiceItem fromDb(Map<String, dynamic> map) {
@@ -383,17 +384,20 @@ class InvoiceItem {
       name: map['name'],
       quantity: map['quantity'],
       price: map['price'],
+      unitCost: (map['unitCost'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
   final String name;
   final int quantity;
-  final double price;
+  final double price; // unit selling price (what customer pays)
+  final double unitCost; // unit purchase cost (what we paid)
 
   InvoiceItem({
     required this.name,
     required this.quantity,
     required this.price,
+    this.unitCost = 0.0,
   });
 
   factory InvoiceItem.fromJson(Map<String, dynamic> json) {
@@ -401,6 +405,7 @@ class InvoiceItem {
       name: json['name'] ?? '',
       quantity: json['quantity'] ?? 1,
       price: (json['price'] ?? 0.0).toDouble(),
+      unitCost: (json['unitCost'] ?? 0.0).toDouble(),
     );
   }
 
@@ -409,9 +414,11 @@ class InvoiceItem {
       'name': name,
       'quantity': quantity,
       'price': price,
+      'unitCost': unitCost,
       'totalPrice': totalPrice,
     };
   }
 
   double get totalPrice => quantity * price;
+  double get grossMargin => (price - unitCost) * quantity;
 }

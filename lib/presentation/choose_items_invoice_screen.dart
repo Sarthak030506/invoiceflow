@@ -14,9 +14,11 @@ import '../services/invoice_service.dart';
 import '../services/items_service.dart';
 import '../services/return_service.dart';
 import '../utils/app_logger.dart';
+import '../widgets/catalogue_browse_list.dart';
 import '../widgets/enhanced_payment_details_widget.dart';
 import '../widgets/item_autocomplete_field.dart';
 import './create_invoice/widgets/customer_input_widget.dart';
+import './review_selling_prices_screen.dart';
 
 class ChooseItemsInvoiceScreen extends StatefulWidget {
   final String invoiceType; // 'sales' or 'purchase'
@@ -37,10 +39,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
   late final ReturnService _returnService;
   late final InventoryService _inventoryService;
 
-  /// Keyed by stable selection key (`inv:<id>` / `cat:<id>` / `name:<lower>`)
-  /// so the same item can't appear twice.
   final Map<String, _SelectedRow> _selected = {};
-
   List<InventoryItem> _inventory = const [];
 
   String _customerName = '';
@@ -69,8 +68,6 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
       if (mounted) setState(() => _inventory = items);
     } catch (_) {}
   }
-
-  // --- Selection -----------------------------------------------------------
 
   String _keyFor(ItemAutocompleteResult r) {
     if (r.inventoryItem != null) return 'inv:${r.inventoryItem!.id}';
@@ -116,7 +113,6 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
         'opening_stock:${DateTime.now().microsecondsSinceEpoch}',
       );
       if (!mounted) return;
-      // Auto-select the freshly stocked item.
       final fresh = await _inventoryService.getItemById(invItem.id);
       if (fresh != null && mounted) {
         setState(() {
@@ -124,7 +120,8 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
             name: fresh.name,
             sku: fresh.sku,
             unit: fresh.unit,
-            rate: fresh.avgCost,
+            rate: fresh.sellingPrice > 0 ? fresh.sellingPrice : fresh.avgCost,
+            unitCost: fresh.avgCost,
             quantity: 1,
             inventoryItem: fresh,
           );
@@ -141,25 +138,18 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
   double get _total =>
       _selected.values.fold<double>(0, (s, r) => s + r.quantity * r.rate);
 
-  // --- Invoice generation flow --------------------------------------------
-
   Future<void> _ensureCatalogueLinkedInventory() async {
-    // For each selected row that came from catalogue/new, make sure a matching
-    // inventory item exists with `catalogItemId` linkage. _processInvoiceInventory
-    // creates inventory by name only and would lose the linkage otherwise.
     final inventory = await _inventoryService.getAllItems();
     final byName = {for (final i in inventory) i.name.toLowerCase().trim(): i};
     final byCatalogId = <String, InventoryItem>{
       for (final i in inventory)
         if (i.catalogItemId != null) i.catalogItemId!: i,
     };
-
     for (final row in _selected.values) {
       if (row.catalogueItem == null) continue;
       final cat = row.catalogueItem!;
       if (byCatalogId.containsKey(cat.id)) continue;
       if (byName.containsKey(cat.name.toLowerCase().trim())) continue;
-
       final invItem = InventoryItem(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
         sku: cat.sku,
@@ -168,7 +158,8 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
         openingStock: 0.0,
         currentStock: 0.0,
         reorderPoint: 0.0,
-        avgCost: row.rate,
+        avgCost: row.unitCost > 0 ? row.unitCost : row.rate,
+        sellingPrice: row.rate,
         category: cat.category,
         lastUpdated: DateTime.now(),
         barcode: cat.barcode,
@@ -203,6 +194,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
               name: r.name,
               quantity: r.quantity.toInt(),
               price: r.rate,
+              unitCost: _isSales ? r.unitCost : r.rate, // purchase: cost = invoice price
             ))
         .toList();
     final totalAmount = _total;
@@ -226,8 +218,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Invoice Summary',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp)),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp)),
                 const Divider(),
                 Expanded(
                   child: ListView(
@@ -246,8 +237,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
                                       child: Text('x${i.quantity}',
                                           textAlign: TextAlign.center)),
                                   Expanded(
-                                      child: Text(
-                                          '₹${i.price.toStringAsFixed(2)}',
+                                      child: Text('₹${i.price.toStringAsFixed(2)}',
                                           textAlign: TextAlign.right)),
                                   Expanded(
                                       child: Text(
@@ -332,8 +322,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
                   ),
                 ),
                 Text('Customer Information',
-                    style: TextStyle(
-                        fontSize: 18.sp, fontWeight: FontWeight.bold)),
+                    style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold)),
                 SizedBox(height: 2.h),
                 CustomerInputWidget(
                   initialName: _customerName,
@@ -378,8 +367,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
                                 if (_customerId == null &&
                                     _customerPhone.isNotEmpty) {
                                   try {
-                                    final c =
-                                        await _customerService.addCustomer(
+                                    final c = await _customerService.addCustomer(
                                       _customerName.isEmpty
                                           ? 'Customer'
                                           : _customerName,
@@ -397,8 +385,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
                                 if (Navigator.of(modalCtx).canPop()) {
                                   Navigator.pop(modalCtx);
                                 }
-                                _showPaymentDetailsSheet(
-                                    invoiceItems, totalAmount);
+                                _showPaymentDetailsSheet(invoiceItems, totalAmount);
                               },
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -461,8 +448,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
                 ),
               ),
               Text('Payment Details',
-                  style: TextStyle(
-                      fontSize: 18.sp, fontWeight: FontWeight.bold)),
+                  style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold)),
               SizedBox(height: 2.h),
               EnhancedPaymentDetailsWidget(
                 totalAmount: totalAmount,
@@ -475,9 +461,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
                     barrierDismissible: false,
                     builder: (_) => WillPopScope(
                       onWillPop: () async => false,
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
+                      child: const Center(child: CircularProgressIndicator()),
                     ),
                   );
                   try {
@@ -501,8 +485,6 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
                           _customerId!, _pendingRefundAmount);
                     }
 
-                    // Pre-create inventory items linked to catalogue picks so
-                    // _processInvoiceInventory's name-match preserves linkage.
                     await _ensureCatalogueLinkedInventory();
 
                     final now = DateTime.now();
@@ -540,30 +522,41 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
 
                     await _invoiceService.addInvoice(newInvoice);
 
+                    // Dismiss loading dialog before any mounted check so the
+                    // spinner never hangs if the widget was disposed mid-await.
+                    if (Navigator.of(parentContext, rootNavigator: true).canPop()) {
+                      Navigator.of(parentContext, rootNavigator: true).pop();
+                    }
+
                     if (!mounted) return;
                     context.read<CatalogueProvider>().invalidate();
 
-                    if (Navigator.of(parentContext, rootNavigator: true)
-                        .canPop()) {
-                      Navigator.of(parentContext, rootNavigator: true).pop();
-                    }
                     ScaffoldMessenger.of(parentContext).showSnackBar(
-                      const SnackBar(
-                          content: Text('Invoice created and saved!')),
+                      const SnackBar(content: Text('Invoice created and saved!')),
                     );
                     if (Navigator.of(parentContext).canPop()) {
                       Navigator.of(parentContext).pop();
                     }
-                    Navigator.of(parentContext).pushNamedAndRemoveUntil(
-                      '/',
-                      (route) => false,
-                    );
+                    if (!_isSales) {
+                      Navigator.of(parentContext).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (_) => ReviewSellingPricesScreen(
+                              items: invoiceItems),
+                        ),
+                        (route) => false,
+                      );
+                    } else {
+                      Navigator.of(parentContext).pushNamedAndRemoveUntil(
+                        '/',
+                        (route) => false,
+                      );
+                    }
                   } catch (e) {
-                    if (!mounted) return;
-                    if (Navigator.of(parentContext, rootNavigator: true)
-                        .canPop()) {
+                    // Always dismiss loading dialog regardless of mounted state.
+                    if (Navigator.of(parentContext, rootNavigator: true).canPop()) {
                       Navigator.of(parentContext, rootNavigator: true).pop();
                     }
+                    if (!mounted) return;
                     ScaffoldMessenger.of(parentContext).showSnackBar(
                       SnackBar(content: Text('Error saving invoice: $e')),
                     );
@@ -578,14 +571,11 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
     );
   }
 
-  // --- Build ---------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title:
-            Text(_isSales ? 'Sales Invoice Items' : 'Purchase Invoice Items'),
+        title: Text(_isSales ? 'Sales Invoice Items' : 'Purchase Invoice Items'),
         backgroundColor: _accent,
         foregroundColor: Colors.white,
       ),
@@ -615,28 +605,20 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
               ),
             ),
             Expanded(
-              child: _selected.isEmpty
-                  ? _CatalogBrowseList(
-                      isSales: _isSales,
-                      accent: _accent,
-                      inventory: _inventory,
-                      onSelected: _handleSelection,
-                      onOutOfStockTapped:
-                          _isSales ? _handleOutOfStockTap : null,
-                    )
-                  : ListView(
-                      children: _selected.entries
-                          .map((e) => _SelectedRowTile(
-                                key: ValueKey(e.key),
-                                row: e.value,
-                                accent: _accent,
-                                isSales: _isSales,
-                                onChanged: () => setState(() {}),
-                                onRemove: () =>
-                                    setState(() => _selected.remove(e.key)),
-                              ))
-                          .toList(),
-                    ),
+              child: CatalogueBrowseList(
+                isSales: _isSales,
+                accent: _accent,
+                inventory: _inventory,
+                selectedQtys: {
+                  for (final e in _selected.entries) e.key: e.value.quantity
+                },
+                onSelected: _handleSelection,
+                onDeselected: (key) => setState(() => _selected.remove(key)),
+                onQtyChanged: (key, qty) => setState(() {
+                  if (_selected.containsKey(key)) _selected[key]!.quantity = qty;
+                }),
+                onOutOfStockTapped: _isSales ? _handleOutOfStockTap : null,
+              ),
             ),
             if (_selected.isNotEmpty) _buildBottomBar(),
           ],
@@ -690,8 +672,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
                 onPressed: _showInvoiceSummaryDialog,
                 icon: const Icon(Icons.receipt_long),
                 label: Text('Generate Invoice',
-                    style: TextStyle(
-                        fontSize: 14.sp, fontWeight: FontWeight.bold)),
+                    style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -702,7 +683,7 @@ class _ChooseItemsInvoiceScreenState extends State<ChooseItemsInvoiceScreen> {
 }
 
 // ---------------------------------------------------------------------------
-// Selected-row tile
+// Data model for a selected invoice row
 // ---------------------------------------------------------------------------
 
 class _SelectedRow {
@@ -711,6 +692,7 @@ class _SelectedRow {
     required this.sku,
     required this.unit,
     required this.rate,
+    required this.unitCost,
     required this.quantity,
     this.inventoryItem,
     this.catalogueItem,
@@ -719,7 +701,8 @@ class _SelectedRow {
   final String name;
   final String sku;
   final String unit;
-  double rate;
+  double rate; // selling price shown on invoice line
+  double unitCost; // purchase cost for margin tracking
   double quantity;
   final InventoryItem? inventoryItem;
   final ProductCatalogItem? catalogueItem;
@@ -729,179 +712,11 @@ class _SelectedRow {
         sku: r.sku,
         unit: r.unit,
         rate: r.rate,
+        unitCost: r.costRate,
         quantity: 1,
         inventoryItem: r.inventoryItem,
         catalogueItem: r.catalogueItem,
       );
-}
-
-class _SelectedRowTile extends StatefulWidget {
-  const _SelectedRowTile({
-    super.key,
-    required this.row,
-    required this.accent,
-    required this.isSales,
-    required this.onChanged,
-    required this.onRemove,
-  });
-
-  final _SelectedRow row;
-  final Color accent;
-  final bool isSales;
-  final VoidCallback onChanged;
-  final VoidCallback onRemove;
-
-  @override
-  State<_SelectedRowTile> createState() => _SelectedRowTileState();
-}
-
-class _SelectedRowTileState extends State<_SelectedRowTile> {
-  late final TextEditingController _qtyCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _qtyCtrl = TextEditingController(text: _fmt(widget.row.quantity));
-  }
-
-  @override
-  void dispose() {
-    _qtyCtrl.dispose();
-    super.dispose();
-  }
-
-  String _fmt(double v) =>
-      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
-
-  void _setQty(double v) {
-    if (widget.isSales) {
-      final stock = widget.row.inventoryItem?.currentStock ?? 0;
-      if (v > stock) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Only ${stock.toInt()} in stock'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        v = stock;
-      }
-    }
-    if (v < 0) v = 0;
-    setState(() {
-      widget.row.quantity = v;
-      _qtyCtrl.text = _fmt(v);
-    });
-    widget.onChanged();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final amount = widget.row.quantity * widget.row.rate;
-    final stock = widget.row.inventoryItem?.currentStock;
-    final isNew = widget.row.inventoryItem == null;
-    return Card(
-      margin: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.w),
-      child: Padding(
-        padding: EdgeInsets.all(3.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(widget.row.name,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text(
-                        stock != null
-                            ? '${widget.row.sku} • Stock: ${stock.toInt()} ${widget.row.unit}'
-                            : '${widget.row.sku} • ${widget.row.unit}',
-                        style: TextStyle(
-                            fontSize: 11.sp, color: Colors.grey.shade600),
-                      ),
-                    ],
-                  ),
-                ),
-                if (isNew)
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 2.w, vertical: 0.4.h),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text('New',
-                        style: TextStyle(
-                            fontSize: 10.sp,
-                            color: Colors.blue.shade800,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: widget.onRemove,
-                ),
-              ],
-            ),
-            SizedBox(height: 1.h),
-            Row(
-              children: [
-                _qtyButton(Icons.remove,
-                    () => _setQty((widget.row.quantity - 1).clamp(0, double.infinity))),
-                SizedBox(
-                  width: 16.w,
-                  child: TextField(
-                    controller: _qtyCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                    ],
-                    textAlign: TextAlign.center,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (v) {
-                      widget.row.quantity = double.tryParse(v) ?? 0;
-                      widget.onChanged();
-                    },
-                  ),
-                ),
-                _qtyButton(Icons.add, () => _setQty(widget.row.quantity + 1)),
-                SizedBox(width: 3.w),
-                Text('@ ₹${widget.row.rate.toStringAsFixed(2)}',
-                    style:
-                        TextStyle(fontSize: 12.sp, color: Colors.grey.shade700)),
-                const Spacer(),
-                Text('₹${amount.toStringAsFixed(2)}',
-                    style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.bold,
-                        color: widget.accent)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _qtyButton(IconData icon, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: EdgeInsets.all(1.5.w),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, size: 5.w),
-      ),
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -930,7 +745,7 @@ class _SeedStockSheetState extends State<_SeedStockSheet> {
   void initState() {
     super.initState();
     _qtyCtrl = TextEditingController(text: '1');
-    _costCtrl = TextEditingController(text: widget.item.rate.toString());
+    _costCtrl = TextEditingController(text: widget.item.costPrice.toString());
   }
 
   @override
@@ -970,12 +785,10 @@ class _SeedStockSheetState extends State<_SeedStockSheet> {
             ),
           ),
           Text('${widget.item.name} is not in stock',
-              style:
-                  TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+              style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
           SizedBox(height: 1.h),
           Text('Add opening stock so you can sell it.',
-              style:
-                  TextStyle(fontSize: 12.sp, color: Colors.grey.shade700)),
+              style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade700)),
           SizedBox(height: 2.h),
           Row(
             children: [
@@ -1032,8 +845,7 @@ class _SeedStockSheetState extends State<_SeedStockSheet> {
                     if (q <= 0) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                            content:
-                                Text('Quantity must be greater than zero')),
+                            content: Text('Quantity must be greater than zero')),
                       );
                       return;
                     }
@@ -1046,175 +858,6 @@ class _SeedStockSheetState extends State<_SeedStockSheet> {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Catalogue browse list — shown when no items are selected yet
-// ---------------------------------------------------------------------------
-
-class _BrowseRow {
-  const _BrowseRow({required this.catalogueItem, this.inventoryItem});
-  final ProductCatalogItem catalogueItem;
-  final InventoryItem? inventoryItem;
-}
-
-class _CatalogBrowseList extends StatelessWidget {
-  const _CatalogBrowseList({
-    required this.isSales,
-    required this.accent,
-    required this.inventory,
-    required this.onSelected,
-    this.onOutOfStockTapped,
-  });
-
-  final bool isSales;
-  final Color accent;
-  final List<InventoryItem> inventory;
-  final ValueChanged<ItemAutocompleteResult> onSelected;
-  final ValueChanged<ProductCatalogItem>? onOutOfStockTapped;
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<CatalogueProvider>(
-      builder: (context, provider, _) {
-        if (provider.isLoading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final catalogue = provider.items;
-
-        if (catalogue.isEmpty && inventory.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isSales
-                      ? Icons.shopping_cart_outlined
-                      : Icons.inventory_outlined,
-                  size: 18.w,
-                  color: Colors.grey.shade400,
-                ),
-                SizedBox(height: 2.h),
-                Text(
-                  'No items yet. Type a name above to add your first item.',
-                  textAlign: TextAlign.center,
-                  style:
-                      TextStyle(color: Colors.grey.shade600, fontSize: 13.sp),
-                ),
-              ],
-            ),
-          );
-        }
-
-        // Build fast lookups: catalogue item → matching inventory item.
-        final byCatalogId = <String, InventoryItem>{
-          for (final inv in inventory)
-            if (inv.catalogItemId != null) inv.catalogItemId!: inv,
-        };
-        final byName = <String, InventoryItem>{
-          for (final inv in inventory) inv.name.toLowerCase().trim(): inv,
-        };
-
-        final rows = catalogue.map((cat) {
-          final inv = byCatalogId[cat.id] ??
-              byName[cat.name.toLowerCase().trim()];
-          return _BrowseRow(catalogueItem: cat, inventoryItem: inv);
-        }).toList();
-
-        // Sales: in-stock items first, then alphabetical within each group.
-        rows.sort((a, b) {
-          if (isSales) {
-            final aStock = (a.inventoryItem?.currentStock ?? 0) > 0;
-            final bStock = (b.inventoryItem?.currentStock ?? 0) > 0;
-            if (aStock != bStock) return aStock ? -1 : 1;
-          }
-          return a.catalogueItem.name
-              .compareTo(b.catalogueItem.name);
-        });
-
-        return ListView.builder(
-          itemCount: rows.length,
-          itemBuilder: (context, i) {
-            final row = rows[i];
-            final cat = row.catalogueItem;
-            final inv = row.inventoryItem;
-            final stock = inv?.currentStock ?? 0;
-            final inStock = stock > 0;
-            final greyed = isSales && !inStock;
-
-            return ListTile(
-              title: Text(
-                cat.name,
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  color: greyed ? Colors.black38 : null,
-                ),
-              ),
-              subtitle: Text(
-                inv != null
-                    ? '${cat.sku} • Stock: ${stock == stock.roundToDouble() ? stock.toInt() : stock} ${cat.unit}'
-                    : '${cat.sku} • ${cat.category}',
-                style: TextStyle(
-                    color: greyed ? Colors.black26 : Colors.grey.shade600),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '₹${(inv?.avgCost ?? cat.rate).toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: greyed ? Colors.black38 : accent,
-                    ),
-                  ),
-                  SizedBox(width: 2.w),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: inStock
-                          ? Colors.green.shade100
-                          : Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      inStock ? 'In stock' : 'No stock',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: inStock
-                            ? Colors.green.shade700
-                            : Colors.grey.shade600,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              onTap: () {
-                if (isSales && !inStock) {
-                  onOutOfStockTapped?.call(cat);
-                  return;
-                }
-                onSelected(ItemAutocompleteResult(
-                  kind: inv != null
-                      ? AutocompleteResultKind.inventory
-                      : AutocompleteResultKind.catalogue,
-                  name: cat.name,
-                  sku: cat.sku,
-                  rate: inv?.avgCost ?? cat.rate,
-                  unit: cat.unit,
-                  category: cat.category,
-                  inventoryItem: inv,
-                  catalogueItem: cat,
-                ));
-              },
-            );
-          },
-        );
-      },
     );
   }
 }

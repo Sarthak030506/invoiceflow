@@ -119,7 +119,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
             debugPrint('AuthWrapper: init OK, shouldShowOnboarding=${data.shouldShowOnboarding}, csvPath=${data.csvPath}');
 
             if (data.shouldShowOnboarding) {
-              return const BusinessTypeSelectionScreen();
+              return const BusinessTypeSelectionScreen(isFirstTimeSetup: true);
             }
 
             return HomeDashboard(csvPath: data.csvPath);
@@ -140,9 +140,6 @@ class _InitResult {
 /// Helper that runs app initialization and checks onboarding status
 Future<_InitResult> _initializeAppAndCheckOnboarding(String uid) async {
   debugPrint('AuthWrapper: init start for uid=$uid');
-
-  // Add a small delay to ensure SharedPreferences are fully committed
-  await Future.delayed(const Duration(milliseconds: 200));
 
   // 1) Resolve CSV path (used by InvoiceService)
   final csvPath = await getCsvPath();
