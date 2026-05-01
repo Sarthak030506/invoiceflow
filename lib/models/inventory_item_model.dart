@@ -6,7 +6,8 @@ class InventoryItem {
   final double openingStock;
   final double currentStock;
   final double reorderPoint;
-  final double avgCost;
+  final double avgCost; // weighted average purchase cost
+  final double sellingPrice; // price charged to customers
   final String category;
   final DateTime lastUpdated;
   final String? barcode;
@@ -21,6 +22,7 @@ class InventoryItem {
     required this.currentStock,
     required this.reorderPoint,
     required this.avgCost,
+    this.sellingPrice = 0.0,
     required this.category,
     required this.lastUpdated,
     this.barcode,
@@ -43,6 +45,7 @@ class InventoryItem {
     double? currentStock,
     double? reorderPoint,
     double? avgCost,
+    double? sellingPrice,
     String? category,
     DateTime? lastUpdated,
     String? barcode,
@@ -57,6 +60,7 @@ class InventoryItem {
       currentStock: currentStock ?? this.currentStock,
       reorderPoint: reorderPoint ?? this.reorderPoint,
       avgCost: avgCost ?? this.avgCost,
+      sellingPrice: sellingPrice ?? this.sellingPrice,
       category: category ?? this.category,
       lastUpdated: lastUpdated ?? this.lastUpdated,
       barcode: barcode ?? this.barcode,
@@ -75,6 +79,7 @@ class InventoryItem {
       'current_stock': currentStock,
       'reorder_point': reorderPoint,
       'avg_cost': avgCost,
+      'selling_price': sellingPrice,
       'category': category,
       'last_updated': lastUpdated.toIso8601String(),
       'barcode': barcode,
@@ -92,6 +97,7 @@ class InventoryItem {
       currentStock: json['current_stock']?.toDouble() ?? 0.0,
       reorderPoint: json['reorder_point']?.toDouble() ?? 0.0,
       avgCost: json['avg_cost']?.toDouble() ?? 0.0,
+      sellingPrice: json['selling_price']?.toDouble() ?? 0.0,
       category: json['category'],
       lastUpdated: DateTime.parse(json['last_updated']),
       barcode: json['barcode'],
