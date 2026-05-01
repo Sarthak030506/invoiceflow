@@ -201,7 +201,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
       final results = await Future.wait([
         _invoiceService.fetchDashboardMetrics(),
         _invoiceService.fetchRecentInvoices(),
-        _invoiceService.fetchAllInvoices(),
+        _invoiceService.fetchDashboardInvoices(),
         _getInventoryMetrics(),
       ]);
       
@@ -1451,8 +1451,8 @@ class _HomeDashboardState extends State<HomeDashboard> {
       final customers = await _customerService.getAllCustomers();
       final customersWithDues = <Map<String, dynamic>>[];
 
+      final allInvoices = await _invoiceService.fetchDashboardInvoices();
       for (final customer in customers) {
-        final allInvoices = await _invoiceService.fetchAllInvoices();
         final invoices = allInvoices.where((inv) => inv.customerId == customer.id).toList();
         final unpaidInvoices = invoices.where((inv) =>
           inv.invoiceType == 'sales' &&
@@ -2421,7 +2421,7 @@ void _showSnoozeDialog(InvoiceModel invoice) {
   Future<Map<String, dynamic>> _getInventoryMetrics() async {
     final inventoryService = InventoryService();
     final allItems = await inventoryService.getAllItems();
-    final lowStockItems = await inventoryService.getLowStockItems();
+    final lowStockItems = allItems.where((item) => item.currentStock <= item.reorderPoint).toList();
     
     final inStockSKUs = allItems.where((item) => item.currentStock > 0).length;
     final totalUnits = allItems.fold<int>(0, (sum, item) => sum + item.currentStock.toInt());
