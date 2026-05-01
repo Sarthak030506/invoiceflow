@@ -88,8 +88,7 @@ class InventoryService {
       createdAt: DateTime.now(),
     );
 
-    await addMovement(movement);
-    await _updateItemCurrentStock(itemId);
+    await _db.receiveStockTransactional(itemId, qty, unitCost, movement);
     await refreshMetricsAndNotify();
     _inventoryUpdatesController.add(null);
   }
@@ -109,19 +108,12 @@ class InventoryService {
       createdAt: DateTime.now(),
     );
 
-    await addMovement(movement);
-    await _updateItemCurrentStock(itemId);
+    await _db.receiveStockTransactional(itemId, qty, unitCost, movement);
     // Skip refreshMetricsAndNotify() - caller will handle batch refresh
   }
 
   Future<bool> issueStock(String itemId, double qty, String sourceRef) async {
     if (qty <= 0) throw Exception('Quantity must be positive');
-
-    final currentStock = await computeCurrentStock(itemId);
-    if (currentStock < qty) {
-      final item = await getItemById(itemId);
-      throw Exception('Insufficient stock for ${item?.name ?? itemId}. Available: $currentStock, Required: $qty');
-    }
 
     final movement = StockMovement(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -134,8 +126,7 @@ class InventoryService {
       createdAt: DateTime.now(),
     );
 
-    await addMovement(movement);
-    await _updateItemCurrentStock(itemId);
+    await _db.issueStockTransactional(itemId, qty, movement);
     await refreshMetricsAndNotify();
     _inventoryUpdatesController.add(null);
     return true;
@@ -144,12 +135,6 @@ class InventoryService {
   /// OPTIMIZATION: Issue stock without triggering full metrics refresh
   Future<bool> issueStockWithoutRefresh(String itemId, double qty, String sourceRef) async {
     if (qty <= 0) throw Exception('Quantity must be positive');
-
-    final currentStock = await computeCurrentStock(itemId);
-    if (currentStock < qty) {
-      final item = await getItemById(itemId);
-      throw Exception('Insufficient stock for ${item?.name ?? itemId}. Available: $currentStock, Required: $qty');
-    }
 
     final movement = StockMovement(
       id: '${DateTime.now().millisecondsSinceEpoch}_${itemId}_out',
@@ -162,8 +147,7 @@ class InventoryService {
       createdAt: DateTime.now(),
     );
 
-    await addMovement(movement);
-    await _updateItemCurrentStock(itemId);
+    await _db.issueStockTransactional(itemId, qty, movement);
     // Skip refreshMetricsAndNotify() - caller will handle batch refresh
     return true;
   }
@@ -386,20 +370,34 @@ class InventoryService {
   }
 
   Future<void> _updateItemCurrentStock(String itemId) async {
+    final computedStock = await computeCurrentStock(itemId);
+    await _db.syncCurrentStockTransactional(itemId, computedStock);
     final item = await getItemById(itemId);
     if (item != null) {
-      final actualStock = await computeCurrentStock(itemId);
-      if (actualStock != item.currentStock) {
-        final updatedItem = item.copyWith(currentStock: actualStock, lastUpdated: DateTime.now());
-        await updateItem(updatedItem);
-        InventoryNotificationService().notifyItemUpdated(updatedItem);
-      }
+      InventoryNotificationService().notifyItemUpdated(item);
     }
   }
 
   Future<void> reverseInvoiceMovements(String sourceType, String sourceId) async {
     await _db.reverseMovementsAtomically(sourceType, sourceId);
     await refreshMetricsAndNotify();
+  }
+
+  /// Reverses the weighted-average cost blending introduced by a cancelled purchase receive.
+  /// Call after reverseInvoiceMovements so currentStock is already corrected.
+  Future<void> unblendAvgCostAfterCancellation(
+      String itemId, double cancelledQty, double cancelledUnitCost) async {
+    if (cancelledUnitCost <= 0) return;
+    final item = await getItemById(itemId);
+    if (item == null) return;
+    final currentStock = await computeCurrentStock(itemId); // live from movements, not cached field
+    if (currentStock <= 0) return;
+    // Reverse: prevAvgCost = (blendedAvgCost × blendedStock − cancelledQty × cancelledCost) / prevStock
+    final prevAvgCost = (item.avgCost * (currentStock + cancelledQty) -
+            cancelledQty * cancelledUnitCost) /
+        currentStock;
+    if (prevAvgCost <= 0) return;
+    await updateItem(item.copyWith(avgCost: prevAvgCost));
   }
 
   Future<List<StockMovement>> getMovementsBySource(String sourceType, String sourceId) async {
@@ -419,8 +417,8 @@ class InventoryService {
     for (final item in allItems) {
       final actualStock = await _db.computeCurrentStock(item.id);
       if (actualStock != item.currentStock) {
+        await _db.syncCurrentStockTransactional(item.id, actualStock);
         final updatedItem = item.copyWith(currentStock: actualStock, lastUpdated: DateTime.now());
-        await updateItem(updatedItem);
         InventoryNotificationService().notifyItemUpdated(updatedItem);
       }
     }
@@ -459,8 +457,8 @@ class InventoryService {
         if (item != null) {
           final actualStock = await _db.computeCurrentStock(itemId);
           if (actualStock != item.currentStock) {
+            await _db.syncCurrentStockTransactional(itemId, actualStock);
             final updatedItem = item.copyWith(currentStock: actualStock, lastUpdated: DateTime.now());
-            await updateItem(updatedItem);
             InventoryNotificationService().notifyItemUpdated(updatedItem);
           }
         }
