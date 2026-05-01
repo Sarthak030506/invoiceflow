@@ -105,11 +105,11 @@ class ReturnService {
 
         if (inventoryItem != null) {
           if (returnModel.returnType == 'sales') {
-            // Sales return: Add stock back (receiveStock)
+            // Sales return: Add stock back at avgCost (not selling price) to preserve weighted average
             await _inventoryService.receiveStock(
               inventoryItem.id,
               returnItem.quantity.toDouble(),
-              returnItem.price,
+              inventoryItem.avgCost,
               'return:${returnModel.returnNumber}',
             );
             AppLogger.debug(
