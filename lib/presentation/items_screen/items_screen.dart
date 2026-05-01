@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../providers/catalogue_provider.dart';
+import '../../services/inventory_firestore_service.dart';
 import '../../services/items_service.dart';
 
 class ItemsScreen extends StatefulWidget {
@@ -343,12 +344,14 @@ class _ItemsScreenState extends State<ItemsScreen> {
       try {
         final updated = item.copyWith(
           name: nameCtrl.text.trim(),
-          rate: double.parse(rateCtrl.text.trim()),
+          sellingPrice: double.parse(rateCtrl.text.trim()),
           category: categoryCtrl.text.trim(),
           unit: unitCtrl.text.trim(),
           updatedAt: DateTime.now(),
         );
         await _itemsService.updateItem(updated);
+        await InventoryFirestoreService.instance
+            .updateSellingPriceByCatalogId(updated.id, updated.sellingPrice);
         if (!mounted) return;
         await context.read<CatalogueProvider>().load(force: true);
         if (!mounted) return;
