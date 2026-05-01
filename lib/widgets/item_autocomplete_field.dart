@@ -31,7 +31,8 @@ class ItemAutocompleteResult {
   final AutocompleteResultKind kind;
   final String name;
   final String sku;
-  final double rate;
+  final double rate; // selling price — use for sales invoices
+  final double costRate; // purchase/avg cost — use for purchase invoices
   final String unit;
   final String category;
   final InventoryItem? inventoryItem;
@@ -42,6 +43,7 @@ class ItemAutocompleteResult {
     required this.name,
     required this.sku,
     required this.rate,
+    this.costRate = 0.0,
     required this.unit,
     required this.category,
     this.inventoryItem,
@@ -268,12 +270,15 @@ class _ItemAutocompleteFieldState extends State<ItemAutocompleteField> {
       );
 
   Widget _inventoryTile(InventoryItem item) {
+    final displayRate = widget.mode == AutocompleteMode.sales
+        ? item.sellingPrice
+        : item.avgCost;
     return ListTile(
       dense: true,
       title: Text(item.name),
       subtitle: Text(
           '${item.sku} • Stock: ${item.currentStock.toStringAsFixed(item.currentStock == item.currentStock.roundToDouble() ? 0 : 2)} ${item.unit}'),
-      trailing: Text('₹${item.avgCost.toStringAsFixed(2)}',
+      trailing: Text('₹${displayRate.toStringAsFixed(2)}',
           style: const TextStyle(fontWeight: FontWeight.w600)),
       onTap: () => _commitInventory(item),
     );
@@ -282,6 +287,7 @@ class _ItemAutocompleteFieldState extends State<ItemAutocompleteField> {
   Widget _catalogueTile(ProductCatalogItem item) {
     final isSales = widget.mode == AutocompleteMode.sales;
     final color = isSales ? Colors.black38 : null;
+    final displayRate = isSales ? item.sellingPrice : item.costPrice;
     return ListTile(
       dense: true,
       title: Text(item.name, style: TextStyle(color: color)),
@@ -291,7 +297,7 @@ class _ItemAutocompleteFieldState extends State<ItemAutocompleteField> {
             : '${item.sku} • ${item.category}',
         style: TextStyle(color: color),
       ),
-      trailing: Text('₹${item.rate.toStringAsFixed(2)}',
+      trailing: Text('₹${displayRate.toStringAsFixed(2)}',
           style: TextStyle(color: color, fontWeight: FontWeight.w600)),
       onTap: () => _commitCatalogue(item),
     );
@@ -315,7 +321,8 @@ class _ItemAutocompleteFieldState extends State<ItemAutocompleteField> {
       kind: AutocompleteResultKind.inventory,
       name: item.name,
       sku: item.sku,
-      rate: item.avgCost,
+      rate: item.sellingPrice > 0 ? item.sellingPrice : item.avgCost,
+      costRate: item.avgCost,
       unit: item.unit,
       category: item.category,
       inventoryItem: item,
@@ -334,7 +341,8 @@ class _ItemAutocompleteFieldState extends State<ItemAutocompleteField> {
       kind: AutocompleteResultKind.catalogue,
       name: item.name,
       sku: item.sku,
-      rate: item.rate,
+      rate: item.sellingPrice,
+      costRate: item.costPrice,
       unit: item.unit,
       category: item.category,
       catalogueItem: item,
@@ -356,7 +364,8 @@ class _ItemAutocompleteFieldState extends State<ItemAutocompleteField> {
         kind: AutocompleteResultKind.newItem,
         name: created.name,
         sku: created.sku,
-        rate: created.rate,
+        rate: created.sellingPrice,
+        costRate: created.costPrice,
         unit: created.unit,
         category: created.category,
         catalogueItem: created,
