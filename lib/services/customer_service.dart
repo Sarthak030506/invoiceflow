@@ -167,6 +167,70 @@ https://play.google.com/store/apps/details?id=com.invoiceflow.app''';
     await _fs.adjustCustomerOutstandingBalance(customerId, newOutstandingAmount);
   }
 
+  /// Fast path: apply a known invoice delta to customer stats without re-reading all invoices.
+  /// Reads only the customer doc (1 read) instead of getInvoicesByCustomerId (N reads).
+  Future<void> updateCustomerStatsWithDelta({
+    required String customerId,
+    InvoiceModel? addedInvoice,
+    InvoiceModel? removedInvoice,
+    InvoiceModel? oldVersion,
+    InvoiceModel? newVersion,
+  }) async {
+    final customer = await getCustomerById(customerId);
+    if (customer == null) return;
+
+    double spentDelta = 0.0;
+    double paidDelta = 0.0;
+    int countDelta = 0;
+    DateTime? newLastPurchase;
+
+    if (addedInvoice != null &&
+        addedInvoice.invoiceType.toLowerCase() == 'sales' &&
+        addedInvoice.status != 'cancelled') {
+      spentDelta += addedInvoice.adjustedTotal;
+      paidDelta += addedInvoice.amountPaid;
+      countDelta += 1;
+      newLastPurchase = addedInvoice.date;
+    }
+
+    if (removedInvoice != null &&
+        removedInvoice.invoiceType.toLowerCase() == 'sales' &&
+        removedInvoice.status != 'cancelled') {
+      spentDelta -= removedInvoice.adjustedTotal;
+      paidDelta -= removedInvoice.amountPaid;
+      countDelta -= 1;
+    }
+
+    if (oldVersion != null && newVersion != null) {
+      final oldActive = oldVersion.invoiceType.toLowerCase() == 'sales' && oldVersion.status != 'cancelled';
+      final newActive = newVersion.invoiceType.toLowerCase() == 'sales' && newVersion.status != 'cancelled';
+      if (oldActive) {
+        spentDelta -= oldVersion.adjustedTotal;
+        paidDelta -= oldVersion.amountPaid;
+        countDelta -= 1;
+      }
+      if (newActive) {
+        spentDelta += newVersion.adjustedTotal;
+        paidDelta += newVersion.amountPaid;
+        countDelta += 1;
+        newLastPurchase = newVersion.date;
+      }
+    }
+
+    final updated = customer.copyWith(
+      totalSpent: (customer.totalSpent + spentDelta).clamp(0.0, double.infinity),
+      totalPaid: (customer.totalPaid + paidDelta).clamp(0.0, double.infinity),
+      invoiceCount: (customer.invoiceCount + countDelta).clamp(0, 999999999),
+      lastPurchaseDate: newLastPurchase != null &&
+              (customer.lastPurchaseDate == null ||
+                  newLastPurchase.isAfter(customer.lastPurchaseDate!))
+          ? newLastPurchase
+          : customer.lastPurchaseDate,
+      updatedAt: DateTime.now(),
+    );
+    await _fs.upsertCustomer(updated);
+  }
+
   /// Update denormalized customer stats (called when invoices change)
   /// This provides instant analytics without querying all invoices
   Future<void> updateCustomerStats(String customerId) async {
